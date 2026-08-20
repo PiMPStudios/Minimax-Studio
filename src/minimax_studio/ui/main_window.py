@@ -419,14 +419,18 @@ class MainWindow(QMainWindow):
             jobs = self._client.list_jobs()
         except Exception:
             jobs = []
-        active = next(
+        running = next(
             (
                 item
                 for item in jobs
-                if item.get("status") in {"queued", "running", "cancelling"}
+                if item.get("status") in {"running", "cancelling"}
             ),
             None,
         )
+        queued = [item for item in jobs if item.get("status") == "queued"]
+        queued.sort(key=lambda item: item.get("created_at") or 0)
+        active = running or (queued[0] if queued else None)
+        n_queued = len(queued)
         if not active:
             self._active_job_id = None
             self._status_job.setText("Job: idle")
@@ -437,7 +441,10 @@ class MainWindow(QMainWindow):
             kind = active.get("kind") or "job"
             status = active.get("status") or ""
             message = active.get("message") or ""
-            self._status_job.setText(f"Job: {kind} {status} {pct}% — {message}")
+            extra = f"  ·  {n_queued} queued" if n_queued else ""
+            self._status_job.setText(
+                f"Job: {kind} {status} {pct}% — {message}{extra}"
+            )
             self._status_cancel.setEnabled(
                 status != "cancelling" and bool(self._active_job_id)
             )

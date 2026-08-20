@@ -12,6 +12,7 @@ from minimax_studio.worker.runtime import runtime
 
 TERMINAL_STATUSES = frozenset({"done", "error", "cancelled"})
 ACTIVE_STATUSES = frozenset({"queued", "running", "cancelling"})
+MAX_QUEUE = 8
 
 
 def public_job(record: dict[str, Any]) -> dict[str, Any]:
@@ -59,12 +60,15 @@ class JobRequest(BaseModel):
 
 def start_job(request: JobRequest) -> dict[str, Any]:
     with runtime.lock:
-        busy = any(
-            item.get("status") in ACTIVE_STATUSES
+        unfinished = sum(
+            1
             for item in runtime.jobs.values()
+            if item.get("status") in ACTIVE_STATUSES
         )
-    if busy:
-        raise RuntimeError("A generate job is already running. Cancel it or wait.")
+        if unfinished >= MAX_QUEUE:
+            raise RuntimeError(
+                f"Generate queue is full ({MAX_QUEUE} jobs). Cancel one or wait."
+            )
     job_id = uuid.uuid4().hex[:12]
     record: dict[str, Any] = {
         "id": job_id,
@@ -83,10 +87,7 @@ def start_job(request: JobRequest) -> dict[str, Any]:
     with runtime.lock:
         runtime.jobs[job_id] = record
     _notify_jobs()
-    thread = threading.Thread(
-        target=_run_job, args=(job_id, request), daemon=True, name=f"job-{job_id}"
-    )
-    thread.start()
+    _kick_queue()
     return dict(record)
 
 
@@ -115,17 +116,25 @@ def update_job(job_id: str, **fields: Any) -> None:
 
 
 def cancel_job(job_id: str) -> dict[str, Any]:
+    kick = False
     with runtime.lock:
         record = runtime.jobs.get(job_id)
         if record is None:
             raise KeyError(job_id)
         if record.get("status") in TERMINAL_STATUSES:
             return dict(record)
-        record["status"] = "cancelling"
-        record["message"] = "Cancel requested"
+        if record.get("status") == "queued":
+            record["status"] = "cancelled"
+            record["message"] = "Cancelled"
+            kick = True
+        else:
+            record["status"] = "cancelling"
+            record["message"] = "Cancel requested"
         record["seq"] = int(record.get("seq") or 0) + 1
         snapshot = dict(record)
     _notify_jobs()
+    if kick:
+        _kick_queue()
     return snapshot
 
 
@@ -152,10 +161,52 @@ def iter_job_snapshots(job_id: str, heartbeat_s: float = 1.0):
 
 
 def active_job() -> dict[str, Any] | None:
-    for item in list_jobs():
-        if item.get("status") in ACTIVE_STATUSES:
-            return item
-    return None
+    jobs = list_jobs()
+    running = next(
+        (item for item in jobs if item.get("status") in {"running", "cancelling"}),
+        None,
+    )
+    if running:
+        return running
+    queued = [item for item in jobs if item.get("status") == "queued"]
+    queued.sort(key=lambda item: item.get("created_at") or 0)
+    return queued[0] if queued else None
+
+
+def queued_count() -> int:
+    return sum(1 for item in list_jobs() if item.get("status") == "queued")
+
+
+def _kick_queue() -> None:
+    job_id = None
+    request_data: dict[str, Any] | None = None
+    with runtime.lock:
+        if any(
+            item.get("status") in {"running", "cancelling"}
+            for item in runtime.jobs.values()
+        ):
+            return
+        queued = [
+            item for item in runtime.jobs.values() if item.get("status") == "queued"
+        ]
+        queued.sort(key=lambda item: item.get("created_at") or 0)
+        if not queued:
+            return
+        nxt = queued[0]
+        nxt["status"] = "running"
+        nxt["message"] = "Starting"
+        nxt["progress"] = 0.05
+        nxt["seq"] = int(nxt.get("seq") or 0) + 1
+        job_id = nxt["id"]
+        request_data = dict(nxt.get("request") or {})
+    _notify_jobs()
+    if not job_id or request_data is None:
+        return
+    request = JobRequest.model_validate(request_data)
+    thread = threading.Thread(
+        target=_run_job, args=(job_id, request), daemon=True, name=f"job-{job_id}"
+    )
+    thread.start()
 
 
 def step_cancel_callback(job_id: str, total_steps: int):
@@ -226,3 +277,5 @@ def _run_job(job_id: str, request: JobRequest) -> None:
         )
     except Exception as exc:
         update_job(job_id, status="error", message="Failed", error=str(exc), progress=0.0)
+    finally:
+        _kick_queue()

@@ -12,6 +12,17 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.12] — 2026-08-20
+
+### Added
+
+- Generate **queue**: a second job waits instead of failing with “already running” (max 8)
+- Status bar shows how many jobs are queued behind the live one
+
+### Changed
+
+- Cancel on a queued job drops it immediately; the running job is unchanged
+
 ## [0.2.11] — 2026-08-20
 
 ### Added
