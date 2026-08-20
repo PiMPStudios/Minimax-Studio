@@ -15,6 +15,8 @@ class StudioState(QObject):
         self.duration = 30
         self.seed = -1
         self.steps = 30
+        self.lora_id = ""
+        self.lora_strength = 1.0
 
     def set_backend(self, value: str) -> None:
         key = value.strip().lower()
@@ -36,3 +38,8 @@ class StudioState(QObject):
         if value != self.steps:
             self.steps = int(value)
             self.changed.emit()
+
+    def set_lora(self, lora_id: str, strength: float) -> None:
+        self.lora_id = lora_id
+        self.lora_strength = float(strength)
+        self.changed.emit()

@@ -7,12 +7,15 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
+    QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QPushButton,
     QSpinBox,
     QStackedWidget,
     QStatusBar,
@@ -116,6 +119,16 @@ class MainWindow(QMainWindow):
         self._steps.valueChanged.connect(self._state.set_steps)
         self._gpu_label = QLabel("Probing…")
         self._gpu_label.setWordWrap(True)
+        self._lora = QComboBox()
+        self._lora.addItem("None", "")
+        self._lora.currentIndexChanged.connect(self._lora_changed)
+        self._lora_strength = QDoubleSpinBox()
+        self._lora_strength.setRange(0.0, 2.0)
+        self._lora_strength.setSingleStep(0.05)
+        self._lora_strength.setValue(1.0)
+        self._lora_strength.valueChanged.connect(self._lora_changed)
+        import_lora = QPushButton("Import LoRA…")
+        import_lora.clicked.connect(self._import_lora)
         self._state.changed.connect(self._sync_inspector)
         self._state.open_history.connect(lambda: self.show_page("history"))
         self._state.restore_music.connect(lambda _: self.show_page("music"))
@@ -127,6 +140,9 @@ class MainWindow(QMainWindow):
         form.addRow("Duration", self._duration)
         form.addRow("Seed", self._seed)
         form.addRow("Steps", self._steps)
+        form.addRow("LoRA", self._lora)
+        form.addRow("LoRA strength", self._lora_strength)
+        form.addRow(import_lora)
         form.addRow("Hardware", self._gpu_label)
         brand = QLabel("MiniMax H3  ·  MiniMax-Music3")
         brand.setObjectName("brand")
@@ -160,6 +176,7 @@ class MainWindow(QMainWindow):
         first_page_row = next(i for i, key in enumerate(self._nav_keys) if key == "music")
         self._nav.setCurrentRow(first_page_row)
         self.refresh_probe()
+        self.refresh_loras()
         self._history.refresh()
 
         self._timer = QTimer(self)
@@ -205,6 +222,36 @@ class MainWindow(QMainWindow):
         self._duration.blockSignals(False)
         self._seed.blockSignals(False)
         self._steps.blockSignals(False)
+
+    def refresh_loras(self) -> None:
+        current = self._lora.currentData()
+        self._lora.blockSignals(True)
+        self._lora.clear()
+        self._lora.addItem("None", "")
+        try:
+            for item in self._client.list_loras():
+                self._lora.addItem(item["name"], item["path"])
+        except Exception:
+            pass
+        index = self._lora.findData(current)
+        self._lora.setCurrentIndex(max(0, index))
+        self._lora.blockSignals(False)
+        self._lora_changed()
+
+    def _lora_changed(self) -> None:
+        self._state.set_lora(str(self._lora.currentData() or ""), self._lora_strength.value())
+
+    def _import_lora(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "Import LoRA", "", "LoRA (*.safetensors)"
+        )
+        if not chosen:
+            return
+        try:
+            self._client.import_lora(chosen)
+        except Exception:
+            return
+        self.refresh_loras()
 
     def refresh_probe(self) -> None:
         try:

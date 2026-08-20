@@ -39,6 +39,9 @@ class FakeWorker:
     def list_presets(self) -> list:
         return []
 
+    def list_loras(self) -> list:
+        return []
+
 
 def test_main_window_builds(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])

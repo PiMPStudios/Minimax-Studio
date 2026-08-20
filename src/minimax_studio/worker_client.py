@@ -52,6 +52,12 @@ class WorkerClient:
     def save_preset(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._post("/presets", payload)
 
+    def list_loras(self) -> list[dict[str, Any]]:
+        return self._get_list("/loras")
+
+    def import_lora(self, path: str) -> dict[str, Any]:
+        return self._post("/loras/import", {"path": path})
+
     def delete_preset(self, preset_id: str) -> dict[str, Any]:
         with httpx.Client(timeout=self._timeout) as client:
             response = client.delete(f"{self._base}/presets/{preset_id}")

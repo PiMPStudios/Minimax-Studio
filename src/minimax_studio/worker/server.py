@@ -8,6 +8,7 @@ from minimax_studio.config import AppConfig, save_config
 from minimax_studio.worker import downloads
 from minimax_studio.worker.history import get_entry, list_history
 from minimax_studio.worker.jobs import JobRequest, get_job, list_jobs, start_job
+from minimax_studio.worker.loras import import_lora, list_loras
 from minimax_studio.worker.presets import delete_preset, list_presets, save_preset
 from minimax_studio.worker.probe import probe
 from minimax_studio.worker.runtime import runtime
@@ -136,3 +137,23 @@ def create_preset(body: dict) -> dict[str, object]:
 def remove_preset(preset_id: str) -> dict[str, object]:
     delete_preset(preset_id)
     return {"ok": True, "id": preset_id}
+
+
+@app.get("/loras")
+def loras() -> list[dict[str, object]]:
+    try:
+        return list_loras()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class LoraImportIn(BaseModel):
+    path: str
+
+
+@app.post("/loras/import")
+def lora_import(body: LoraImportIn) -> dict[str, object]:
+    try:
+        return import_lora(body.path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

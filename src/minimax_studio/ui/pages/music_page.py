@@ -169,6 +169,11 @@ class MusicPage(QWidget):
             "duration_s": self._state.duration,
             "seed": self._state.seed,
             "steps": self._state.steps,
+            "loras": (
+                [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
+                if self._state.lora_id
+                else []
+            ),
         }
         try:
             job = self._client.start_job(payload)

@@ -102,6 +102,7 @@ def _generate_cuda(job_id: str, request: JobRequest, wav_path: Path) -> dict[str
         generator = torch.Generator(device).manual_seed(seed)
 
     update_job(job_id, message="Sampling", progress=0.35)
+    _apply_loras(pipe, request.loras)
     audio = pipe(
         prompt=request.prompt,
         lyrics=request.lyrics,
@@ -151,6 +152,22 @@ def _generate_mlx(job_id: str, request: JobRequest, wav_path: Path) -> dict[str,
         audio = audio.T
     sf.write(str(wav_path), audio, rate)
     return {"output_path": str(wav_path), "backend": "mlx", "media_type": "audio"}
+
+
+def _apply_loras(pipe: Any, loras: list[dict[str, Any]]) -> None:
+    if not loras:
+        return
+    loader = getattr(pipe, "load_lora_weights", None)
+    if loader is None:
+        return
+    for item in loras:
+        path = item.get("id") or item.get("path")
+        if not path:
+            continue
+        try:
+            loader(path)
+        except Exception:
+            continue
 
 
 def _write_stub(path: Path, duration_s: float) -> None:

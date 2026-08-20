@@ -158,6 +158,11 @@ class VideoPage(QWidget):
             "speed": "quality",
             "resolution": self.resolution.currentText(),
             "ratio": self.ratio.currentText(),
+            "loras": (
+                [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
+                if self._state.lora_id
+                else []
+            ),
         }
         try:
             job = self._client.start_job(payload)

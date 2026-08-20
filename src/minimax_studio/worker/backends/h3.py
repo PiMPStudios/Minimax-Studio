@@ -95,6 +95,13 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         message=f"Sampling {num_frames} frames ({num_frames / 24:.1f}s)",
         progress=0.35,
     )
+    for item in request.loras:
+        path = item.get("id")
+        if path and hasattr(pipe, "load_lora_weights"):
+            try:
+                pipe.load_lora_weights(path)
+            except Exception:
+                pass
     results = pipe(**kwargs)
     update_job(job_id, message="Muxing MP4", progress=0.9)
     encode_video(
