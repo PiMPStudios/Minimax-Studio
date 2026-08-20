@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from minimax_studio.worker.ping import ping_services
 from minimax_studio.worker.probe import probe
 from minimax_studio.worker.runtime import runtime
 
 
 def preflight(kind: str, backend: str = "auto", mode: str = "t2va") -> dict[str, Any]:
     hw = probe()
-    ping = ping_services()
     result: dict[str, Any] = {
         "kind": kind,
         "mode": mode,
@@ -17,7 +15,7 @@ def preflight(kind: str, backend: str = "auto", mode: str = "t2va") -> dict[str,
         "ok": False,
         "backend": None,
         "detail": "",
-        "comfy": ping.get("comfy"),
+        "comfy": None,
         "torch_available": hw.get("torch_available"),
         "cuda": hw.get("cuda"),
         "gpus": hw.get("gpus") or [],
@@ -42,6 +40,8 @@ def preflight(kind: str, backend: str = "auto", mode: str = "t2va") -> dict[str,
         return result
 
     result["backend"] = resolved
+    if resolved == "comfy":
+        result["comfy"] = {"ok": True, "detail": runtime.config.comfy_url}
     if resolved == "cuda" and not hw.get("torch_available"):
         result["detail"] = (
             "Local diffusers needs PyTorch in the Studio venv "

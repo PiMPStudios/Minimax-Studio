@@ -27,18 +27,29 @@ def comfy_base() -> str:
     return (runtime.config.comfy_url or "http://127.0.0.1:8188").rstrip("/")
 
 
+_REACH_AT = 0.0
+_REACH_OK = False
+_REACH_TTL_S = 2.0
+
+
 def comfy_reachable() -> bool:
+    global _REACH_AT, _REACH_OK
+    now = time.monotonic()
+    if now - _REACH_AT < _REACH_TTL_S:
+        return _REACH_OK
+    ok = False
     try:
-        response = httpx.get(f"{comfy_base()}/system_stats", timeout=3.0)
-        if response.status_code < 400:
-            return True
+        response = httpx.get(f"{comfy_base()}/system_stats", timeout=0.6)
+        ok = response.status_code < 400
     except httpx.HTTPError:
-        pass
-    try:
-        response = httpx.get(f"{comfy_base()}/queue", timeout=3.0)
-        return response.status_code < 400
-    except httpx.HTTPError:
-        return False
+        try:
+            response = httpx.get(f"{comfy_base()}/queue", timeout=0.6)
+            ok = response.status_code < 400
+        except httpx.HTTPError:
+            ok = False
+    _REACH_AT = now
+    _REACH_OK = ok
+    return ok
 
 
 def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:

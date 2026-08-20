@@ -30,5 +30,8 @@ def studio_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     runtime.music_pipe_path = None
     runtime.comfy_proc = None
     runtime.comfy_log = None
+    from minimax_studio.worker.probe import reset_probe_cache
+
+    reset_probe_cache()
     runtime.config.ensure_dirs()
     return output

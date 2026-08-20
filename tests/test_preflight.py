@@ -31,10 +31,6 @@ def test_preflight_h3_cuda_warns_without_ffmpeg(studio_home: Path, monkeypatch) 
         },
     )
     monkeypatch.setattr(
-        "minimax_studio.worker.preflight.ping_services",
-        lambda: {"comfy": {"ok": False}},
-    )
-    monkeypatch.setattr(
         "minimax_studio.worker.backends.h3.resolve_h3_backend",
         lambda _backend: "cuda",
     )

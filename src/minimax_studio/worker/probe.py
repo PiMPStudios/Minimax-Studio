@@ -6,10 +6,25 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 from typing import Any
+
+_CACHE: dict[str, Any] | None = None
+_CACHE_AT = 0.0
+_CACHE_TTL_S = 2.0
+
+
+def reset_probe_cache() -> None:
+    global _CACHE, _CACHE_AT
+    _CACHE = None
+    _CACHE_AT = 0.0
 
 
 def probe() -> dict[str, Any]:
+    global _CACHE, _CACHE_AT
+    now = time.monotonic()
+    if _CACHE is not None and now - _CACHE_AT < _CACHE_TTL_S:
+        return dict(_CACHE)
     info: dict[str, Any] = {
         "os": platform.system(),
         "os_release": platform.release(),
@@ -57,7 +72,9 @@ def probe() -> dict[str, Any]:
         smi = _nvidia_smi_gpus()
         if smi:
             _apply_gpus(info, smi, source="nvidia-smi")
-    return info
+    _CACHE = info
+    _CACHE_AT = now
+    return dict(info)
 
 
 def _apply_gpus(info: dict[str, Any], gpus: list[dict[str, Any]], source: str) -> None:

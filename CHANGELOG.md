@@ -12,6 +12,14 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.18] — 2026-08-20
+
+### Changed
+
+- Generate preflight no longer pings MiniMax/LLM/Comfy on every Inspector refresh (those pings could freeze the window for seconds)
+- Hardware probe is cached for 2 seconds
+- Comfy reachability uses a 0.6s timeout and is cached for 2 seconds so a down ComfyUI does not stall the Inspector
+
 ## [0.2.17] — 2026-08-20
 
 ### Added
