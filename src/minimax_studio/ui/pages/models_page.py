@@ -148,7 +148,12 @@ class _PackCard(QFrame):
         else:
             self._bar.hide()
             self._button.setEnabled(True)
-            self._button.setText("Re-download" if pack.get("ready") else "Download")
+            if pack.get("ready"):
+                self._button.setText("Re-download")
+            elif pack.get("partial") or gb > 0.01:
+                self._button.setText("Resume")
+            else:
+                self._button.setText("Download")
         self._meta.setText(
             f"{status}  ·  ~{pack.get('approx_gb')} GB  ·  {pack.get('license_name')}\n"
             f"{pack.get('path')}"

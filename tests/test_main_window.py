@@ -42,6 +42,9 @@ class FakeWorker:
     def list_loras(self) -> list:
         return []
 
+    def ping(self) -> dict:
+        return {"minimax": {"ok": False, "detail": "no key"}, "llm": {"ok": True, "detail": "HTTP 200"}}
+
 
 def test_main_window_builds(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])

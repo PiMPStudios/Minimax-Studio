@@ -12,6 +12,19 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.1] — 2026-08-19
+
+### Added
+
+- Resume label on partial Hugging Face pack downloads (`resume_download=True`)
+- Presets store/restore assets, LoRA, speed, and backend
+- Settings save pings MiniMax and the local LLM (`GET /ping`)
+- Local H3/Music sampling checks cancel between steps via `callback_on_step_end`
+
+### Fixed
+
+- Inspector LoRA selection now follows restored presets
+
 ## [0.2.0] — 2026-08-19
 
 First usable generate studio. Local git only; no GitHub release yet.

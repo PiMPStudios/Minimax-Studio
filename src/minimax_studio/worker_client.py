@@ -22,6 +22,9 @@ class WorkerClient:
     def put_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._post("/settings", payload)
 
+    def ping(self) -> dict[str, Any]:
+        return self._get("/ping")
+
     def list_packs(self) -> list[dict[str, Any]]:
         return self._get_list("/packs")
 

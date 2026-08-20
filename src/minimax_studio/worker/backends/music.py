@@ -107,14 +107,23 @@ def _generate_cuda(job_id: str, request: JobRequest, wav_path: Path) -> dict[str
 
     update_job(job_id, message="Sampling", progress=0.35)
     _apply_loras(pipe, request.loras)
-    audio = pipe(
+    from minimax_studio.worker.jobs import is_cancelled, step_cancel_callback
+
+    if is_cancelled(job_id):
+        raise RuntimeError("Cancelled")
+    steps = int(request.steps)
+    call = dict(
         prompt=request.prompt,
         lyrics=request.lyrics,
         audio_duration=float(request.duration_s),
-        num_inference_steps=int(request.steps),
+        num_inference_steps=steps,
         generator=generator,
         output="audios",
-    )[0]
+    )
+    try:
+        audio = pipe(**call, callback_on_step_end=step_cancel_callback(job_id, steps))[0]
+    except TypeError:
+        audio = pipe(**call)[0]
     update_job(job_id, message="Writing WAV", progress=0.9)
     if hasattr(audio, "float") and hasattr(audio, "cpu"):
         array = audio.T.float().cpu().numpy()

@@ -137,6 +137,17 @@ class MusicPage(QWidget):
             self._state.set_seed(int(entry["seed"]))
         if entry.get("steps"):
             self._state.set_steps(int(entry["steps"]))
+        if entry.get("backend"):
+            self._state.set_backend(str(entry["backend"]))
+        if entry.get("speed"):
+            self._state.set_speed(str(entry["speed"]))
+        loras = entry.get("loras") or []
+        lora_id = entry.get("lora_id") or (loras[0].get("id") if loras else "")
+        strength = entry.get("lora_strength")
+        if strength is None and loras:
+            strength = loras[0].get("strength", 1.0)
+        if lora_id:
+            self._state.set_lora(str(lora_id), float(strength or 1.0))
 
     def poll(self) -> None:
         if not self._job_id:
@@ -248,6 +259,15 @@ class MusicPage(QWidget):
                     "duration_s": self._state.duration,
                     "seed": self._state.seed,
                     "steps": self._state.steps,
+                    "speed": self._state.speed,
+                    "backend": self._state.backend,
+                    "lora_id": self._state.lora_id,
+                    "lora_strength": self._state.lora_strength,
+                    "loras": (
+                        [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
+                        if self._state.lora_id
+                        else []
+                    ),
                 }
             )
         except Exception as exc:

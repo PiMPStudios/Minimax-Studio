@@ -87,7 +87,22 @@ class SettingsPage(QWidget):
         except Exception as exc:
             QMessageBox.warning(self, "Save failed", str(exc))
             return
-        QMessageBox.information(self, "Saved", "Settings written for the app and worker.")
+        ping_lines = []
+        try:
+            ping = self._client.ping()
+            for name, result in ping.items():
+                if not isinstance(result, dict):
+                    continue
+                mark = "ok" if result.get("ok") else "fail"
+                ping_lines.append(f"{name}: {mark} — {result.get('detail')}")
+        except Exception as exc:
+            ping_lines.append(str(exc))
+        extra = "\n".join(ping_lines)
+        QMessageBox.information(
+            self,
+            "Saved",
+            "Settings written for the app and worker.\n\n" + extra,
+        )
 
 
 def _browse_row(edit: QLineEdit, parent: QWidget) -> QWidget:

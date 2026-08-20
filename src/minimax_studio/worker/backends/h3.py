@@ -128,7 +128,16 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         progress=0.35,
     )
     _apply_loras(pipe, loras)
-    results = pipe(**kwargs)
+    from minimax_studio.worker.jobs import is_cancelled, step_cancel_callback
+
+    if is_cancelled(job_id):
+        raise RuntimeError("Cancelled")
+    try:
+        results = pipe(
+            **kwargs, callback_on_step_end=step_cancel_callback(job_id, steps)
+        )
+    except TypeError:
+        results = pipe(**kwargs)
     update_job(job_id, message="Muxing MP4", progress=0.9)
     encode_video(
         results["videos"][0],

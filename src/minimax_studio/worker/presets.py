@@ -41,6 +41,11 @@ def save_preset(payload: dict[str, Any]) -> dict[str, Any]:
         "height": payload.get("height", 544),
         "resolution": payload.get("resolution", "768P"),
         "ratio": payload.get("ratio", "16:9"),
+        "speed": payload.get("speed", "quality"),
+        "assets": payload.get("assets") or [],
+        "loras": payload.get("loras") or [],
+        "lora_id": payload.get("lora_id") or "",
+        "lora_strength": payload.get("lora_strength", 1.0),
     }
     items = [row for row in items if row.get("id") != item["id"]]
     items.append(item)

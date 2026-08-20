@@ -218,6 +218,27 @@ class VideoPage(QWidget):
             self._state.set_seed(int(entry["seed"]))
         if entry.get("steps"):
             self._state.set_steps(int(entry["steps"]))
+        if entry.get("backend"):
+            self._state.set_backend(str(entry["backend"]))
+        if entry.get("speed"):
+            self._state.set_speed(str(entry["speed"]))
+        loras = entry.get("loras") or []
+        lora_id = entry.get("lora_id") or (loras[0].get("id") if loras else "")
+        strength = entry.get("lora_strength")
+        if strength is None and loras:
+            strength = loras[0].get("strength", 1.0)
+        if lora_id:
+            self._state.set_lora(str(lora_id), float(strength or 1.0))
+        assets = entry.get("assets") or []
+        first = next((a.get("path") for a in assets if a.get("role") == "first_frame"), "")
+        last = next((a.get("path") for a in assets if a.get("role") == "last_frame"), "")
+        refs = [a.get("path") for a in assets if a.get("role") == "reference" and a.get("path")]
+        if first:
+            self.first_path.set_paths(str(first))
+        if last:
+            self.last_path.set_paths(str(last))
+        if refs:
+            self.refs_path.set_paths([str(p) for p in refs])
 
     def _save_preset(self) -> None:
         name, ok = QInputDialog.getText(self, "Save preset", "Name")
@@ -236,6 +257,28 @@ class VideoPage(QWidget):
                     "steps": self._state.steps,
                     "resolution": self.resolution.currentText(),
                     "ratio": self.ratio.currentText(),
+                    "speed": self._state.speed,
+                    "backend": self._state.backend,
+                    "lora_id": self._state.lora_id,
+                    "lora_strength": self._state.lora_strength,
+                    "loras": (
+                        [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
+                        if self._state.lora_id
+                        else []
+                    ),
+                    "assets": [
+                        item
+                        for item in [
+                            {"role": "first_frame", "path": self.first_path.path}
+                            if self.first_path.path
+                            else None,
+                            {"role": "last_frame", "path": self.last_path.path}
+                            if self.last_path.path
+                            else None,
+                        ]
+                        if item
+                    ]
+                    + [{"role": "reference", "path": p} for p in self.refs_path.paths],
                 }
             )
         except Exception as exc:
@@ -346,6 +389,12 @@ class _AssetRow(QWidget):
     @property
     def paths(self) -> list[str]:
         return [part.strip() for part in self._edit.text().split(";") if part.strip()]
+
+    def set_paths(self, paths: list[str] | str) -> None:
+        if isinstance(paths, str):
+            self._edit.setText(paths)
+        else:
+            self._edit.setText(";".join(paths))
 
     def _browse(self) -> None:
         if self._kind == "image":

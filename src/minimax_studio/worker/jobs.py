@@ -93,6 +93,24 @@ def cancel_job(job_id: str) -> dict[str, Any]:
         return dict(record)
 
 
+def step_cancel_callback(job_id: str, total_steps: int):
+    def _callback(pipe, step_index, timestep, callback_kwargs):  # noqa: ANN001
+        if is_cancelled(job_id):
+            raise RuntimeError("Cancelled")
+        try:
+            total = max(int(total_steps), 1)
+            update_job(
+                job_id,
+                progress=0.35 + 0.5 * ((int(step_index) + 1) / total),
+                message=f"Step {int(step_index) + 1}/{total}",
+            )
+        except Exception:
+            pass
+        return callback_kwargs
+
+    return _callback
+
+
 def is_cancelled(job_id: str) -> bool:
     with runtime.lock:
         record = runtime.jobs.get(job_id) or {}

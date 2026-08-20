@@ -229,6 +229,17 @@ class MainWindow(QMainWindow):
         self._duration.setValue(self._state.duration)
         self._seed.setValue(self._state.seed)
         self._steps.setValue(self._state.steps)
+        self._lora.blockSignals(True)
+        self._lora_strength.blockSignals(True)
+        if self._state.lora_id and self._lora.findData(self._state.lora_id) < 0:
+            from pathlib import Path
+
+            self._lora.addItem(Path(self._state.lora_id).name, self._state.lora_id)
+        idx = self._lora.findData(self._state.lora_id)
+        self._lora.setCurrentIndex(max(0, idx))
+        self._lora_strength.setValue(self._state.lora_strength)
+        self._lora.blockSignals(False)
+        self._lora_strength.blockSignals(False)
         self._backend.blockSignals(False)
         self._speed.blockSignals(False)
         self._duration.blockSignals(False)

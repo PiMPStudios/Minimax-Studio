@@ -35,6 +35,7 @@ def pack_status(pack: Pack, models_root: Path) -> dict[str, Any]:
         "ready": ready,
         "missing": missing,
         "bytes_on_disk": dir_bytes(dest) if dest.exists() else 0,
+        "partial": (not ready) and dest.exists() and dir_bytes(dest) > 1024 * 1024,
     }
 
 
@@ -157,6 +158,7 @@ def _hf_snapshot(
         "repo_id": repo_id,
         "local_dir": local_dir,
         "token": token,
+        "resume_download": True,
     }
     if allow_patterns:
         kwargs["allow_patterns"] = allow_patterns

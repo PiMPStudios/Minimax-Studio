@@ -18,6 +18,7 @@ from minimax_studio.worker.jobs import (
 )
 from minimax_studio.worker.llm import enhance_prompt
 from minimax_studio.worker.loras import import_lora, list_loras
+from minimax_studio.worker.ping import ping_services
 from minimax_studio.worker.presets import delete_preset, list_presets, save_preset
 from minimax_studio.worker.probe import probe
 from minimax_studio.worker.runtime import runtime
@@ -49,6 +50,11 @@ def hardware_probe() -> dict[str, object]:
 @app.get("/settings")
 def get_settings() -> dict[str, object]:
     return runtime.config.model_dump()
+
+
+@app.get("/ping")
+def ping() -> dict[str, object]:
+    return ping_services()
 
 
 @app.post("/settings")
