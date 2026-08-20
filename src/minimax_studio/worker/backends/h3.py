@@ -44,12 +44,24 @@ def duration_to_frames(seconds: float) -> int:
     return frames
 
 
+INT8_NEEDS_COMFY = (
+    "Comfy-Org INT8 H3 is on disk, but those files use Comfy convrot kernels — "
+    "diffusers cannot load them. Start ComfyUI (Settings → ComfyUI URL, default "
+    "http://127.0.0.1:8188) and generate again, or download the official FL2VA "
+    "diffusers pack on the Models page for in-process generate."
+)
+
+
 def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
-    backend = _resolve_backend(request.backend)
+    backend = resolve_h3_backend(request.backend)
     if backend == "api":
         from minimax_studio.worker.backends.h3_api import generate_h3_api
 
         return generate_h3_api(job_id, request)
+    if backend == "comfy":
+        from minimax_studio.worker.backends.h3_comfy import generate_h3_comfy
+
+        return generate_h3_comfy(job_id, request)
     if backend == "stub":
         raise RuntimeError("H3 has no stub renderer.")
 
@@ -58,10 +70,14 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
     out_path = dest / "video.mp4"
 
     pack_dir = runtime.config.models_root() / PACKS["h3-diffusers-fl2va"].local_dir
-    if not pack_status(PACKS["h3-diffusers-fl2va"], runtime.config.models_root())["ready"]:
+    official = pack_status(PACKS["h3-diffusers-fl2va"], runtime.config.models_root())
+    if not official["ready"]:
+        int8 = pack_status(PACKS["h3-fl2va"], runtime.config.models_root())
+        if int8["ready"]:
+            raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
         raise RuntimeError(
-            "Download “MiniMax H3 FL2VA (official diffusers)” on the Models page. "
-            "The Comfy-Org INT8 pack is for Comfy / later loaders, not this generate path yet."
+            "Download MiniMax H3 on the Models page (Comfy-Org INT8 or official "
+            "diffusers FL2VA), or add a MiniMax API key in Settings."
         )
 
     update_job(job_id, message="Loading MiniMax H3", progress=0.1)
@@ -149,27 +165,57 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
     return {"output_path": str(out_path), "backend": "cuda", "media_type": "video"}
 
 
-def _resolve_backend(requested: str) -> str:
+def resolve_h3_backend(requested: str) -> str:
     name = requested.lower()
-    if name in {"api", "local", "cuda", "stub"}:
-        if name == "local":
-            return "cuda"
-        return name
-    # auto
     root = runtime.config.models_root()
-    local_ready = pack_status(PACKS["h3-diffusers-fl2va"], root)["ready"]
+    official = pack_status(PACKS["h3-diffusers-fl2va"], root)["ready"]
+    int8 = pack_status(PACKS["h3-fl2va"], root)
+
+    def _comfy_up() -> bool:
+        from minimax_studio.worker.backends.h3_comfy import comfy_reachable
+
+        return comfy_reachable()
+
+    if name == "api":
+        return "api"
+    if name == "stub":
+        return "stub"
+    if name == "cuda":
+        return "cuda"
+    if name == "comfy":
+        if not int8["ready"]:
+            raise RuntimeError(
+                "Comfy backend needs the Comfy-Org INT8 FL2VA files. "
+                "Download that pack or point Settings at your ComfyUI models folder."
+            )
+        if not _comfy_up():
+            raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
+        return "comfy"
+    if name == "local":
+        if official:
+            return "cuda"
+        if int8["ready"] and _comfy_up():
+            return "comfy"
+        if int8["ready"]:
+            raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
+        return "cuda"
+
     from minimax_studio.worker.probe import probe
 
     hw = probe()
-    if local_ready and hw.get("cuda"):
+    if official and hw.get("cuda"):
         return "cuda"
+    if int8["ready"] and _comfy_up():
+        return "comfy"
     if runtime.config.minimax_api_key:
         return "api"
-    if local_ready:
+    if official:
         return "cuda"
+    if int8["ready"]:
+        raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
     raise RuntimeError(
-        "No local H3 diffusers pack and no MiniMax API key. "
-        "Download the official FL2VA pack or add a key in Settings."
+        "No local H3 pack and no MiniMax API key. "
+        "Download Comfy-Org INT8 or official FL2VA on Models, or add a key in Settings."
     )
 
 
@@ -205,16 +251,23 @@ def _apply_loras(pipe: Any, loras: list[dict[str, Any]]) -> None:
 
 
 def _find_turbo_lora() -> str | None:
+    from minimax_studio.worker.model_paths import search_roots
+
+    name = "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors"
     root = runtime.config.models_root()
-    candidates = [
-        root
-        / "h3-comfy"
-        / "loras"
-        / "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors"
-    ]
-    extra = root / "loras"
-    if extra.is_dir():
-        candidates.extend(sorted(extra.glob("*turbo*.safetensors")))
+    roots = search_roots(root, runtime.config.comfy_models_dir)
+    candidates: list[Path] = []
+    for folder in roots:
+        candidates.extend(
+            [
+                folder / "h3-comfy" / "loras" / name,
+                folder / "minimax-h3" / "loras" / name,
+                folder / "loras" / name,
+            ]
+        )
+        lora_dir = folder / "loras"
+        if lora_dir.is_dir():
+            candidates.extend(sorted(lora_dir.glob("*turbo*.safetensors")))
     for path in candidates:
         if Path(path).is_file():
             return str(path)

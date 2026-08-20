@@ -55,7 +55,7 @@ PACKS: dict[str, Pack] = {
     "h3-diffusers-fl2va": Pack(
         id="h3-diffusers-fl2va",
         title="MiniMax H3 FL2VA (official diffusers)",
-        summary="Text / first / last frame via ModularPipeline. Large. Needed for in-app local generate.",
+        summary="Text / first / last frame via ModularPipeline. Large. In-process generate (no ComfyUI).",
         repo_id="MiniMaxAI/MiniMax-H3",
         local_dir="h3-diffusers",
         approx_gb=130.0,
@@ -95,7 +95,7 @@ PACKS: dict[str, Pack] = {
     "h3-fl2va": Pack(
         id="h3-fl2va",
         title="MiniMax H3 FL2VA (pruned INT8)",
-        summary="Text / first / last frame video+audio. Default CUDA video pack.",
+        summary="Consumer CUDA pack (~42 GB). Detected in Studio or a ComfyUI models folder. Generate submits to ComfyUI when that server is running.",
         repo_id="Comfy-Org/MiniMax-H3",
         local_dir="h3-comfy",
         approx_gb=42.0,

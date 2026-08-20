@@ -11,6 +11,7 @@ def ping_services() -> dict[str, Any]:
     return {
         "minimax": _ping_minimax(),
         "llm": _ping_llm(),
+        "comfy": _ping_comfy(),
     }
 
 
@@ -45,3 +46,19 @@ def _ping_llm() -> dict[str, Any]:
     if response.status_code >= 400:
         return {"ok": False, "detail": f"HTTP {response.status_code}"}
     return {"ok": True, "detail": f"HTTP {response.status_code}"}
+
+
+def _ping_comfy() -> dict[str, Any]:
+    base = (runtime.config.comfy_url or "http://127.0.0.1:8188").rstrip("/")
+    last_error = "ComfyUI not reachable"
+    for path in ("/system_stats", "/queue"):
+        try:
+            response = httpx.get(f"{base}{path}", timeout=3.0)
+        except httpx.HTTPError as exc:
+            last_error = str(exc)
+            continue
+        if response.status_code >= 400:
+            last_error = f"HTTP {response.status_code}"
+            continue
+        return {"ok": True, "detail": f"HTTP {response.status_code} {path}"}
+    return {"ok": False, "detail": last_error}

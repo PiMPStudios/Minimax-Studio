@@ -14,3 +14,4 @@ def test_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert loaded.output_dir == str(tmp_path)
     assert loaded.hf_token == "secret"
     assert loaded.models_root() == tmp_path / "models"
+    assert loaded.comfy_url == "http://127.0.0.1:8188"

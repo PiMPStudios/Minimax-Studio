@@ -8,6 +8,8 @@ from typing import Any, Callable
 
 from minimax_studio.worker.catalog import PACKS, Pack, pack_or_raise
 from minimax_studio.worker.fsutil import dir_bytes, first_existing
+from minimax_studio.worker.model_paths import pack_status as _pack_status
+from minimax_studio.worker.model_paths import search_roots
 from minimax_studio.worker.runtime import runtime
 
 
@@ -15,28 +17,12 @@ SnapshotFn = Callable[..., str]
 
 
 def pack_status(pack: Pack, models_root: Path) -> dict[str, Any]:
-    dest = models_root / pack.local_dir
-    missing = [name for name in pack.marker_files if not (dest / name).exists()]
-    if pack.marker_files:
-        ready = not missing
-    else:
-        ready = dest.is_dir() and any(dest.iterdir())
-    return {
-        "id": pack.id,
-        "title": pack.title,
-        "summary": pack.summary,
-        "repo_id": pack.repo_id,
-        "family": pack.family,
-        "kind": pack.kind,
-        "approx_gb": pack.approx_gb,
-        "license_name": pack.license_name,
-        "territory_notice": pack.territory_notice,
-        "path": str(dest),
-        "ready": ready,
-        "missing": missing,
-        "bytes_on_disk": dir_bytes(dest) if dest.exists() else 0,
-        "partial": (not ready) and dest.exists() and dir_bytes(dest) > 1024 * 1024,
-    }
+    extra = None
+    try:
+        extra = search_roots(models_root, runtime.config.comfy_models_dir)
+    except Exception:
+        extra = [models_root]
+    return _pack_status(pack, models_root, extra_roots=extra)
 
 
 def list_packs() -> list[dict[str, Any]]:
@@ -46,7 +32,7 @@ def list_packs() -> list[dict[str, Any]]:
     hw = probe()
     recommended = set()
     if hw.get("cuda"):
-        recommended.update({"music3-cuda", "h3-diffusers-fl2va"})
+        recommended.update({"music3-cuda", "h3-fl2va", "h3-diffusers-fl2va"})
     if hw.get("apple_silicon"):
         recommended.add("music3-mlx")
     rows = []

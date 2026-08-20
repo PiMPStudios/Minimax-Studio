@@ -35,6 +35,8 @@ class SettingsIn(BaseModel):
     llm_base_url: str | None = None
     llm_model: str | None = None
     llm_api_key: str | None = None
+    comfy_models_dir: str | None = None
+    comfy_url: str | None = None
 
 
 @app.get("/health")

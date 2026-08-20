@@ -12,6 +12,26 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.2] — 2026-08-19
+
+### Added
+
+- Settings shows inline ✓/✗ for MiniMax, the local LLM, and ComfyUI (no ping dialog)
+- Settings: ComfyUI models folder + ComfyUI URL (`http://127.0.0.1:8188`)
+- Models page detects Comfy-Org INT8 H3 already on disk (`minimax-h3/`, `h3-comfy/`, or a Comfy `models/` tree)
+- Local H3 generate can submit T2VA / I2VA / L2VA / FL2VA to a running ComfyUI when INT8 files are present
+- Inspector backend: Comfy
+
+### Changed
+
+- Auto backend: official diffusers in-process, then Comfy INT8, then MiniMax API
+- CUDA recommended pack is now Comfy-Org INT8 alongside official diffusers
+
+### Notes
+
+- INT8 files use Comfy convrot kernels. Diffusers cannot load them; Studio will not try `from_single_file` on a 42 GB checkpoint just to fail. Start ComfyUI or download official FL2VA.
+- Reference mode (Ref2VA) is still official-diffusers or MiniMax API, not the Comfy INT8 path.
+
 ## [0.2.1] — 2026-08-19
 
 ### Added
@@ -67,7 +87,7 @@ First usable generate studio. Local git only; no GitHub release yet.
 
 ### Notes
 
-- In-app local H3 generate uses the **official diffusers** pack, not the Comfy-Org INT8 files (those download for Comfy / a later loader).
+- In-app local H3 generate uses **official diffusers** in-process when that pack is installed. Comfy-Org INT8 is used when those files are on disk and ComfyUI is running.
 - MiniMax’s hosted Music API is being restricted for new accounts; local Music 3 weights are the long-term path.
 
 ## [0.1.0] — 2026-08-19

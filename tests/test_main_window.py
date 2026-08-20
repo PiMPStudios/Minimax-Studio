@@ -43,7 +43,11 @@ class FakeWorker:
         return []
 
     def ping(self) -> dict:
-        return {"minimax": {"ok": False, "detail": "no key"}, "llm": {"ok": True, "detail": "HTTP 200"}}
+        return {
+            "minimax": {"ok": False, "detail": "no key"},
+            "llm": {"ok": True, "detail": "HTTP 200"},
+            "comfy": {"ok": False, "detail": "connection refused"},
+        }
 
 
 def test_main_window_builds(tmp_path) -> None:

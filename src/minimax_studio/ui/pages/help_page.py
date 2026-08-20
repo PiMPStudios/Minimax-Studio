@@ -26,7 +26,12 @@ The MiniMax hosted API remains globally available.</li>
 <b>medium</b> (<code>reasoning_effort=medium</code>, 512-token budget).</p>
 
 <h3>Backends</h3>
-<p>Inspector: Auto prefers a local pack on this GPU, then the MiniMax API if a key is set.</p>
+<p>Inspector: <b>Auto</b> prefers official diffusers on this GPU, then Comfy-Org INT8
+via a running ComfyUI, then the MiniMax API if a key is set.</p>
+<p>The Comfy-Org INT8 files use Comfy <code>convrot</code> kernels. Diffusers cannot
+load them. Point Settings at your ComfyUI models folder (Studio auto-detects
+<code>~/ai/ComfyUI/models</code> and <code>~/models</code>) and keep ComfyUI at
+<code>http://127.0.0.1:8188</code> to generate from those weights.</p>
 """
 
 

@@ -84,6 +84,19 @@ QLabel#brand {
     color: #8e8e93;
     font-size: 11px;
 }
+QLabel#okMark {
+    color: #32d74b;
+    font-weight: 700;
+    font-size: 16px;
+}
+QLabel#failMark {
+    color: #ff453a;
+    font-weight: 700;
+    font-size: 16px;
+}
+QLabel#idleMark {
+    color: #8e8e93;
+}
 """
 
 

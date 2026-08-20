@@ -31,6 +31,8 @@ class AppConfig(BaseModel):
     llm_base_url: str = "http://127.0.0.1:8080/v1"
     llm_model: str = "qwen3.8-27b-q4kxl"
     llm_api_key: str | None = None
+    comfy_models_dir: str | None = None
+    comfy_url: str = "http://127.0.0.1:8188"
 
     def resolved_llm_key(self) -> str | None:
         if self.llm_api_key:

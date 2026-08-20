@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(splitter)
 
         self._backend = QComboBox()
-        self._backend.addItems(["Auto", "Local", "API"])
+        self._backend.addItems(["Auto", "Local", "Comfy", "API"])
         self._backend.currentTextChanged.connect(lambda text: self._state.set_backend(text))
         self._speed = QComboBox()
         self._speed.addItems(["Quality", "Fast"])
@@ -218,7 +218,7 @@ class MainWindow(QMainWindow):
             self._presets.refresh()
 
     def _sync_inspector(self) -> None:
-        mapping = {"auto": 0, "local": 1, "api": 2}
+        mapping = {"auto": 0, "local": 1, "cuda": 1, "comfy": 2, "api": 3}
         self._backend.blockSignals(True)
         self._speed.blockSignals(True)
         self._duration.blockSignals(True)

@@ -8,12 +8,31 @@ from minimax_studio.worker.runtime import runtime
 
 
 def lora_dirs() -> list[Path]:
+    from minimax_studio.worker.model_paths import search_roots
+
     root = runtime.config.models_root()
-    return [
+    dirs = [
         root / "loras",
         root / "h3-comfy" / "loras",
         root / "music3-cuda",
     ]
+    for extra in search_roots(root, runtime.config.comfy_models_dir):
+        dirs.extend(
+            [
+                extra / "loras",
+                extra / "h3-comfy" / "loras",
+                extra / "minimax-h3" / "loras",
+            ]
+        )
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for folder in dirs:
+        key = str(folder)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(folder)
+    return unique
 
 
 def list_loras() -> list[dict[str, Any]]:

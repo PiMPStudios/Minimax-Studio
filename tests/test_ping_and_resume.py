@@ -45,3 +45,4 @@ def test_ping_without_minimax_key(studio_home, monkeypatch) -> None:
     assert result["minimax"]["ok"] is False
     assert result["minimax"]["detail"] == "no key"
     assert result["llm"]["ok"] is True
+    assert result["comfy"]["ok"] is True

@@ -131,6 +131,8 @@ class _PackCard(QFrame):
         self._summary.setText(pack["summary"])
         gb = (pack.get("bytes_on_disk") or 0) / (1024**3)
         status = "Ready" if pack.get("ready") else "Not installed"
+        if pack.get("ready") and pack.get("source") == "comfy":
+            status = "Ready (ComfyUI models folder)"
         if download and download.get("status") in {"queued", "running"}:
             status = download.get("message") or "Downloading"
             total = download.get("total_bytes") or 0

@@ -15,7 +15,11 @@ def studio_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     output.mkdir()
     monkeypatch.setenv("MINIMAX_STUDIO_CONFIG", str(config_path))
     save_config(
-        AppConfig(output_dir=str(output), models_dir=str(output / "models")),
+        AppConfig(
+            output_dir=str(output),
+            models_dir=str(output / "models"),
+            comfy_models_dir=str(output / "models"),
+        ),
         config_path,
     )
     runtime.reload_config()

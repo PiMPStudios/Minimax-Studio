@@ -46,7 +46,8 @@ class VideoPage(QWidget):
         brand.setObjectName("brand")
         sub = QLabel(
             "One form, no wires. Pick a mode and drop images, video, or audio. "
-            "Local generate uses the official diffusers FL2VA pack from Models."
+            "Local generate uses official diffusers in-process, or Comfy-Org INT8 "
+            "via a running ComfyUI."
         )
         sub.setObjectName("pageSubtitle")
         sub.setWordWrap(True)
