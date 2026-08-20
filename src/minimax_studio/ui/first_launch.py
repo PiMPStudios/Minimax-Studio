@@ -23,7 +23,8 @@ class FirstLaunchDialog(QDialog):
         title.setObjectName("pageTitle")
         body = QLabel(
             "Generations, history, and downloaded models live here. "
-            "Weights are never bundled with the app."
+            "Weights are never bundled with the app. If you already have Comfy-Org "
+            "MiniMax packs, Studio will find them — you do not need to download again."
         )
         body.setObjectName("pageSubtitle")
         body.setWordWrap(True)

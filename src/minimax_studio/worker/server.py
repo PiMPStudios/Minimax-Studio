@@ -46,7 +46,18 @@ def health() -> dict[str, object]:
 
 @app.get("/probe")
 def hardware_probe() -> dict[str, object]:
-    return probe()
+    info = probe()
+    try:
+        packs = downloads.list_packs()
+        ready = [item for item in packs if item.get("ready")]
+        info["packs_ready"] = [item["id"] for item in ready]
+        info["packs_ready_titles"] = [item["title"] for item in ready]
+        info["packs_from_comfy"] = sum(1 for item in ready if item.get("source") == "comfy")
+    except Exception:
+        info["packs_ready"] = []
+        info["packs_ready_titles"] = []
+        info["packs_from_comfy"] = 0
+    return info
 
 
 @app.get("/settings")

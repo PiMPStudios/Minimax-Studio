@@ -22,7 +22,14 @@ def probe() -> dict[str, Any]:
         and platform.machine().lower() in {"arm64", "aarch64"},
         "ffmpeg": bool(shutil.which("ffmpeg")),
         "torch_available": False,
+        "sageattention": False,
     }
+    try:
+        import sageattention  # noqa: F401
+
+        info["sageattention"] = True
+    except Exception:
+        pass
     try:
         import torch
 

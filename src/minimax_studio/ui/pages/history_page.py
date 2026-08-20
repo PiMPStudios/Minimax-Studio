@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -53,8 +54,11 @@ class HistoryPage(QWidget):
         restore.clicked.connect(self._restore_current)
         delete = QPushButton("Delete")
         delete.clicked.connect(self._delete_current)
+        export = QPushButton("Export…")
+        export.clicked.connect(self._export_current)
         row.addWidget(self._play)
         row.addWidget(restore)
+        row.addWidget(export)
         row.addWidget(delete)
         row.addStretch(1)
         layout.addLayout(row)
@@ -102,6 +106,9 @@ class HistoryPage(QWidget):
             f"{entry.get('output_path')}\n\n"
             f"{entry.get('prompt')}"
         )
+        path = entry.get("output_path")
+        if self._player and path and Path(path).is_file():
+            self._player.setSource(QUrl.fromLocalFile(path))
 
     def _play_current(self) -> None:
         entry = self._current()
@@ -121,6 +128,30 @@ class HistoryPage(QWidget):
             self._state.restore_music.emit(entry)
         else:
             self._state.restore_video.emit(entry)
+
+    def _export_current(self) -> None:
+        import shutil
+
+        entry = self._current()
+        if not entry:
+            return
+        src = entry.get("output_path")
+        if not src or not Path(src).is_file():
+            QMessageBox.information(self, "Export", "This take has no file on disk.")
+            return
+        suffix = Path(src).suffix or ".bin"
+        chosen, _ = QFileDialog.getSaveFileName(
+            self, "Export take", Path(src).name, f"Media (*{suffix})"
+        )
+        if not chosen:
+            return
+        dest = Path(chosen)
+        if dest.suffix.lower() != suffix.lower():
+            dest = dest.with_suffix(suffix)
+        try:
+            shutil.copy2(src, dest)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
 
     def _delete_current(self) -> None:
         entry = self._current()

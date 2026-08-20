@@ -52,6 +52,7 @@ def _run_ui(host: str, port: int) -> int:
     from minimax_studio.ui.first_launch import FirstLaunchDialog
     from minimax_studio.ui.main_window import MainWindow
     from minimax_studio.ui.theme import apply_theme
+    from minimax_studio.ui.welcome import WelcomeDialog
 
     app = QApplication(sys.argv)
     app.setApplicationName("MiniMax Studio")
@@ -72,6 +73,10 @@ def _run_ui(host: str, port: int) -> int:
     try:
         _wait_for_health(client)
         window = MainWindow(client, config)
+        if not config.welcome_seen:
+            WelcomeDialog(client).exec()
+            config.welcome_seen = True
+            save_config(config)
         window.show()
         return app.exec()
     finally:

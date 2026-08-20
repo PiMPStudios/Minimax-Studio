@@ -27,14 +27,14 @@ class ModelsPage(QWidget):
         root.setContentsMargins(28, 24, 28, 24)
         title = QLabel("Models")
         title.setObjectName("pageTitle")
-        sub = QLabel(
+        self._sub = QLabel(
             "Download only what you need. MiniMax H3 and MiniMax-Music3 weights "
             "stay on disk here — they are not shipped in the app."
         )
-        sub.setObjectName("pageSubtitle")
-        sub.setWordWrap(True)
+        self._sub.setObjectName("pageSubtitle")
+        self._sub.setWordWrap(True)
         root.addWidget(title)
-        root.addWidget(sub)
+        root.addWidget(self._sub)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -73,6 +73,20 @@ class ModelsPage(QWidget):
             self._list.addItem(stretch)
         else:
             self._list.addStretch(1)
+        ready = [pack for pack in packs if pack.get("ready")]
+        from_comfy = sum(1 for pack in ready if pack.get("source") == "comfy")
+        if ready:
+            extra = f" ({from_comfy} from a ComfyUI folder)" if from_comfy else ""
+            self._sub.setText(
+                f"{len(ready)} pack{'s' if len(ready) != 1 else ''} ready on disk{extra}. "
+                "Download only what you still need — weights are never shipped in the app."
+            )
+        else:
+            self._sub.setText(
+                "Download only what you need. MiniMax H3 and MiniMax-Music3 weights "
+                "stay on disk here — they are not shipped in the app. Comfy-Org INT8 "
+                "is the consumer CUDA default."
+            )
 
     def _start(self, pack: dict[str, Any]) -> None:
         notice = pack.get("territory_notice")

@@ -118,7 +118,7 @@ class MainWindow(QMainWindow):
         self._duration.setRange(1, 300)
         self._duration.setValue(self._state.duration)
         self._duration.setSuffix(" s")
-        self._duration.valueChanged.connect(self._state.set_duration)
+        self._duration.valueChanged.connect(self._on_duration)
         self._seed = QSpinBox()
         self._seed.setRange(-1, 2_147_483_647)
         self._seed.setSpecialValueText("Random")
@@ -151,6 +151,10 @@ class MainWindow(QMainWindow):
         form.addRow("Speed", self._speed)
         form.addRow("Attention", self._attention)
         form.addRow("Duration", self._duration)
+        self._duration_hint = QLabel("")
+        self._duration_hint.setObjectName("pageSubtitle")
+        self._duration_hint.setWordWrap(True)
+        form.addRow("", self._duration_hint)
         form.addRow("Seed", self._seed)
         form.addRow("Steps", self._steps)
         form.addRow("LoRA", self._lora)
@@ -188,6 +192,7 @@ class MainWindow(QMainWindow):
 
         first_page_row = next(i for i, key in enumerate(self._nav_keys) if key == "music")
         self._nav.setCurrentRow(first_page_row)
+        self._apply_duration_mode("music")
         self.refresh_probe()
         self.refresh_loras()
         self._history.refresh()
@@ -220,6 +225,7 @@ class MainWindow(QMainWindow):
             self._models.refresh()
         if key == "presets":
             self._presets.refresh()
+        self._apply_duration_mode(key)
 
     def _sync_inspector(self) -> None:
         mapping = {"auto": 0, "local": 1, "cuda": 1, "comfy": 2, "api": 3}
@@ -283,6 +289,37 @@ class MainWindow(QMainWindow):
             return
         self.refresh_loras()
 
+    def _on_duration(self, value: int) -> None:
+        self._state.set_duration(value)
+        self._refresh_duration_hint()
+
+    def _apply_duration_mode(self, key: str | None) -> None:
+        self._duration.blockSignals(True)
+        if key == "video":
+            self._duration.setRange(5, 15)
+            if self._state.duration < 5:
+                self._state.set_duration(5)
+            elif self._state.duration > 15:
+                self._state.set_duration(15)
+        else:
+            self._duration.setRange(1, 300)
+        self._duration.setValue(self._state.duration)
+        self._duration.blockSignals(False)
+        self._refresh_duration_hint(key)
+
+    def _refresh_duration_hint(self, key: str | None = None) -> None:
+        if key is None:
+            row = self._nav.currentRow()
+            key = self._nav_keys[row] if 0 <= row < len(self._nav_keys) else None
+        if key == "video":
+            from minimax_studio.h3_timing import format_h3_duration
+
+            self._duration_hint.setText(
+                "H3 snaps to " + format_h3_duration(self._state.duration)
+            )
+        else:
+            self._duration_hint.setText("")
+
     def refresh_probe(self) -> None:
         try:
             health = self._client.health()
@@ -313,4 +350,17 @@ def _format_probe(probe: dict[str, Any]) -> str:
     ram = probe.get("ram_gb")
     if ram:
         parts.append(f"{ram} GB RAM")
+    extras = []
+    if probe.get("sageattention"):
+        extras.append("SageAttention")
+    if probe.get("ffmpeg"):
+        extras.append("ffmpeg")
+    if extras:
+        parts.append(", ".join(extras))
+    titles = probe.get("packs_ready_titles") or []
+    if titles:
+        n = len(titles)
+        from_comfy = probe.get("packs_from_comfy") or 0
+        extra = f", {from_comfy} from Comfy" if from_comfy else ""
+        parts.append(f"{n} pack{'s' if n != 1 else ''} ready{extra}")
     return "\n".join(parts)

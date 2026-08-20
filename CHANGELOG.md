@@ -12,6 +12,21 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.4] — 2026-08-19
+
+### Added
+
+- One-shot welcome after launch: GPU, packs already on disk (including Comfy folders), ComfyUI up/down
+- Inspector shows H3 duration snap (5–15 s, 17n+5 frames at 24 fps) on Generate Video
+- Probe reports SageAttention, ready pack titles, and how many came from Comfy
+- History Export… copies the take; selecting a row loads it in the player
+- Generate Video opens History when a take finishes (same as Music)
+
+### Changed
+
+- CUDA recommended downloads: Music 3 INT8 + H3 INT8 + Turbo; official 130 GB H3 only if VRAM is huge
+- Models page subtitle counts ready packs
+
 ## [0.2.3] — 2026-08-19
 
 ### Added

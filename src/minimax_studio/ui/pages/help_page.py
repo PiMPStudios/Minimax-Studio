@@ -40,6 +40,9 @@ prompt as <code>&lt;Picture 1&gt;</code> / <code>&lt;Video 1&gt;</code> /
 <code>PathchSageAttentionKJ</code>). Official diffusers still uses PyTorch attention.</p>
 <p>MiniMax-Music3 INT8 works the same way: if those files are in a Comfy models
 folder and ComfyUI is running, Generate Music can submit to it.</p>
+<p>First launch picks an output folder, then a welcome screen lists GPU and any
+packs already on disk. H3 duration in the inspector snaps to the model’s
+5–15 s / 24 fps frame grid.</p>
 """
 
 

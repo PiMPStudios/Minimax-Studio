@@ -17,4 +17,7 @@ def test_health_and_probe_routes() -> None:
     assert health.json()["ok"] is True
     probed = client.get("/probe")
     assert probed.status_code == 200
-    assert "os" in probed.json()
+    body = probed.json()
+    assert "os" in body
+    assert "sageattention" in body
+    assert "packs_ready" in body

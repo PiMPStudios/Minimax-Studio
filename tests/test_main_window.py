@@ -50,6 +50,15 @@ class FakeWorker:
         }
 
 
+def test_welcome_dialog_builds(tmp_path) -> None:
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+    from minimax_studio.ui.welcome import WelcomeDialog
+
+    dialog = WelcomeDialog(FakeWorker())  # type: ignore[arg-type]
+    assert dialog.windowTitle() == "MiniMax Studio"
+
+
 def test_main_window_builds(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])
     apply_theme(app)

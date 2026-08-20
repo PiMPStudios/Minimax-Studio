@@ -157,7 +157,13 @@ class VideoPage(QWidget):
         self._bar.show()
         self._bar.setValue(int(float(job.get("progress") or 0) * 100))
         self._status.setText(str(job.get("error") or job.get("message") or job.get("status")))
-        if job.get("status") in {"done", "error", "cancelled"}:
+        if job.get("status") == "done":
+            self._job_id = None
+            self.generate.setEnabled(True)
+            self._cancel.setEnabled(False)
+            self._status.setText(f"Saved {job.get('output_path')}")
+            self._state.open_history.emit()
+        elif job.get("status") in {"error", "cancelled"}:
             self._job_id = None
             self.generate.setEnabled(True)
             self._cancel.setEnabled(False)

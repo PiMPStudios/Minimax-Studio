@@ -31,10 +31,15 @@ def list_packs() -> list[dict[str, Any]]:
     root = runtime.config.models_root()
     hw = probe()
     recommended = set()
+    vram = float(hw.get("vram_gb") or 0)
+    ram = float(hw.get("ram_gb") or 0)
     if hw.get("cuda"):
-        recommended.update(
-            {"music3-cuda", "music3-comfy", "h3-fl2va", "h3-ref2va", "h3-diffusers-fl2va"}
-        )
+        recommended.update({"music3-comfy", "h3-fl2va", "h3-turbo"})
+        if vram >= 16 or ram >= 64:
+            recommended.add("h3-ref2va")
+        if vram >= 40:
+            recommended.add("h3-diffusers-fl2va")
+            recommended.add("music3-cuda")
     if hw.get("apple_silicon"):
         recommended.add("music3-mlx")
     rows = []

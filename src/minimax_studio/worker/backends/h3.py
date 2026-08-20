@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from minimax_studio.h3_timing import duration_to_frames
 from minimax_studio.worker.catalog import PACKS
 from minimax_studio.worker.downloads import pack_status
 from minimax_studio.worker.jobs import JobRequest, update_job
@@ -27,21 +28,6 @@ def resolve_dims(
         w = short
         h = int(round(short * rh / rw / 32) * 32)
     return max(32, w), max(32, h)
-
-
-def duration_to_frames(seconds: float) -> int:
-    """Snap duration to H3's 17n+5 frame grid at 24 fps, clamped to 5–15 s."""
-    raw = max(5.0, min(15.0, float(seconds)))
-    target = raw * 24.0
-    n = max(0, round((target - 5) / 17))
-    frames = 17 * n + 5
-    while frames / 24.0 < 5.0:
-        n += 1
-        frames = 17 * n + 5
-    while frames / 24.0 > 15.0 and n > 0:
-        n -= 1
-        frames = 17 * n + 5
-    return frames
 
 
 INT8_NEEDS_COMFY = (
