@@ -188,6 +188,10 @@ class MusicPage(QWidget):
         if not prompt:
             QMessageBox.information(self, "Caption needed", "Describe the song first.")
             return
+        from minimax_studio.ui.ready import confirm_generate
+
+        if not confirm_generate(self, self._client, "music", self._state.backend, "ttm"):
+            return
         payload = {
             "kind": "music",
             "backend": self._state.backend,

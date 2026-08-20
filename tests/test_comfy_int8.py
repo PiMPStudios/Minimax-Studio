@@ -182,7 +182,7 @@ def test_auto_backend_prefers_official(monkeypatch, studio_home: Path) -> None:
     )
     monkeypatch.setattr(
         "minimax_studio.worker.probe.probe",
-        lambda: {"cuda": True},
+        lambda: {"cuda": True, "torch_available": True},
     )
     assert resolve_h3_backend("auto") == "cuda"
 

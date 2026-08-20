@@ -25,6 +25,14 @@ class WorkerClient:
     def ping(self) -> dict[str, Any]:
         return self._get("/ping")
 
+    def preflight(
+        self, kind: str, backend: str = "auto", mode: str = "t2va"
+    ) -> dict[str, Any]:
+        from urllib.parse import urlencode
+
+        query = urlencode({"kind": kind, "backend": backend, "mode": mode})
+        return self._get(f"/preflight?{query}")
+
     def list_packs(self) -> list[dict[str, Any]]:
         return self._get_list("/packs")
 

@@ -173,6 +173,12 @@ class VideoPage(QWidget):
         if not prompt:
             QMessageBox.information(self, "Prompt needed", "Describe the shot first.")
             return
+        from minimax_studio.ui.ready import confirm_generate
+
+        if not confirm_generate(
+            self, self._client, "h3", self._state.backend, self._mode
+        ):
+            return
         assets = []
         if self.first_path.isVisible() and self.first_path.path:
             assets.append({"role": "first_frame", "path": self.first_path.path})

@@ -19,6 +19,7 @@ from minimax_studio.worker.jobs import (
 from minimax_studio.worker.llm import enhance_prompt
 from minimax_studio.worker.loras import import_lora, list_loras
 from minimax_studio.worker.ping import ping_services
+from minimax_studio.worker.preflight import preflight as run_preflight
 from minimax_studio.worker.presets import delete_preset, list_presets, save_preset
 from minimax_studio.worker.probe import probe
 from minimax_studio.worker.runtime import runtime
@@ -37,6 +38,7 @@ class SettingsIn(BaseModel):
     llm_api_key: str | None = None
     comfy_models_dir: str | None = None
     comfy_url: str | None = None
+    cuda_device: int | None = None
 
 
 @app.get("/health")
@@ -68,6 +70,11 @@ def get_settings() -> dict[str, object]:
 @app.get("/ping")
 def ping() -> dict[str, object]:
     return ping_services()
+
+
+@app.get("/preflight")
+def preflight(kind: str = "h3", backend: str = "auto", mode: str = "t2va") -> dict[str, object]:
+    return run_preflight(kind, backend, mode)
 
 
 @app.post("/settings")

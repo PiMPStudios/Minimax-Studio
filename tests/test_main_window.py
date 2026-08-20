@@ -42,6 +42,17 @@ class FakeWorker:
     def list_loras(self) -> list:
         return []
 
+    def preflight(self, kind: str, backend: str = "auto", mode: str = "t2va") -> dict:
+        return {
+            "ok": False,
+            "detail": "ComfyUI is not running",
+            "backend": None,
+            "kind": kind,
+        }
+
+    def put_settings(self, payload: dict) -> dict:
+        return payload
+
     def ping(self) -> dict:
         return {
             "minimax": {"ok": False, "detail": "no key"},

@@ -34,6 +34,7 @@ class AppConfig(BaseModel):
     comfy_models_dir: str | None = None
     comfy_url: str = "http://127.0.0.1:8188"
     welcome_seen: bool = False
+    cuda_device: int = 0
 
     def resolved_llm_key(self) -> str | None:
         if self.llm_api_key:

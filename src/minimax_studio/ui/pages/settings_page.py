@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QComboBox,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -38,6 +39,11 @@ class SettingsPage(QWidget):
         self.api.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_base = QLineEdit(config.minimax_api_base)
         self.comfy_url = QLineEdit(config.comfy_url or "http://127.0.0.1:8188")
+        self.cuda_device = QComboBox()
+        self.cuda_device.addItem("GPU 0", 0)
+        if config.cuda_device and config.cuda_device != 0:
+            self.cuda_device.addItem(f"GPU {config.cuda_device}", config.cuda_device)
+            self.cuda_device.setCurrentIndex(self.cuda_device.count() - 1)
         self.llm_base = QLineEdit(config.llm_base_url)
         self.llm_model = QLineEdit(config.llm_model)
         self.llm_key = QLineEdit(config.llm_api_key or "")
@@ -53,6 +59,7 @@ class SettingsPage(QWidget):
         form.addRow("MiniMax API key", _field_with_mark(self.api, self._minimax_mark))
         form.addRow("MiniMax API base", self.api_base)
         form.addRow("ComfyUI URL", _field_with_mark(self.comfy_url, self._comfy_mark))
+        form.addRow("Studio CUDA device", self.cuda_device)
         form.addRow("Local LLM URL", _field_with_mark(self.llm_base, self._llm_mark))
         form.addRow("Local LLM model", self.llm_model)
         form.addRow("Local LLM key", self.llm_key)
@@ -74,7 +81,9 @@ class SettingsPage(QWidget):
         note = QLabel(
             "Tokens stay in the local config file. They are sent to the worker "
             "process on this machine only. MiniMax / LLM / Comfy status is shown "
-            "inline — ✓ reachable, ✗ not."
+            "inline — ✓ reachable, ✗ not. Studio CUDA device is for in-process "
+            "diffusers only. ComfyUI uses the GPU it was launched with "
+            "(--default-device)."
         )
         note.setObjectName("pageSubtitle")
         note.setWordWrap(True)
@@ -83,7 +92,28 @@ class SettingsPage(QWidget):
 
     def showEvent(self, event) -> None:  # noqa: ANN001
         super().showEvent(event)
+        QTimer.singleShot(0, self._fill_cuda_devices)
         QTimer.singleShot(0, self._refresh_pings)
+
+    def _fill_cuda_devices(self) -> None:
+        current = int(self.cuda_device.currentData() or self._config.cuda_device or 0)
+        try:
+            probe = self._client.probe()
+        except Exception:
+            return
+        gpus = probe.get("gpus") or []
+        self.cuda_device.blockSignals(True)
+        self.cuda_device.clear()
+        if not gpus:
+            self.cuda_device.addItem("GPU 0", 0)
+        for index, item in enumerate(gpus):
+            self.cuda_device.addItem(
+                f"{index}: {item.get('name')} ({item.get('vram_gb')} GB)",
+                index,
+            )
+        idx = self.cuda_device.findData(current)
+        self.cuda_device.setCurrentIndex(max(0, idx))
+        self.cuda_device.blockSignals(False)
 
     def _save(self) -> None:
         payload = {
@@ -94,6 +124,7 @@ class SettingsPage(QWidget):
             "minimax_api_key": self.api.text().strip(),
             "minimax_api_base": self.api_base.text().strip() or "https://api.minimax.io",
             "comfy_url": self.comfy_url.text().strip() or "http://127.0.0.1:8188",
+            "cuda_device": int(self.cuda_device.currentData() or 0),
             "llm_base_url": self.llm_base.text().strip() or "http://127.0.0.1:8080/v1",
             "llm_model": self.llm_model.text().strip() or "qwen3.8-27b-q4kxl",
             "llm_api_key": self.llm_key.text().strip(),
@@ -109,6 +140,7 @@ class SettingsPage(QWidget):
             self._config.minimax_api_key = updated.minimax_api_key
             self._config.minimax_api_base = updated.minimax_api_base
             self._config.comfy_url = updated.comfy_url
+            self._config.cuda_device = updated.cuda_device
             self._config.llm_base_url = updated.llm_base_url
             self._config.llm_model = updated.llm_model
             self._config.llm_api_key = updated.llm_api_key

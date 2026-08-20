@@ -14,7 +14,7 @@ from minimax_studio.worker.runtime import runtime
 
 
 def generate_music(job_id: str, request: JobRequest) -> dict[str, Any]:
-    backend = _resolve_backend(request.backend)
+    backend = resolve_music_backend(request.backend)
     dest = runtime.config.history_root() / job_id
     dest.mkdir(parents=True, exist_ok=True)
     wav_path = dest / "audio.wav"
@@ -35,7 +35,7 @@ def generate_music(job_id: str, request: JobRequest) -> dict[str, Any]:
     return _generate_cuda(job_id, request, wav_path)
 
 
-def _resolve_backend(requested: str) -> str:
+def resolve_music_backend(requested: str) -> str:
     name = requested.lower()
     if name == "stub" or os.environ.get("MINIMAX_STUDIO_STUB") == "1":
         return "stub"
@@ -60,18 +60,24 @@ def _resolve_backend(requested: str) -> str:
             )
         return "comfy"
     if name in {"auto", "local"}:
-        if hw.get("cuda") and cuda:
+        torch_ok = bool(hw.get("torch_available"))
+        if hw.get("cuda") and cuda and torch_ok:
             return "cuda"
         if hw.get("apple_silicon") and mlx:
             return "mlx"
         if comfy_pack["ready"] and comfy_reachable():
             return "comfy"
-        if cuda:
+        if cuda and torch_ok:
             return "cuda"
         if mlx:
             return "mlx"
         if runtime.config.minimax_api_key:
             return "api"
+        if cuda and not torch_ok:
+            raise RuntimeError(
+                "Official Music 3 CUDA pack is on disk but PyTorch is not in the Studio venv. "
+                "pip install torch, or start ComfyUI to use INT8 packs."
+            )
         if comfy_pack["ready"]:
             raise RuntimeError(
                 "Music 3 INT8 is on disk, but those files use Comfy convrot kernels. "
@@ -106,14 +112,17 @@ def _generate_cuda(job_id: str, request: JobRequest, wav_path: Path) -> dict[str
     if pipe is None or runtime.music_pipe_path != str(pack_dir):
         pipe = ModularPipeline.from_pretrained(str(pack_dir))
         pipe.load_components(dtype=torch.bfloat16)
+        from minimax_studio.worker.device import select_cuda_device
+
+        device = select_cuda_device()
         if torch.cuda.is_available():
             try:
-                pipe.to("cuda")
+                pipe.to(device)
             except Exception:
                 from diffusers import ComponentsManager
 
                 manager = ComponentsManager()
-                manager.enable_auto_cpu_offload(device="cuda")
+                manager.enable_auto_cpu_offload(device=device)
                 pipe = ModularPipeline.from_pretrained(
                     str(pack_dir), components_manager=manager
                 )
@@ -124,7 +133,9 @@ def _generate_cuda(job_id: str, request: JobRequest, wav_path: Path) -> dict[str
     seed = int(request.seed)
     generator = None
     if seed >= 0:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        from minimax_studio.worker.device import select_cuda_device
+
+        device = select_cuda_device()
         generator = torch.Generator(device).manual_seed(seed)
 
     update_job(job_id, message="Sampling", progress=0.35)

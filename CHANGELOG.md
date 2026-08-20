@@ -12,6 +12,14 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.6] — 2026-08-19
+
+### Added
+
+- Generate preflight (`GET /preflight`): warns before a job if ComfyUI/PyTorch/API is not ready
+- Inspector and Settings CUDA GPU picker (in-process diffusers). Comfy still uses its launch device
+- Auto backend skips official CUDA if PyTorch is not in the Studio venv, so INT8+Comfy is preferred
+
 ## [0.2.5] — 2026-08-19
 
 ### Fixed

@@ -88,8 +88,11 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
     pipe = runtime.h3_pipe if runtime.h3_pipe_path == cache_key else None
     if pipe is None:
         manager = ComponentsManager()
+        from minimax_studio.worker.device import select_cuda_device
+
+        device = select_cuda_device()
         if torch.cuda.is_available():
-            manager.enable_auto_cpu_offload(device="cuda")
+            manager.enable_auto_cpu_offload(device=device)
         pipe = ModularPipeline.from_pretrained(
             str(pack_dir),
             workflow=workflow,
@@ -182,8 +185,12 @@ def resolve_h3_backend(requested: str) -> str:
         if not _comfy_up():
             raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
         return "comfy"
+    from minimax_studio.worker.probe import probe
+
+    hw = probe()
+    torch_ok = bool(hw.get("torch_available"))
     if name == "local":
-        if official:
+        if official and torch_ok:
             return "cuda"
         if int8["ready"] and _comfy_up():
             return "comfy"
@@ -191,17 +198,19 @@ def resolve_h3_backend(requested: str) -> str:
             raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
         return "cuda"
 
-    from minimax_studio.worker.probe import probe
-
-    hw = probe()
-    if official and hw.get("cuda"):
+    if official and hw.get("cuda") and torch_ok:
         return "cuda"
     if int8["ready"] and _comfy_up():
         return "comfy"
     if runtime.config.minimax_api_key:
         return "api"
-    if official:
+    if official and torch_ok:
         return "cuda"
+    if official and not torch_ok:
+        raise RuntimeError(
+            "Official H3 diffusers is on disk but PyTorch is not in the Studio venv. "
+            "pip install torch, or start ComfyUI to use INT8 packs."
+        )
     if int8["ready"]:
         raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
     raise RuntimeError(

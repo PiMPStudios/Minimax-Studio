@@ -128,6 +128,9 @@ class MainWindow(QMainWindow):
         self._steps.setRange(1, 100)
         self._steps.setValue(self._state.steps)
         self._steps.valueChanged.connect(self._state.set_steps)
+        self._gpu_pick = QComboBox()
+        self._gpu_pick.addItem("GPU 0", 0)
+        self._gpu_pick.currentIndexChanged.connect(self._gpu_changed)
         self._gpu_label = QLabel("Probing…")
         self._gpu_label.setWordWrap(True)
         self._lora = QComboBox()
@@ -160,6 +163,7 @@ class MainWindow(QMainWindow):
         form.addRow("LoRA", self._lora)
         form.addRow("LoRA strength", self._lora_strength)
         form.addRow(import_lora)
+        form.addRow("CUDA GPU", self._gpu_pick)
         form.addRow("Hardware", self._gpu_label)
         brand = QLabel("MiniMax H3  ·  MiniMax-Music3")
         brand.setObjectName("brand")
@@ -330,6 +334,32 @@ class MainWindow(QMainWindow):
             return
         self._status_worker.setText(f"Worker: ok  v{health.get('version', '?')}")
         self._gpu_label.setText(_format_probe(probe))
+        self._fill_gpu_pick(probe.get("gpus") or [])
+
+    def _fill_gpu_pick(self, gpus: list) -> None:
+        current = int(self._config.cuda_device or 0)
+        self._gpu_pick.blockSignals(True)
+        self._gpu_pick.clear()
+        if not gpus:
+            self._gpu_pick.addItem("GPU 0", 0)
+        for index, item in enumerate(gpus):
+            label = f"{index}: {item.get('name')} ({item.get('vram_gb')} GB)"
+            self._gpu_pick.addItem(label, index)
+        idx = self._gpu_pick.findData(current)
+        self._gpu_pick.setCurrentIndex(max(0, idx))
+        self._gpu_pick.blockSignals(False)
+
+    def _gpu_changed(self) -> None:
+        device = int(self._gpu_pick.currentData() or 0)
+        self._config.cuda_device = device
+        try:
+            saved = self._client.put_settings({"cuda_device": device})
+            from minimax_studio.config import AppConfig, save_config
+
+            updated = AppConfig.model_validate(saved)
+            save_config(updated)
+        except Exception:
+            pass
 
     def _tick(self) -> None:
         self._music.poll()
