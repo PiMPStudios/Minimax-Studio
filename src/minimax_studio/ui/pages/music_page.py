@@ -97,10 +97,18 @@ class MusicPage(QWidget):
         self.generate.clicked.connect(self._generate)
         save = QPushButton("Save preset")
         save.clicked.connect(self._save_preset)
+        lyrics_btn = QPushButton("Write lyrics")
+        lyrics_btn.clicked.connect(self._write_lyrics)
+        self._lyrics_btn = lyrics_btn
+        self._cancel = QPushButton("Cancel")
+        self._cancel.setEnabled(False)
+        self._cancel.clicked.connect(self._cancel_job)
         self._status = QLabel("")
         self._status.setObjectName("pageSubtitle")
         run_row.addWidget(self.generate)
+        run_row.addWidget(self._cancel)
         run_row.addWidget(save)
+        run_row.addWidget(lyrics_btn)
         run_row.addWidget(self._status, 1)
         layout.addLayout(run_row)
         self._bar = QProgressBar()
@@ -148,12 +156,14 @@ class MusicPage(QWidget):
         if status == "done":
             self._job_id = None
             self.generate.setEnabled(True)
+            self._cancel.setEnabled(False)
             self._status.setText(f"Saved {job.get('output_path')}")
             self._state.open_history.emit()
-        elif status == "error":
+        elif status in {"error", "cancelled"}:
             self._job_id = None
             self.generate.setEnabled(True)
-            self._status.setText(str(job.get("error") or "Failed"))
+            self._cancel.setEnabled(False)
+            self._status.setText(str(job.get("error") or job.get("message") or "Failed"))
 
     def _insert_tag(self, tag: str) -> None:
         cursor = self.lyrics.textCursor()
@@ -181,6 +191,7 @@ class MusicPage(QWidget):
                 if self._state.lora_id
                 else []
             ),
+            "speed": self._state.speed,
         }
         try:
             job = self._client.start_job(payload)
@@ -189,9 +200,37 @@ class MusicPage(QWidget):
             return
         self._job_id = str(job["id"])
         self.generate.setEnabled(False)
+        self._cancel.setEnabled(True)
         self._bar.show()
         self._bar.setValue(0)
         self._status.setText("Queued")
+
+    def _cancel_job(self) -> None:
+        if not self._job_id:
+            return
+        try:
+            self._client.cancel_job(self._job_id)
+        except Exception as exc:
+            self._status.setText(str(exc))
+
+    def _write_lyrics(self) -> None:
+        from minimax_studio.ui.enhance import start_enhance
+
+        seed = self.caption() or "write a short original song"
+        self._lyrics_btn.setEnabled(False)
+        self._status.setText("Writing lyrics with local LLM…")
+
+        def done(text: str) -> None:
+            self._lyrics_btn.setEnabled(True)
+            if text:
+                self.lyrics.setPlainText(text)
+            self._status.setText("Lyrics drafted")
+
+        def fail(err: str) -> None:
+            self._lyrics_btn.setEnabled(True)
+            self._status.setText(err)
+
+        start_enhance(self, self._client, "lyrics", seed, self.lyrics.toPlainText(), done, fail)
 
     def _save_preset(self) -> None:
         name, ok = QInputDialog.getText(self, "Save preset", "Name")

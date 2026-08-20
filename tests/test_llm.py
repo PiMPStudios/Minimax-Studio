@@ -37,3 +37,5 @@ def test_enhance_music_uses_chat_completions(studio_home, monkeypatch) -> None:
     assert "folk" in text.lower()
     assert calls["url"].endswith("/chat/completions")
     assert calls["json"]["model"] == "qwen3.8-27b-q4kxl"
+    assert calls["json"]["chat_template_kwargs"]["reasoning_effort"] == "medium"
+    assert calls["json"]["thinking_budget_tokens"] == 512

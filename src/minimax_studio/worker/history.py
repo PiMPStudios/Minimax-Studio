@@ -45,6 +45,29 @@ def list_history(limit: int = 200) -> list[dict[str, Any]]:
     return rows[:limit]
 
 
+def delete_entry(entry_id: str) -> None:
+    import shutil
+
+    root = runtime.config.history_root()
+    item_dir = root / entry_id
+    if item_dir.is_dir():
+        shutil.rmtree(item_dir)
+    index = history_index_path()
+    if not index.is_file():
+        return
+    kept = []
+    for line in index.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("id") != entry_id:
+            kept.append(row)
+    index.write_text("".join(json.dumps(row) + "\n" for row in kept), encoding="utf-8")
+
+
 def get_entry(entry_id: str) -> dict[str, Any]:
     meta = runtime.config.history_root() / entry_id / "meta.json"
     if not meta.is_file():

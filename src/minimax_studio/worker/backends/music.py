@@ -23,7 +23,9 @@ def generate_music(job_id: str, request: JobRequest) -> dict[str, Any]:
         _write_stub(wav_path, min(float(request.duration_s), 1.0))
         return {"output_path": str(wav_path), "backend": "stub", "media_type": "audio"}
     if backend == "api":
-        raise RuntimeError("MiniMax Music API is not wired yet. Use Local.")
+        from minimax_studio.worker.backends.music_api import generate_music_api
+
+        return generate_music_api(job_id, request)
     if backend == "mlx":
         return _generate_mlx(job_id, request, wav_path)
     return _generate_cuda(job_id, request, wav_path)
@@ -49,11 +51,13 @@ def _resolve_backend(requested: str) -> str:
                 return "cuda"
             if mlx:
                 return "mlx"
+            if runtime.config.minimax_api_key:
+                return "api"
             if os.environ.get("MINIMAX_STUDIO_STUB") == "1":
                 return "stub"
             raise RuntimeError(
-                "No Music 3 pack is installed. Open Models and download "
-                "MiniMax-Music3 (CUDA) or the MLX pack."
+                "No Music 3 pack is installed and no MiniMax API key is set. "
+                "Download a pack or add a key in Settings."
             )
     if name in {"cuda", "mlx", "api", "stub"}:
         return name

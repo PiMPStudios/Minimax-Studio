@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from minimax_studio.config import AppConfig
 from minimax_studio.ui.pages import (
+    HelpPage,
     HistoryPage,
     ModelsPage,
     MusicPage,
@@ -44,6 +45,7 @@ NAV_ITEMS = [
     ("Setup", None),
     ("models", "Models"),
     ("settings", "Settings"),
+    ("help", "Help"),
 ]
 
 
@@ -62,6 +64,7 @@ class MainWindow(QMainWindow):
         self._models = ModelsPage(client)
         self._settings = SettingsPage(client, config)
         self._presets = PresetsPage(client, self._state)
+        self._help = HelpPage()
 
         self._stack = QStackedWidget()
         self._pages = {
@@ -71,6 +74,7 @@ class MainWindow(QMainWindow):
             "presets": self._presets,
             "models": self._models,
             "settings": self._settings,
+            "help": self._help,
         }
         self._page_index: dict[str, int] = {}
         for key, page in self._pages.items():
@@ -103,6 +107,9 @@ class MainWindow(QMainWindow):
         self._backend = QComboBox()
         self._backend.addItems(["Auto", "Local", "API"])
         self._backend.currentTextChanged.connect(lambda text: self._state.set_backend(text))
+        self._speed = QComboBox()
+        self._speed.addItems(["Quality", "Fast"])
+        self._speed.currentTextChanged.connect(lambda text: self._state.set_speed(text))
         self._duration = QSpinBox()
         self._duration.setRange(1, 300)
         self._duration.setValue(self._state.duration)
@@ -137,6 +144,7 @@ class MainWindow(QMainWindow):
         inspector = QWidget()
         form = QFormLayout(inspector)
         form.addRow("Backend", self._backend)
+        form.addRow("Speed", self._speed)
         form.addRow("Duration", self._duration)
         form.addRow("Seed", self._seed)
         form.addRow("Steps", self._steps)
@@ -211,14 +219,17 @@ class MainWindow(QMainWindow):
     def _sync_inspector(self) -> None:
         mapping = {"auto": 0, "local": 1, "api": 2}
         self._backend.blockSignals(True)
+        self._speed.blockSignals(True)
         self._duration.blockSignals(True)
         self._seed.blockSignals(True)
         self._steps.blockSignals(True)
         self._backend.setCurrentIndex(mapping.get(self._state.backend, 0))
+        self._speed.setCurrentIndex(0 if self._state.speed != "fast" else 1)
         self._duration.setValue(self._state.duration)
         self._seed.setValue(self._state.seed)
         self._steps.setValue(self._state.steps)
         self._backend.blockSignals(False)
+        self._speed.blockSignals(False)
         self._duration.blockSignals(False)
         self._seed.blockSignals(False)
         self._steps.blockSignals(False)

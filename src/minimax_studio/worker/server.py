@@ -7,8 +7,14 @@ from pydantic import BaseModel
 from minimax_studio import __version__
 from minimax_studio.config import AppConfig, save_config
 from minimax_studio.worker import downloads
-from minimax_studio.worker.history import get_entry, list_history
-from minimax_studio.worker.jobs import JobRequest, get_job, list_jobs, start_job
+from minimax_studio.worker.history import delete_entry, get_entry, list_history
+from minimax_studio.worker.jobs import (
+    JobRequest,
+    cancel_job,
+    get_job,
+    list_jobs,
+    start_job,
+)
 from minimax_studio.worker.llm import enhance_prompt
 from minimax_studio.worker.loras import import_lora, list_loras
 from minimax_studio.worker.presets import delete_preset, list_presets, save_preset
@@ -112,6 +118,14 @@ def one_job(job_id: str) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/jobs/{job_id}/cancel")
+def stop_job(job_id: str) -> dict[str, object]:
+    try:
+        return cancel_job(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/history")
 def history() -> list[dict[str, object]]:
     try:
@@ -126,6 +140,16 @@ def history_item(entry_id: str) -> dict[str, object]:
         return get_entry(entry_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/history/{entry_id}")
+def remove_history(entry_id: str) -> dict[str, object]:
+    try:
+        get_entry(entry_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    delete_entry(entry_id)
+    return {"ok": True, "id": entry_id}
 
 
 @app.get("/presets")
@@ -162,6 +186,26 @@ def lora_import(body: LoraImportIn) -> dict[str, object]:
         return import_lora(body.path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class LyricsIn(BaseModel):
+    prompt: str
+    notes: str = ""
+
+
+@app.post("/lyrics")
+def write_lyrics(body: LyricsIn) -> dict[str, object]:
+    from minimax_studio.worker.llm import enhance_prompt
+
+    seed = (
+        "Write MiniMax-Music3 lyrics only. Use section tags like [Verse] and [Chorus] "
+        "on their own lines. Theme:\n"
+        + body.prompt
+    )
+    try:
+        return {"text": enhance_prompt("lyrics", seed, body.notes)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class EnhanceIn(BaseModel):

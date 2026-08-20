@@ -107,10 +107,14 @@ class VideoPage(QWidget):
         self.generate.clicked.connect(self._generate)
         save = QPushButton("Save preset")
         save.clicked.connect(self._save_preset)
+        self._cancel = QPushButton("Cancel")
+        self._cancel.setEnabled(False)
+        self._cancel.clicked.connect(self._cancel_job)
+        run_row.addWidget(self.generate)
+        run_row.addWidget(self._cancel)
         run_row.addWidget(save)
         self._status = QLabel("")
         self._status.setObjectName("pageSubtitle")
-        run_row.addWidget(self.generate)
         run_row.addWidget(self._status, 1)
         layout.addLayout(run_row)
         self._bar = QProgressBar()
@@ -133,13 +137,15 @@ class VideoPage(QWidget):
             self._status.setText(str(exc))
             self._job_id = None
             self.generate.setEnabled(True)
+            self._cancel.setEnabled(False)
             return
         self._bar.show()
         self._bar.setValue(int(float(job.get("progress") or 0) * 100))
         self._status.setText(str(job.get("error") or job.get("message") or job.get("status")))
-        if job.get("status") in {"done", "error"}:
+        if job.get("status") in {"done", "error", "cancelled"}:
             self._job_id = None
             self.generate.setEnabled(True)
+            self._cancel.setEnabled(False)
 
     def _generate(self) -> None:
         prompt = self.prompt.toPlainText().strip()
@@ -151,8 +157,9 @@ class VideoPage(QWidget):
             assets.append({"role": "first_frame", "path": self.first_path.path})
         if self.last_path.isVisible() and self.last_path.path:
             assets.append({"role": "last_frame", "path": self.last_path.path})
-        if self.refs_path.isVisible() and self.refs_path.path:
-            assets.append({"role": "reference", "path": self.refs_path.path})
+        if self.refs_path.isVisible():
+            for path in self.refs_path.paths:
+                assets.append({"role": "reference", "path": path})
         payload = {
             "kind": "h3",
             "backend": self._state.backend,
@@ -162,7 +169,7 @@ class VideoPage(QWidget):
             "seed": self._state.seed,
             "steps": self._state.steps,
             "assets": assets,
-            "speed": "quality",
+            "speed": self._state.speed,
             "resolution": self.resolution.currentText(),
             "ratio": self.ratio.currentText(),
             "loras": (
@@ -178,8 +185,17 @@ class VideoPage(QWidget):
             return
         self._job_id = str(job["id"])
         self.generate.setEnabled(False)
+        self._cancel.setEnabled(True)
         self._bar.show()
         self._status.setText("Queued")
+
+    def _cancel_job(self) -> None:
+        if not self._job_id:
+            return
+        try:
+            self._client.cancel_job(self._job_id)
+        except Exception as exc:
+            self._status.setText(str(exc))
 
     def apply_restore(self, entry: dict) -> None:
         self.prompt.setPlainText(str(entry.get("prompt") or ""))
@@ -261,19 +277,25 @@ class _AssetRow(QWidget):
 
     @property
     def path(self) -> str:
-        return self._edit.text().strip()
+        return self._edit.text().strip().split(";")[0] if self._edit.text().strip() else ""
+
+    @property
+    def paths(self) -> list[str]:
+        return [part.strip() for part in self._edit.text().split(";") if part.strip()]
 
     def _browse(self) -> None:
         if self._kind == "image":
             chosen, _ = QFileDialog.getOpenFileName(
                 self, "Choose image", "", "Images (*.png *.jpg *.jpeg *.webp)"
             )
-        else:
-            chosen, _ = QFileDialog.getOpenFileName(
-                self,
-                "Choose reference",
-                "",
-                "Media (*.png *.jpg *.jpeg *.webp *.mp4 *.mov *.wav *.mp3)",
-            )
+            if chosen:
+                self._edit.setText(str(Path(chosen)))
+            return
+        chosen, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Choose references",
+            "",
+            "Media (*.png *.jpg *.jpeg *.webp *.mp4 *.mov *.wav *.mp3)",
+        )
         if chosen:
-            self._edit.setText(str(Path(chosen)))
+            self._edit.setText(";".join(str(Path(item)) for item in chosen))

@@ -49,4 +49,4 @@ def test_main_window_builds(tmp_path) -> None:
     config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
     window = MainWindow(FakeWorker(), config)  # type: ignore[arg-type]
     assert window.windowTitle() == "MiniMax Studio"
-    assert window._stack.count() == 6
+    assert window._stack.count() == 7

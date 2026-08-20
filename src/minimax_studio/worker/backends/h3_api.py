@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from minimax_studio.worker.jobs import JobRequest, update_job
+from minimax_studio.worker.jobs import JobRequest, is_cancelled, update_job
 from minimax_studio.worker.runtime import runtime
 
 
@@ -102,6 +102,8 @@ def _poll(
     deadline = time.monotonic() + 20 * 60
     first = True
     while time.monotonic() < deadline:
+        if is_cancelled(job_id):
+            raise RuntimeError("Cancelled")
         if not first:
             time.sleep(5)
         first = False

@@ -40,6 +40,21 @@ class WorkerClient:
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self._get(f"/jobs/{job_id}")
 
+    def cancel_job(self, job_id: str) -> dict[str, Any]:
+        return self._post(f"/jobs/{job_id}/cancel", {})
+
+    def delete_history(self, entry_id: str) -> dict[str, Any]:
+        with httpx.Client(timeout=self._timeout) as client:
+            response = client.delete(f"{self._base}/history/{entry_id}")
+            self._raise(response)
+            data = response.json()
+            if not isinstance(data, dict):
+                raise RuntimeError("unexpected delete payload")
+            return data
+
+    def write_lyrics(self, prompt: str, notes: str = "") -> dict[str, Any]:
+        return self._post("/lyrics", {"prompt": prompt, "notes": notes}, timeout=180.0)
+
     def list_jobs(self) -> list[dict[str, Any]]:
         return self._get_list("/jobs")
 

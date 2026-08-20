@@ -77,6 +77,14 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         runtime.h3_pipe = pipe
         runtime.h3_pipe_path = cache_key
 
+    steps = int(request.steps)
+    loras = list(request.loras)
+    if request.speed == "fast":
+        turbo = _find_turbo_lora()
+        if turbo and not any("turbo" in (item.get("id") or "").lower() for item in loras):
+            loras.append({"id": turbo, "strength": 1.0})
+        if steps >= 16:
+            steps = 8
     num_frames = duration_to_frames(request.duration_s)
     width = int(request.width or 960)
     height = int(request.height or 544)
@@ -87,7 +95,7 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "prompt": request.prompt,
         "num_frames": num_frames,
-        "num_inference_steps": int(request.steps),
+        "num_inference_steps": steps,
         "generator": generator,
         "output": ["videos", "audio", "sampling_rate"],
         "width": width,
@@ -100,7 +108,7 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         message=f"Sampling {num_frames} frames ({num_frames / 24:.1f}s)",
         progress=0.35,
     )
-    for item in request.loras:
+    for item in loras:
         path = item.get("id")
         if path and hasattr(pipe, "load_lora_weights"):
             try:
@@ -141,6 +149,23 @@ def _resolve_backend(requested: str) -> str:
         "No local H3 diffusers pack and no MiniMax API key. "
         "Download the official FL2VA pack or add a key in Settings."
     )
+
+
+def _find_turbo_lora() -> str | None:
+    root = runtime.config.models_root()
+    candidates = [
+        root
+        / "h3-comfy"
+        / "loras"
+        / "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors"
+    ]
+    extra = root / "loras"
+    if extra.is_dir():
+        candidates.extend(sorted(extra.glob("*turbo*.safetensors")))
+    for path in candidates:
+        if Path(path).is_file():
+            return str(path)
+    return None
 
 
 def _attach_media(request: JobRequest, kwargs: dict[str, Any], load_image) -> None:

@@ -17,6 +17,7 @@ class StudioState(QObject):
         self.steps = 30
         self.lora_id = ""
         self.lora_strength = 1.0
+        self.speed = "quality"
 
     def set_backend(self, value: str) -> None:
         key = value.strip().lower()
@@ -43,3 +44,9 @@ class StudioState(QObject):
         self.lora_id = lora_id
         self.lora_strength = float(strength)
         self.changed.emit()
+
+    def set_speed(self, value: str) -> None:
+        key = value.strip().lower()
+        if key != self.speed:
+            self.speed = key
+            self.changed.emit()

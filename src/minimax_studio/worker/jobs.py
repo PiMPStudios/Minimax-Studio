@@ -21,6 +21,7 @@ class JobRequest(BaseModel):
     seed: int = -1
     steps: int = 30
     assets: list[dict[str, str]] = Field(default_factory=list)
+    loras: list[dict[str, Any]] = Field(default_factory=list)
     speed: str = "quality"
     width: int = 960
     height: int = 544
@@ -73,9 +74,30 @@ def update_job(job_id: str, **fields: Any) -> None:
             runtime.jobs[job_id].update(fields)
 
 
+def cancel_job(job_id: str) -> dict[str, Any]:
+    with runtime.lock:
+        record = runtime.jobs.get(job_id)
+        if record is None:
+            raise KeyError(job_id)
+        if record.get("status") in {"done", "error", "cancelled"}:
+            return dict(record)
+        record["status"] = "cancelling"
+        record["message"] = "Cancel requested"
+        return dict(record)
+
+
+def is_cancelled(job_id: str) -> bool:
+    with runtime.lock:
+        record = runtime.jobs.get(job_id) or {}
+        return record.get("status") in {"cancelling", "cancelled"}
+
+
 def _run_job(job_id: str, request: JobRequest) -> None:
     update_job(job_id, status="running", message="Starting", progress=0.05)
     try:
+        if is_cancelled(job_id):
+            update_job(job_id, status="cancelled", message="Cancelled")
+            return
         if request.kind == "music":
             from minimax_studio.worker.backends.music import generate_music
 
@@ -86,6 +108,9 @@ def _run_job(job_id: str, request: JobRequest) -> None:
             result = generate_h3(job_id, request)
         else:
             raise RuntimeError(f"unknown job kind: {request.kind}")
+        if is_cancelled(job_id):
+            update_job(job_id, status="cancelled", message="Cancelled")
+            return
         entry = record_entry(
             {
                 "id": job_id,

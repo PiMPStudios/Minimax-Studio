@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -41,8 +42,11 @@ class HistoryPage(QWidget):
         self._play.clicked.connect(self._play_current)
         restore = QPushButton("Restore to Generate")
         restore.clicked.connect(self._restore_current)
+        delete = QPushButton("Delete")
+        delete.clicked.connect(self._delete_current)
         row.addWidget(self._play)
         row.addWidget(restore)
+        row.addWidget(delete)
         row.addStretch(1)
         layout.addLayout(row)
         self._init_player()
@@ -104,3 +108,21 @@ class HistoryPage(QWidget):
             return
         if entry.get("kind") == "music":
             self._state.restore_music.emit(entry)
+        else:
+            self._state.restore_video.emit(entry)
+
+    def _delete_current(self) -> None:
+        entry = self._current()
+        if not entry:
+            return
+        if (
+            QMessageBox.question(self, "Delete take", "Remove this take from history?")
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        try:
+            self._client.delete_history(str(entry["id"]))
+        except Exception as exc:
+            QMessageBox.warning(self, "Delete failed", str(exc))
+            return
+        self.refresh()
