@@ -26,11 +26,13 @@ __pycache__/
 dist/
 build/
 
-# Node / Tauri
-node_modules/
-frontend/dist/
-src-tauri/target/
-src-tauri/gen/
+# Qt
+*.user
+*.user.*
+*.qmlc
+*.jsc
+moc_*.cpp
+ui_*.h
 
 # IDE / OS
 .DS_Store

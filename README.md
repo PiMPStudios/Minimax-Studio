@@ -2,15 +2,27 @@
 
 A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and **MiniMax Music 3** (full songs). Windows, Linux, and macOS. No ComfyUI node graph.
 
-Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
+**PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: planning. See [`docs/PLAN.md`](docs/PLAN.md).
+Status: scaffolding. See [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Locked for v1
 
 - Local inference first, optional MiniMax hosted API
 - Generate studio now; datasets + LoRA training next
-- Same UI on Windows, Linux, and Mac — backends differ by GPU
+- Same Qt UI on Windows, Linux, and Mac — backends differ by GPU
+- GUI never imports PyTorch; the worker does
+
+## Run (dev)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+python -m minimax_studio
+```
+
+The app starts the worker, opens the studio window, and stops the worker on quit.
 
 ## License (models)
 

@@ -13,6 +13,7 @@ This is the PiMP Audio Studio idea — first-launch downloader, sidebar studio, 
 | Cloud | Local weights first; optional MiniMax hosted API |
 | Distribution | App never bundles weights; downloader after install |
 | UX | Point-and-click forms. No wires, no node graph |
+| Desktop UI | **PySide6 (Qt)** — native split/dock studio, not a webview |
 | Reference product | PiMP Audio Studio layout and product flow, not its stack |
 
 Honest Mac note: local H3 on Apple Silicon is real in the community (GGUF in Comfy, MLX ports, Metal `h3.c`) but it is **slow and RAM-hungry**. CUDA NVIDIA is the first-class local path. Mac local ships as a real backend with hard RAM gates, not a fake “it runs on an M1 8 GB.” The optional API is the escape hatch when local will not fit.
@@ -160,6 +161,17 @@ Setup
 
 Inspector (always): duration, seed, guidance/steps, active backend, active models, LoRA stack.
 
+Qt mapping from PiMP’s SwiftUI shell:
+
+| PiMP | Qt |
+|---|---|
+| `NavigationSplitView` sidebar | `QListWidget` / `QTreeWidget` in a left pane |
+| Canvas | `QStackedWidget` pages |
+| `.inspector` | `QDockWidget` on the right, checkable |
+| First launch | Modal / stacked first-run pages before the main window |
+| History playback | `QMediaPlayer` + `QVideoWidget` / audio output |
+| Settings file dialogs | `QFileDialog` |
+
 First launch:
 
 1. Pick output directory
@@ -212,16 +224,17 @@ Reuse Comfy folder layout **optionally** (`models/diffusion_models`, `text_encod
 
 ## Architecture
 
-Cross-platform desktop = **Tauri 2 + React/TypeScript UI + Python worker**.
+Cross-platform desktop = **PySide6 (Qt) shell + Python worker process**.
 
 ```
 ┌─────────────────────────────────────────┐
-│  Tauri shell (Win / Linux / macOS)      │
-│  React studio: Generate / History / …   │
+│  PySide6 / Qt (Win / Linux / macOS)     │
+│  QMainWindow + sidebar + stacked pages  │
+│  + docked inspector (PiMP-style)        │
 └──────────────┬──────────────────────────┘
                │ localhost HTTP + SSE
 ┌──────────────▼──────────────────────────┐
-│  Python worker (FastAPI)                │
+│  Python worker (FastAPI, child process) │
 │  job queue, downloads, history index    │
 │  backends:                              │
 │    cuda-h3      diffusers / later SGLang│
@@ -233,9 +246,11 @@ Cross-platform desktop = **Tauri 2 + React/TypeScript UI + Python worker**.
 └─────────────────────────────────────────┘
 ```
 
-Why this and not Swift: Mac is one of three OS targets, and CUDA is the real H3 engine. Why not Electron: heavier, same UI we can do in Tauri. Why not Gradio: looks like a web demo, not PiMP. Why not embed Comfy: that *is* the wire UI we are replacing.
+The GUI process never imports PyTorch. Generate, download, and probe run in the worker so the window stays responsive. Qt talks to the worker over localhost (health, jobs, SSE progress).
 
-Worker is the source of truth for jobs. UI never talks to PyTorch.
+Why Qt and not Swift: Mac is one of three OS targets; CUDA is the real H3 engine. Why not Tauri/React: that is a third toolchain (Rust + Node + a web UI) around a Python job. The chrome we need — sidebar, docked inspector, native file dialogs, dark studio theme — is what Qt is for (Resolve and a lot of VFX tools). Why not Gradio: demo, not a studio. Why not embed Comfy: that *is* the wire UI we are replacing.
+
+One language for app and worker. Worker is still a **separate process** so a 30 GB model load cannot freeze the shell.
 
 ### Backend policy
 
@@ -279,7 +294,7 @@ One JSON job the UI always submits:
 
 1. Repo skeleton, local git, app name, license for *our* code
 2. Python worker: health, GPU probe, download manager (HF), job queue, SSE progress
-3. Tauri + React shell: first launch, sidebar, Models page
+3. PySide6 shell: first launch, sidebar, docked inspector, Models page
 4. Music generate (CUDA diffusers)
 5. Music generate (MLX) on Mac
 6. H3 FL2VA: text / first / last / both (CUDA)
@@ -311,7 +326,7 @@ Out of v1: training, datasets, editor, MCP, RunPod, prompt LLM, 2K local.
 
 Do these as local commits, not GitHub PRs yet.
 
-1. **Foundation** — git, README, this plan, Python package `studio_worker`, Tauri app that can ping `/health`
+1. **Foundation** — git, README, this plan, Python package `minimax_studio`, PySide6 shell that can ping the worker `/health`
 2. **Model manager** — probe disk/GPU, download one small test file, then Music 3 pack with progress
 3. **Music CUDA generate** — caption + lyrics → WAV → History. Proves the whole loop
 4. **Shell polish** — sidebar, inspector, first launch, output dir (the PiMP feel)
@@ -334,10 +349,10 @@ Music CUDA generate is the first “it works” milestone. H3 is larger and mean
 - diffusers (Music 3 + H3 ModularPipeline)
 - huggingface_hub for downloads
 - FastAPI + SSE
-- Tauri 2, Vite, React, TypeScript
+- PySide6 (Qt 6) for the desktop shell — Fusion style, dark studio palette
 - ffmpeg in PATH (or a sidecar binary) for mux/probe
 
-Windows: ship a `run.bat` that creates `.venv`, installs CUDA torch from the official index, starts worker, then Tauri. Linux: `run.sh`. Mac: `run.sh` with MLX extras.
+Windows: `run.bat` creates `.venv`, installs CUDA torch from the official index when needed, starts the worker, then the Qt app. Linux: `run.sh`. Mac: `run.sh` with MLX extras. The launcher owns process lifetime: quitting the window stops the worker.
 
 ---
 
@@ -366,4 +381,4 @@ Windows: ship a `run.bat` that creates `.venv`, installs CUDA torch from the off
 
 ## Next step after this plan
 
-Scaffold the repo (worker + Tauri hello + Models stub) and land **Music 3 CUDA generate** as the first vertical slice. Training stays on the v2 list.
+Scaffold the repo (worker + PySide6 shell + Models stub) and land **Music 3 CUDA generate** as the first vertical slice. Training stays on the v2 list.
