@@ -341,7 +341,14 @@ class MainWindow(QMainWindow):
 
 def _format_probe(probe: dict[str, Any]) -> str:
     parts = [f"{probe.get('os')} {probe.get('machine')}"]
-    if probe.get("cuda"):
+    gpus = probe.get("gpus") or []
+    if gpus:
+        parts.append(
+            " + ".join(f"{item.get('name')} ({item.get('vram_gb')} GB)" for item in gpus)
+        )
+        if not probe.get("torch_available"):
+            parts.append("PyTorch not in Studio venv — Comfy INT8 still works")
+    elif probe.get("cuda"):
         parts.append(f"{probe.get('cuda_name')} ({probe.get('vram_gb')} GB)")
     elif probe.get("apple_silicon"):
         parts.append("Apple Silicon")

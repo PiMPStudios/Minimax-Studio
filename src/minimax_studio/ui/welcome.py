@@ -46,7 +46,17 @@ def _welcome_text(client: WorkerClient) -> str:
     except Exception:
         ping = {}
 
-    if probe.get("cuda"):
+    gpus = probe.get("gpus") or []
+    if gpus:
+        names = " + ".join(f"{item.get('name')} ({item.get('vram_gb')} GB)" for item in gpus)
+        lines.append(f"GPU: {names}.")
+        if not probe.get("torch_available"):
+            lines.append(
+                "PyTorch is not installed in the Studio venv, so in-process "
+                "diffusers generate is unavailable. Comfy-Org INT8 still works "
+                "when ComfyUI is running."
+            )
+    elif probe.get("cuda"):
         lines.append(
             f"GPU: {probe.get('cuda_name') or 'CUDA'} ({probe.get('vram_gb')} GB)."
         )

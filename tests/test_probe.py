@@ -10,6 +10,20 @@ def test_probe_has_os_fields() -> None:
     assert "apple_silicon" in info
 
 
+def test_nvidia_smi_fallback_when_no_torch(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "minimax_studio.worker.probe._nvidia_smi_gpus",
+        lambda: [{"name": "NVIDIA GeForce RTX 3080", "vram_gb": 10.0}],
+    )
+    info = probe()
+    assert info["cuda"] is True
+    assert info["cuda_name"] == "NVIDIA GeForce RTX 3080"
+    assert info["vram_gb"] == 10.0
+    assert info["cuda_source"] in {"nvidia-smi", "torch"}
+    if not info["torch_available"]:
+        assert info["cuda_source"] == "nvidia-smi"
+
+
 def test_health_and_probe_routes() -> None:
     client = TestClient(app)
     health = client.get("/health")

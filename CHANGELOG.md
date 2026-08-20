@@ -12,6 +12,13 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.5] — 2026-08-19
+
+### Fixed
+
+- Hardware probe uses `nvidia-smi` when PyTorch is not installed in the Studio venv, so welcome/inspector still show NVIDIA GPUs
+- Inspector notes that in-process diffusers needs PyTorch even if CUDA cards are present
+
 ## [0.2.4] — 2026-08-19
 
 ### Added
