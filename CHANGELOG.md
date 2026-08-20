@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.15] — 2026-08-20
+
+### Added
+
+- Generate failure pops a dialog with the worker error (cancel stays quiet)
+
+### Changed
+
+- Progress bar hides when a take finishes or fails
+
 ## [0.2.14] — 2026-08-20
 
 ### Changed

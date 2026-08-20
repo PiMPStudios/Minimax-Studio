@@ -45,3 +45,13 @@ def confirm_generate(
         str(check.get("detail") or "No backend is ready."),
     )
     return False
+
+
+def notify_job_result(parent: QWidget, job: dict[str, Any]) -> None:
+    if job.get("status") != "error":
+        return
+    QMessageBox.warning(
+        parent,
+        "Generate failed",
+        str(job.get("error") or job.get("message") or "Failed"),
+    )

@@ -170,12 +170,17 @@ class VideoPage(QWidget):
             self._job_id = None
             self.generate.setEnabled(True)
             self._cancel.setEnabled(False)
+            self._bar.hide()
             self._status.setText(f"Saved {job.get('output_path')}")
             self._state.open_history.emit()
         elif job.get("status") in {"error", "cancelled"}:
             self._job_id = None
             self.generate.setEnabled(True)
             self._cancel.setEnabled(False)
+            self._bar.hide()
+            from minimax_studio.ui.ready import notify_job_result
+
+            notify_job_result(self, job)
 
     def _generate(self) -> None:
         prompt = self.prompt.toPlainText().strip()

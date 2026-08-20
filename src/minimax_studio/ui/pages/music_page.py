@@ -170,13 +170,18 @@ class MusicPage(QWidget):
             self._job_id = None
             self.generate.setEnabled(True)
             self._cancel.setEnabled(False)
+            self._bar.hide()
             self._status.setText(f"Saved {job.get('output_path')}")
             self._state.open_history.emit()
         elif status in {"error", "cancelled"}:
             self._job_id = None
             self.generate.setEnabled(True)
             self._cancel.setEnabled(False)
+            self._bar.hide()
             self._status.setText(str(job.get("error") or job.get("message") or "Failed"))
+            from minimax_studio.ui.ready import notify_job_result
+
+            notify_job_result(self, job)
 
     def _insert_tag(self, tag: str) -> None:
         cursor = self.lyrics.textCursor()
