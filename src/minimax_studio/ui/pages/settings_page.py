@@ -66,6 +66,10 @@ class SettingsPage(QWidget):
         form.addRow("ComfyUI URL", _field_with_mark(self.comfy_url, self._comfy_mark))
         form.addRow("ComfyUI folder", _browse_row(self.comfy_root, self))
         form.addRow("ComfyUI extra args", self.comfy_extra)
+        self._comfy_found = QLabel("Detecting ComfyUI…")
+        self._comfy_found.setObjectName("pageSubtitle")
+        self._comfy_found.setWordWrap(True)
+        form.addRow("", self._comfy_found)
         form.addRow("Studio CUDA device", self.cuda_device)
         form.addRow("Local LLM URL", _field_with_mark(self.llm_base, self._llm_mark))
         form.addRow("Local LLM model", self.llm_model)
@@ -118,6 +122,7 @@ class SettingsPage(QWidget):
         super().showEvent(event)
         QTimer.singleShot(0, self._fill_cuda_devices)
         QTimer.singleShot(0, self._refresh_pings)
+        QTimer.singleShot(0, self._refresh_comfy_detect)
 
     def _fill_cuda_devices(self) -> None:
         current = int(self.cuda_device.currentData() or self._config.cuda_device or 0)
@@ -191,6 +196,25 @@ class SettingsPage(QWidget):
             return
         self._save_status.setText(str(result.get("detail") or "Started ComfyUI."))
         QTimer.singleShot(2000, self._refresh_pings)
+        QTimer.singleShot(500, self._refresh_comfy_detect)
+
+    def _refresh_comfy_detect(self) -> None:
+        try:
+            info = self._client.comfy_status()
+        except Exception as exc:
+            self._comfy_found.setText(f"ComfyUI detect failed: {exc}")
+            return
+        root = info.get("root")
+        if not root:
+            self._comfy_found.setText(
+                str(info.get("detail") or "No ComfyUI install detected.")
+            )
+            return
+        python = info.get("python") or "no venv python"
+        running = "running" if info.get("running") else "not running"
+        self._comfy_found.setText(f"Detected {root} ({python}, {running})")
+        argv = info.get("argv") or []
+        self._comfy_found.setToolTip(" ".join(str(part) for part in argv) if argv else "")
 
     def _refresh_pings(self) -> None:
         class Worker(QObject):
