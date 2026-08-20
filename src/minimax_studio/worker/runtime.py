@@ -18,6 +18,8 @@ class Runtime:
         self.music_pipe_path: str | None = None
         self.h3_pipe: Any = None
         self.h3_pipe_path: str | None = None
+        self.comfy_proc: Any = None
+        self.comfy_log: Any = None
 
     def reload_config(self) -> AppConfig:
         with self.lock:

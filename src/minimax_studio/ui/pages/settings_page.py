@@ -39,6 +39,10 @@ class SettingsPage(QWidget):
         self.api.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_base = QLineEdit(config.minimax_api_base)
         self.comfy_url = QLineEdit(config.comfy_url or "http://127.0.0.1:8188")
+        self.comfy_root = QLineEdit(config.comfy_root or "")
+        self.comfy_root.setPlaceholderText("optional — auto-detects ~/ai/ComfyUI")
+        self.comfy_extra = QLineEdit(config.comfy_extra_args or "")
+        self.comfy_extra.setPlaceholderText("--listen 0.0.0.0 --default-device 1")
         self.cuda_device = QComboBox()
         self.cuda_device.addItem("GPU 0", 0)
         if config.cuda_device and config.cuda_device != 0:
@@ -59,6 +63,8 @@ class SettingsPage(QWidget):
         form.addRow("MiniMax API key", _field_with_mark(self.api, self._minimax_mark))
         form.addRow("MiniMax API base", self.api_base)
         form.addRow("ComfyUI URL", _field_with_mark(self.comfy_url, self._comfy_mark))
+        form.addRow("ComfyUI folder", _browse_row(self.comfy_root, self))
+        form.addRow("ComfyUI extra args", self.comfy_extra)
         form.addRow("Studio CUDA device", self.cuda_device)
         form.addRow("Local LLM URL", _field_with_mark(self.llm_base, self._llm_mark))
         form.addRow("Local LLM model", self.llm_model)
@@ -70,8 +76,11 @@ class SettingsPage(QWidget):
         save.clicked.connect(self._save)
         check = QPushButton("Check connections")
         check.clicked.connect(self._refresh_pings)
+        start_comfy = QPushButton("Start ComfyUI")
+        start_comfy.clicked.connect(self._start_comfy)
         buttons.addWidget(save)
         buttons.addWidget(check)
+        buttons.addWidget(start_comfy)
         buttons.addStretch(1)
         layout.addLayout(buttons)
         self._save_status = QLabel("")
@@ -83,7 +92,8 @@ class SettingsPage(QWidget):
             "process on this machine only. MiniMax / LLM / Comfy status is shown "
             "inline — ✓ reachable, ✗ not. Studio CUDA device is for in-process "
             "diffusers only. ComfyUI uses the GPU it was launched with "
-            "(--default-device)."
+            "(--default-device). Start ComfyUI launches that install as a "
+            "separate process; extra args are appended to main.py."
         )
         note.setObjectName("pageSubtitle")
         note.setWordWrap(True)
@@ -115,7 +125,7 @@ class SettingsPage(QWidget):
         self.cuda_device.setCurrentIndex(max(0, idx))
         self.cuda_device.blockSignals(False)
 
-    def _save(self) -> None:
+    def _save(self) -> bool:
         payload = {
             "output_dir": self.output.text().strip() or None,
             "models_dir": self.models.text().strip() or None,
@@ -124,6 +134,8 @@ class SettingsPage(QWidget):
             "minimax_api_key": self.api.text().strip(),
             "minimax_api_base": self.api_base.text().strip() or "https://api.minimax.io",
             "comfy_url": self.comfy_url.text().strip() or "http://127.0.0.1:8188",
+            "comfy_root": self.comfy_root.text().strip(),
+            "comfy_extra_args": self.comfy_extra.text().strip(),
             "cuda_device": int(self.cuda_device.currentData() or 0),
             "llm_base_url": self.llm_base.text().strip() or "http://127.0.0.1:8080/v1",
             "llm_model": self.llm_model.text().strip() or "qwen3.8-27b-q4kxl",
@@ -140,15 +152,29 @@ class SettingsPage(QWidget):
             self._config.minimax_api_key = updated.minimax_api_key
             self._config.minimax_api_base = updated.minimax_api_base
             self._config.comfy_url = updated.comfy_url
+            self._config.comfy_root = updated.comfy_root
+            self._config.comfy_extra_args = updated.comfy_extra_args
             self._config.cuda_device = updated.cuda_device
             self._config.llm_base_url = updated.llm_base_url
             self._config.llm_model = updated.llm_model
             self._config.llm_api_key = updated.llm_api_key
         except Exception as exc:
             QMessageBox.warning(self, "Save failed", str(exc))
-            return
+            return False
         self._save_status.setText("Saved. Checking connections…")
         self._refresh_pings()
+        return True
+
+    def _start_comfy(self) -> None:
+        if not self._save():
+            return
+        try:
+            result = self._client.start_comfy()
+        except Exception as exc:
+            QMessageBox.warning(self, "Start ComfyUI failed", str(exc))
+            return
+        self._save_status.setText(str(result.get("detail") or "Started ComfyUI."))
+        QTimer.singleShot(2000, self._refresh_pings)
 
     def _refresh_pings(self) -> None:
         class Worker(QObject):

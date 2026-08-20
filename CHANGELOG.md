@@ -12,6 +12,15 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.10] — 2026-08-20
+
+### Added
+
+- **Start ComfyUI** from Welcome, Settings, and Go menu. Detects `main.py` under `~/ai/ComfyUI`, Settings → ComfyUI folder, or `COMFYUI_PATH`
+- Settings: ComfyUI folder + extra args (passed to `main.py`)
+- Go menu shortcuts: Ctrl+1…7 for pages, Ctrl+Enter to generate
+- History filter (All / Video / Music) and prompt search
+
 ## [0.2.9] — 2026-08-20
 
 ### Added

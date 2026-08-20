@@ -60,3 +60,12 @@ def test_job_sse_404(studio_home) -> None:
     client = TestClient(app)
     response = client.get("/jobs/no-such-job/events")
     assert response.status_code == 404
+
+
+def test_comfy_detect_route(studio_home) -> None:
+    client = TestClient(app)
+    response = client.get("/comfy")
+    assert response.status_code == 200
+    body = response.json()
+    assert "root" in body
+    assert "running" in body

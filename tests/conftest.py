@@ -28,5 +28,7 @@ def studio_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     runtime.jobs.clear()
     runtime.music_pipe = None
     runtime.music_pipe_path = None
+    runtime.comfy_proc = None
+    runtime.comfy_log = None
     runtime.config.ensure_dirs()
     return output

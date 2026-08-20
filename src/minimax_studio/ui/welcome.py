@@ -33,6 +33,9 @@ class WelcomeDialog(QDialog):
         recommended.setToolTip("Pull only the consumer packs for this GPU, not the 130 GB official H3 tree.")
         recommended.clicked.connect(lambda: _download_recommended(client, body, recommended))
         buttons.addButton(recommended, QDialogButtonBox.ButtonRole.ActionRole)
+        start_comfy = QPushButton("Start ComfyUI")
+        start_comfy.clicked.connect(lambda: _start_comfy(client, body, start_comfy))
+        buttons.addButton(start_comfy, QDialogButtonBox.ButtonRole.ActionRole)
         layout.addWidget(title)
         layout.addWidget(body)
         layout.addWidget(buttons)
@@ -134,3 +137,13 @@ def _download_recommended(client: WorkerClient, body: QLabel, button: QPushButto
         )
     else:
         body.setText(body.text() + "\n\nNothing to download — recommended packs are already ready.")
+
+
+def _start_comfy(client: WorkerClient, body: QLabel, button: QPushButton) -> None:
+    try:
+        result = client.start_comfy()
+    except Exception as exc:
+        body.setText(body.text() + f"\n\nCould not start ComfyUI: {exc}")
+        return
+    button.setEnabled(False)
+    body.setText(body.text() + "\n\n" + str(result.get("detail") or "Started ComfyUI."))

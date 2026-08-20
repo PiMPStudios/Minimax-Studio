@@ -72,6 +72,12 @@ class FakeWorker:
             "comfy": {"ok": False, "detail": "connection refused"},
         }
 
+    def start_comfy(self) -> dict:
+        return {"ok": True, "already": True, "detail": "already running"}
+
+    def comfy_status(self) -> dict:
+        return {"root": None, "running": False}
+
 
 def test_welcome_dialog_builds(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])
@@ -91,3 +97,32 @@ def test_main_window_builds(tmp_path) -> None:
 
     assert window.windowTitle() == f"MiniMax Studio {__version__}"
     assert window._stack.count() == 7
+    menus = [action.text() for action in window.menuBar().actions()]
+    assert "&File" in menus
+    assert "&Go" in menus
+
+
+def test_history_filter(tmp_path) -> None:
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+
+    class HistoryClient(FakeWorker):
+        def list_history(self) -> list:
+            return [
+                {"id": "a", "kind": "h3", "prompt": "cat video", "output_path": ""},
+                {"id": "b", "kind": "music", "prompt": "folk song", "output_path": ""},
+            ]
+
+    from minimax_studio.ui.pages.history_page import HistoryPage
+    from minimax_studio.ui.state import StudioState
+
+    page = HistoryPage(HistoryClient(), StudioState())  # type: ignore[arg-type]
+    page.refresh()
+    assert page._list.count() == 2
+    page._kind.setCurrentText("Music")
+    assert page._list.count() == 1
+    assert page._visible[0]["kind"] == "music"
+    page._kind.setCurrentText("All")
+    page._search.setText("cat")
+    assert page._list.count() == 1
+    assert page._visible[0]["id"] == "a"

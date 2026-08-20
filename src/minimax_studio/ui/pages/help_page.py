@@ -56,6 +56,11 @@ packs already on disk. H3 duration in the inspector snaps to the model’s
 <b>Show in folder</b> opens the take in the file manager. File menu opens the
 output and models folders. H3 local generate wants <code>ffmpeg</code> on PATH
 for MP4 mux.</p>
+<p>Go menu: Ctrl+1…7 switches pages, Ctrl+Enter generates on Video/Music.
+<b>Start ComfyUI</b> (Welcome, Settings, or Go) launches a detected
+<code>main.py</code> install as a separate process — extra args in Settings
+(for example <code>--listen 0.0.0.0 --default-device 1</code>). History can
+filter by Video/Music and prompt text.</p>
 """
 
 

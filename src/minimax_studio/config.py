@@ -33,6 +33,8 @@ class AppConfig(BaseModel):
     llm_api_key: str | None = None
     comfy_models_dir: str | None = None
     comfy_url: str = "http://127.0.0.1:8188"
+    comfy_root: str | None = None
+    comfy_extra_args: str | None = None
     welcome_seen: bool = False
     cuda_device: int = 0
 

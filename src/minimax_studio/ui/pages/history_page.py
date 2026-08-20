@@ -4,9 +4,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -25,12 +27,23 @@ class HistoryPage(QWidget):
         self._client = client
         self._state = state
         self._entries: list[dict] = []
+        self._visible: list[dict] = []
         self._player = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 24)
         title = QLabel("History")
         title.setObjectName("pageTitle")
         layout.addWidget(title)
+        tools = QHBoxLayout()
+        self._kind = QComboBox()
+        self._kind.addItems(["All", "Video", "Music"])
+        self._kind.currentTextChanged.connect(self._rebuild_list)
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Filter prompt…")
+        self._search.textChanged.connect(self._rebuild_list)
+        tools.addWidget(self._kind)
+        tools.addWidget(self._search, 1)
+        layout.addLayout(tools)
         self._list = QListWidget()
         self._list.currentRowChanged.connect(self._show)
         layout.addWidget(self._list, 1)
@@ -86,18 +99,31 @@ class HistoryPage(QWidget):
             self._entries = self._client.list_history()
         except Exception:
             self._entries = []
+        self._rebuild_list()
+
+    def _rebuild_list(self) -> None:
+        kind_filter = self._kind.currentText()
+        query = self._search.text().strip().lower()
+        self._visible = []
         self._list.clear()
         for entry in self._entries:
             kind = entry.get("kind", "?")
+            if kind_filter == "Video" and kind != "h3":
+                continue
+            if kind_filter == "Music" and kind != "music":
+                continue
+            haystack = f"{entry.get('prompt') or ''} {entry.get('lyrics') or ''}".lower()
+            if query and query not in haystack:
+                continue
+            self._visible.append(entry)
             prompt = (entry.get("prompt") or "")[:80]
-            item = QListWidgetItem(f"{kind}  ·  {prompt}")
-            self._list.addItem(item)
+            self._list.addItem(QListWidgetItem(f"{kind}  ·  {prompt}"))
 
     def _current(self) -> dict | None:
         row = self._list.currentRow()
-        if row < 0 or row >= len(self._entries):
+        if row < 0 or row >= len(self._visible):
             return None
-        return self._entries[row]
+        return self._visible[row]
 
     def _show(self, _row: int) -> None:
         entry = self._current()

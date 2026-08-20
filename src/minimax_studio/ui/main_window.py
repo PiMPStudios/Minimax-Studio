@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
@@ -193,11 +193,6 @@ class MainWindow(QMainWindow):
         )
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
-        toggle = dock.toggleViewAction()
-        toggle.setText("Show Inspector")
-        view_menu = self.menuBar().addMenu("&View")
-        view_menu.addAction(toggle)
-
         quit_action = QAction("Quit", self)
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
@@ -210,6 +205,12 @@ class MainWindow(QMainWindow):
         file_menu.addAction(open_models)
         file_menu.addSeparator()
         file_menu.addAction(quit_action)
+
+        toggle = dock.toggleViewAction()
+        toggle.setText("Show Inspector")
+        view_menu = self.menuBar().addMenu("&View")
+        view_menu.addAction(toggle)
+        self._add_go_menu()
 
         status = QStatusBar()
         self._status_worker = QLabel("Worker: connecting…")
@@ -459,6 +460,50 @@ class MainWindow(QMainWindow):
             reveal_path(path)
         except Exception as exc:
             QMessageBox.warning(self, "Open folder failed", str(exc))
+
+    def _add_go_menu(self) -> None:
+        go_menu = self.menuBar().addMenu("&Go")
+        pages = [
+            ("video", "Generate Video", "Ctrl+1"),
+            ("music", "Generate Music", "Ctrl+2"),
+            ("history", "History", "Ctrl+3"),
+            ("presets", "Presets", "Ctrl+4"),
+            ("models", "Models", "Ctrl+5"),
+            ("settings", "Settings", "Ctrl+6"),
+            ("help", "Help", "Ctrl+7"),
+        ]
+        for key, label, shortcut in pages:
+            action = QAction(label, self)
+            action.setShortcut(QKeySequence(shortcut))
+            action.triggered.connect(lambda _checked=False, k=key: self.show_page(k))
+            go_menu.addAction(action)
+        go_menu.addSeparator()
+        generate = QAction("Generate", self)
+        generate.setShortcut(QKeySequence("Ctrl+Return"))
+        generate.triggered.connect(self._run_generate)
+        go_menu.addAction(generate)
+        start_comfy = QAction("Start ComfyUI", self)
+        start_comfy.triggered.connect(self._start_comfy)
+        go_menu.addAction(start_comfy)
+
+    def _run_generate(self) -> None:
+        row = self._nav.currentRow()
+        key = self._nav_keys[row] if 0 <= row < len(self._nav_keys) else None
+        if key == "music":
+            self._music._generate()
+        elif key == "video":
+            self._video._generate()
+
+    def _start_comfy(self) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        try:
+            result = self._client.start_comfy()
+        except Exception as exc:
+            QMessageBox.warning(self, "Start ComfyUI failed", str(exc))
+            return
+        self._status_worker.setText(str(result.get("detail") or "Started ComfyUI"))
+        QTimer.singleShot(2000, self.refresh_probe)
 
     def _refresh_route(self) -> None:
         row = self._nav.currentRow()

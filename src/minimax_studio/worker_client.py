@@ -25,6 +25,12 @@ class WorkerClient:
     def ping(self) -> dict[str, Any]:
         return self._get("/ping")
 
+    def comfy_status(self) -> dict[str, Any]:
+        return self._get("/comfy")
+
+    def start_comfy(self) -> dict[str, Any]:
+        return self._post("/comfy/start", {})
+
     def preflight(
         self, kind: str, backend: str = "auto", mode: str = "t2va"
     ) -> dict[str, Any]:

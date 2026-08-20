@@ -42,6 +42,8 @@ class SettingsIn(BaseModel):
     llm_api_key: str | None = None
     comfy_models_dir: str | None = None
     comfy_url: str | None = None
+    comfy_root: str | None = None
+    comfy_extra_args: str | None = None
     cuda_device: int | None = None
 
 
@@ -74,6 +76,23 @@ def get_settings() -> dict[str, object]:
 @app.get("/ping")
 def ping() -> dict[str, object]:
     return ping_services()
+
+
+@app.get("/comfy")
+def comfy_status() -> dict[str, object]:
+    from minimax_studio.worker.comfy_launch import detect_comfy
+
+    return detect_comfy()
+
+
+@app.post("/comfy/start")
+def comfy_start() -> dict[str, object]:
+    from minimax_studio.worker.comfy_launch import start_comfy
+
+    try:
+        return start_comfy()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/preflight")
