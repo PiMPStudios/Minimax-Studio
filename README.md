@@ -24,6 +24,14 @@ python -m minimax_studio
 
 The app starts the worker, opens the studio window, and stops the worker on quit.
 
+First launch asks for an output folder. Models and history live there.
+
+Local Music 3 generate also needs PyTorch + diffusers (CUDA) or mlx-audio (Mac):
+
+```bash
+pip install torch diffusers accelerate
+```
+
 ## License (models)
 
 - H3 weights: MiniMax H3 Community License (territory limits; US/EU/UK/Korea need a separate grant or the API)

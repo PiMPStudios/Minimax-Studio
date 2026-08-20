@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+from minimax_studio.config import (
+    AppConfig,
+    default_config_path,
+    load_config,
+    save_config,
+)
 from minimax_studio.worker_client import WorkerClient
 
 
@@ -24,14 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     port = args.port or _free_port(args.host)
     if args.worker_only:
         return worker_main_with_port(args.host, port)
-
-    worker = _start_worker(args.host, port)
-    client = WorkerClient(f"http://{args.host}:{port}")
-    try:
-        _wait_for_health(client)
-        return _run_ui(client)
-    finally:
-        _stop_worker(worker)
+    return _run_ui(args.host, port)
 
 
 def worker_main_with_port(host: str, port: int) -> int:
@@ -46,21 +46,41 @@ def worker_main_with_port(host: str, port: int) -> int:
     return 0
 
 
-def _run_ui(client: WorkerClient) -> int:
-    from PySide6.QtWidgets import QApplication
+def _run_ui(host: str, port: int) -> int:
+    from PySide6.QtWidgets import QApplication, QDialog
 
+    from minimax_studio.ui.first_launch import FirstLaunchDialog
     from minimax_studio.ui.main_window import MainWindow
     from minimax_studio.ui.theme import apply_theme
 
     app = QApplication(sys.argv)
     app.setApplicationName("MiniMax Studio")
     apply_theme(app)
-    window = MainWindow(client)
-    window.show()
-    return app.exec()
+
+    config = load_config()
+    if not config.has_output_dir():
+        dialog = FirstLaunchDialog()
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return 0
+        config.output_dir = dialog.output_dir
+        config.models_dir = str(Path(dialog.output_dir) / "models")
+        save_config(config)
+    config.ensure_dirs()
+
+    worker = _start_worker(host, port)
+    client = WorkerClient(f"http://{host}:{port}")
+    try:
+        _wait_for_health(client)
+        window = MainWindow(client, config)
+        window.show()
+        return app.exec()
+    finally:
+        _stop_worker(worker)
 
 
 def _start_worker(host: str, port: int) -> subprocess.Popen[bytes]:
+    env = os.environ.copy()
+    env["MINIMAX_STUDIO_CONFIG"] = str(default_config_path())
     return subprocess.Popen(
         [
             sys.executable,
@@ -72,6 +92,7 @@ def _start_worker(host: str, port: int) -> subprocess.Popen[bytes]:
             str(port),
         ],
         cwd=str(Path(__file__).resolve().parents[2]),
+        env=env,
     )
 
 
@@ -93,7 +114,7 @@ def _wait_for_health(client: WorkerClient, timeout: float = 20.0) -> None:
             payload = client.health()
             if payload.get("ok"):
                 return
-        except Exception as exc:  # noqa: BLE001 — retry until timeout
+        except Exception as exc:  # noqa: BLE001
             last = exc
         time.sleep(0.15)
     raise RuntimeError(f"worker did not become healthy: {last}")

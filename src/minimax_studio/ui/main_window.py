@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QComboBox,
@@ -19,7 +19,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from minimax_studio.ui.pages import build_pages
+from minimax_studio.config import AppConfig
+from minimax_studio.ui.pages import (
+    HistoryPage,
+    ModelsPage,
+    MusicPage,
+    SettingsPage,
+    VideoPage,
+)
+from minimax_studio.ui.state import StudioState
 from minimax_studio.worker_client import WorkerClient
 
 NAV_ITEMS = [
@@ -36,14 +44,35 @@ NAV_ITEMS = [
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, client: WorkerClient) -> None:
+    def __init__(self, client: WorkerClient, config: AppConfig) -> None:
         super().__init__()
         self._client = client
+        self._config = config
+        self._state = StudioState()
         self.setWindowTitle("MiniMax Studio")
-        self.resize(1280, 800)
+        self.resize(1320, 840)
+
+        self._music = MusicPage(client, self._state)
+        self._video = VideoPage(client, self._state)
+        self._history = HistoryPage(client, self._state)
+        self._models = ModelsPage(client)
+        self._settings = SettingsPage(client, config)
+        presets = QWidget()
+        presets_layout = QFormLayout(presets)
+        presets_layout.addRow(
+            QLabel("Presets"),
+            QLabel("Saved generate settings land here next."),
+        )
 
         self._stack = QStackedWidget()
-        self._pages = build_pages()
+        self._pages = {
+            "video": self._video,
+            "music": self._music,
+            "history": self._history,
+            "presets": presets,
+            "models": self._models,
+            "settings": self._settings,
+        }
         self._page_index: dict[str, int] = {}
         for key, page in self._pages.items():
             self._page_index[key] = self._stack.addWidget(page)
@@ -74,19 +103,26 @@ class MainWindow(QMainWindow):
 
         self._backend = QComboBox()
         self._backend.addItems(["Auto", "Local", "API"])
+        self._backend.currentTextChanged.connect(lambda text: self._state.set_backend(text))
         self._duration = QSpinBox()
         self._duration.setRange(1, 300)
-        self._duration.setValue(30)
+        self._duration.setValue(self._state.duration)
         self._duration.setSuffix(" s")
+        self._duration.valueChanged.connect(self._state.set_duration)
         self._seed = QSpinBox()
         self._seed.setRange(-1, 2_147_483_647)
         self._seed.setSpecialValueText("Random")
-        self._seed.setValue(-1)
+        self._seed.setValue(self._state.seed)
+        self._seed.valueChanged.connect(self._state.set_seed)
         self._steps = QSpinBox()
         self._steps.setRange(1, 100)
-        self._steps.setValue(30)
+        self._steps.setValue(self._state.steps)
+        self._steps.valueChanged.connect(self._state.set_steps)
         self._gpu_label = QLabel("Probing…")
         self._gpu_label.setWordWrap(True)
+        self._state.changed.connect(self._sync_inspector)
+        self._state.open_history.connect(lambda: self.show_page("history"))
+        self._state.restore_music.connect(lambda _: self.show_page("music"))
 
         inspector = QWidget()
         form = QFormLayout(inspector)
@@ -127,19 +163,49 @@ class MainWindow(QMainWindow):
         first_page_row = next(i for i, key in enumerate(self._nav_keys) if key == "music")
         self._nav.setCurrentRow(first_page_row)
         self.refresh_probe()
+        self._history.refresh()
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(500)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start()
+
+    def show_page(self, key: str) -> None:
+        row = next(i for i, item in enumerate(self._nav_keys) if item == key)
+        self._nav.setCurrentRow(row)
+        if key == "history":
+            self._history.refresh()
 
     def _on_nav(self, row: int) -> None:
         if row < 0 or row >= len(self._nav_keys):
             return
         key = self._nav_keys[row]
         if key is None:
-            # Snap back to the last real page.
             for i in range(row + 1, len(self._nav_keys)):
                 if self._nav_keys[i] is not None:
                     self._nav.setCurrentRow(i)
                     return
             return
         self._stack.setCurrentIndex(self._page_index[key])
+        if key == "history":
+            self._history.refresh()
+        if key == "models":
+            self._models.refresh()
+
+    def _sync_inspector(self) -> None:
+        mapping = {"auto": 0, "local": 1, "api": 2}
+        self._backend.blockSignals(True)
+        self._duration.blockSignals(True)
+        self._seed.blockSignals(True)
+        self._steps.blockSignals(True)
+        self._backend.setCurrentIndex(mapping.get(self._state.backend, 0))
+        self._duration.setValue(self._state.duration)
+        self._seed.setValue(self._state.seed)
+        self._steps.setValue(self._state.steps)
+        self._backend.blockSignals(False)
+        self._duration.blockSignals(False)
+        self._seed.blockSignals(False)
+        self._steps.blockSignals(False)
 
     def refresh_probe(self) -> None:
         try:
@@ -151,6 +217,12 @@ class MainWindow(QMainWindow):
             return
         self._status_worker.setText(f"Worker: ok  v{health.get('version', '?')}")
         self._gpu_label.setText(_format_probe(probe))
+
+    def _tick(self) -> None:
+        self._music.poll()
+        self._video.poll()
+        if self._nav_keys[self._nav.currentRow()] == "models":
+            self._models.refresh()
 
 
 def _format_probe(probe: dict[str, Any]) -> str:

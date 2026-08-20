@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
+from minimax_studio.config import AppConfig
 from minimax_studio.ui.main_window import MainWindow
 from minimax_studio.ui.theme import apply_theme
 
@@ -23,10 +24,23 @@ class FakeWorker:
             "ram_gb": 32.0,
         }
 
+    def list_history(self) -> list:
+        return []
 
-def test_main_window_builds() -> None:
+    def list_packs(self) -> list:
+        return []
+
+    def list_downloads(self) -> list:
+        return []
+
+    def get_job(self, _job_id: str) -> dict:
+        return {"status": "done", "progress": 1, "message": "Done"}
+
+
+def test_main_window_builds(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])
     apply_theme(app)
-    window = MainWindow(FakeWorker())  # type: ignore[arg-type]
+    config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
+    window = MainWindow(FakeWorker(), config)  # type: ignore[arg-type]
     assert window.windowTitle() == "MiniMax Studio"
     assert window._stack.count() == 6

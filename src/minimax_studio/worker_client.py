@@ -6,7 +6,7 @@ import httpx
 
 
 class WorkerClient:
-    def __init__(self, base_url: str, timeout: float = 5.0) -> None:
+    def __init__(self, base_url: str, timeout: float = 30.0) -> None:
         self._base = base_url.rstrip("/")
         self._timeout = timeout
 
@@ -16,11 +16,70 @@ class WorkerClient:
     def probe(self) -> dict[str, Any]:
         return self._get("/probe")
 
+    def get_settings(self) -> dict[str, Any]:
+        return self._get("/settings")
+
+    def put_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/settings", payload)
+
+    def list_packs(self) -> list[dict[str, Any]]:
+        return self._get_list("/packs")
+
+    def start_download(self, pack_id: str) -> dict[str, Any]:
+        return self._post("/downloads", {"pack_id": pack_id})
+
+    def list_downloads(self) -> list[dict[str, Any]]:
+        return self._get_list("/downloads")
+
+    def get_download(self, job_id: str) -> dict[str, Any]:
+        return self._get(f"/downloads/{job_id}")
+
+    def start_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/jobs", payload)
+
+    def get_job(self, job_id: str) -> dict[str, Any]:
+        return self._get(f"/jobs/{job_id}")
+
+    def list_jobs(self) -> list[dict[str, Any]]:
+        return self._get_list("/jobs")
+
+    def list_history(self) -> list[dict[str, Any]]:
+        return self._get_list("/history")
+
     def _get(self, path: str) -> dict[str, Any]:
         with httpx.Client(timeout=self._timeout) as client:
             response = client.get(f"{self._base}{path}")
-            response.raise_for_status()
+            self._raise(response)
             data = response.json()
             if not isinstance(data, dict):
-                raise RuntimeError(f"unexpected worker payload from {path}")
+                raise RuntimeError(f"unexpected payload from {path}")
             return data
+
+    def _get_list(self, path: str) -> list[dict[str, Any]]:
+        with httpx.Client(timeout=self._timeout) as client:
+            response = client.get(f"{self._base}{path}")
+            self._raise(response)
+            data = response.json()
+            if not isinstance(data, list):
+                raise RuntimeError(f"unexpected list payload from {path}")
+            return data
+
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        with httpx.Client(timeout=self._timeout) as client:
+            response = client.post(f"{self._base}{path}", json=payload)
+            self._raise(response)
+            data = response.json()
+            if not isinstance(data, dict):
+                raise RuntimeError(f"unexpected payload from {path}")
+            return data
+
+    @staticmethod
+    def _raise(response: httpx.Response) -> None:
+        if response.is_success:
+            return
+        detail = None
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text
+        raise RuntimeError(detail or f"HTTP {response.status_code}")

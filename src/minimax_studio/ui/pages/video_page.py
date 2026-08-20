@@ -1,0 +1,183 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtWidgets import (
+    QButtonGroup,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from minimax_studio.ui.state import StudioState
+from minimax_studio.worker_client import WorkerClient
+
+MODES = [
+    ("t2va", "Text"),
+    ("i2va", "First frame"),
+    ("l2va", "Last frame"),
+    ("fl2va", "First + last"),
+    ("ref2va", "References"),
+]
+
+
+class VideoPage(QWidget):
+    def __init__(self, client: WorkerClient, state: StudioState) -> None:
+        super().__init__()
+        self._client = client
+        self._state = state
+        self._job_id: str | None = None
+        self._mode = "t2va"
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 24)
+        title = QLabel("Generate Video")
+        title.setObjectName("pageTitle")
+        brand = QLabel("MiniMax H3")
+        brand.setObjectName("brand")
+        sub = QLabel(
+            "One form, no wires. Pick a mode and drop images, video, or audio. "
+            "Local generate uses the official diffusers FL2VA pack from Models."
+        )
+        sub.setObjectName("pageSubtitle")
+        sub.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(brand)
+        layout.addWidget(sub)
+
+        mode_row = QHBoxLayout()
+        self._mode_group = QButtonGroup(self)
+        for value, label in MODES:
+            button = QRadioButton(label)
+            if value == "t2va":
+                button.setChecked(True)
+            self._mode_group.addButton(button)
+            button.toggled.connect(lambda checked, v=value: checked and self._set_mode(v))
+            mode_row.addWidget(button)
+        mode_row.addStretch(1)
+        layout.addLayout(mode_row)
+
+        self.prompt = QPlainTextEdit()
+        self.prompt.setPlaceholderText(
+            "Cinematic medium shot. Describe shots, camera, dialogue, SFX, and music."
+        )
+        layout.addWidget(self.prompt, 1)
+
+        self._assets = QVBoxLayout()
+        self.first_path = _AssetRow("First frame", "image")
+        self.last_path = _AssetRow("Last frame", "image")
+        self.refs_path = _AssetRow("References (images / video / audio)", "any")
+        self._assets.addWidget(self.first_path)
+        self._assets.addWidget(self.last_path)
+        self._assets.addWidget(self.refs_path)
+        layout.addLayout(self._assets)
+        self._set_mode("t2va")
+
+        run_row = QHBoxLayout()
+        self.generate = QPushButton("Generate")
+        self.generate.setObjectName("primary")
+        self.generate.clicked.connect(self._generate)
+        self._status = QLabel("")
+        self._status.setObjectName("pageSubtitle")
+        run_row.addWidget(self.generate)
+        run_row.addWidget(self._status, 1)
+        layout.addLayout(run_row)
+        self._bar = QProgressBar()
+        self._bar.hide()
+        layout.addWidget(self._bar)
+
+    def _set_mode(self, mode: str) -> None:
+        self._mode = mode
+        self.first_path.setVisible(mode in {"i2va", "fl2va"})
+        self.last_path.setVisible(mode in {"l2va", "fl2va"})
+        self.refs_path.setVisible(mode == "ref2va")
+
+    def poll(self) -> None:
+        if not self._job_id:
+            return
+        try:
+            job = self._client.get_job(self._job_id)
+        except Exception as exc:
+            self._status.setText(str(exc))
+            self._job_id = None
+            self.generate.setEnabled(True)
+            return
+        self._bar.show()
+        self._bar.setValue(int(float(job.get("progress") or 0) * 100))
+        self._status.setText(str(job.get("error") or job.get("message") or job.get("status")))
+        if job.get("status") in {"done", "error"}:
+            self._job_id = None
+            self.generate.setEnabled(True)
+
+    def _generate(self) -> None:
+        prompt = self.prompt.toPlainText().strip()
+        if not prompt:
+            QMessageBox.information(self, "Prompt needed", "Describe the shot first.")
+            return
+        assets = []
+        if self.first_path.isVisible() and self.first_path.path:
+            assets.append({"role": "first_frame", "path": self.first_path.path})
+        if self.last_path.isVisible() and self.last_path.path:
+            assets.append({"role": "last_frame", "path": self.last_path.path})
+        if self.refs_path.isVisible() and self.refs_path.path:
+            assets.append({"role": "reference", "path": self.refs_path.path})
+        payload = {
+            "kind": "h3",
+            "backend": self._state.backend,
+            "mode": self._mode,
+            "prompt": prompt,
+            "duration_s": min(self._state.duration, 15),
+            "seed": self._state.seed,
+            "steps": self._state.steps,
+            "assets": assets,
+            "speed": "quality",
+        }
+        try:
+            job = self._client.start_job(payload)
+        except Exception as exc:
+            QMessageBox.warning(self, "Generate failed", str(exc))
+            return
+        self._job_id = str(job["id"])
+        self.generate.setEnabled(False)
+        self._bar.show()
+        self._status.setText("Queued")
+
+
+class _AssetRow(QWidget):
+    def __init__(self, label: str, kind: str) -> None:
+        super().__init__()
+        self._kind = kind
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(QLabel(label))
+        self._edit = QLineEdit()
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self._browse)
+        row.addWidget(self._edit, 1)
+        row.addWidget(browse)
+
+    @property
+    def path(self) -> str:
+        return self._edit.text().strip()
+
+    def _browse(self) -> None:
+        if self._kind == "image":
+            chosen, _ = QFileDialog.getOpenFileName(
+                self, "Choose image", "", "Images (*.png *.jpg *.jpeg *.webp)"
+            )
+        else:
+            chosen, _ = QFileDialog.getOpenFileName(
+                self,
+                "Choose reference",
+                "",
+                "Media (*.png *.jpg *.jpeg *.webp *.mp4 *.mov *.wav *.mp3)",
+            )
+        if chosen:
+            self._edit.setText(str(Path(chosen)))

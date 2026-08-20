@@ -211,10 +211,10 @@ Download packs:
 |---|---|
 | Music 3 (CUDA) | Official diffusers layout |
 | Music 3 (MLX MXFP8) | Mac |
-| H3 FL2VA pruned INT8 + VAEs + NVFP4 TE | Default CUDA video |
-| H3 Ref2VA pruned INT8 | Only if user wants references |
+| H3 FL2VA official diffusers | In-app local generate (large) |
+| H3 Ref2VA official transformer_ref | Omni-reference |
+| H3 FL2VA pruned INT8 (Comfy-Org) | Shared with Comfy; in-app loader later |
 | H3 Turbo LoRA | Fast mode |
-| H3 Mac/MLX or GGUF profile | Only if RAM ≥ threshold |
 
 Never auto-pull both H3 families plus bf16.
 
