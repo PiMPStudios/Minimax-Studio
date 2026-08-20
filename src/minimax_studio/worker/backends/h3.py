@@ -115,8 +115,13 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
 
     steps = int(request.steps)
     loras = list(request.loras)
+    if request.attention.strip().lower() in {"sage", "sageattention"}:
+        update_job(
+            job_id,
+            message="SageAttention is used on the Comfy path; official diffusers uses PyTorch attention",
+        )
     if request.speed == "fast":
-        turbo = _find_turbo_lora()
+        turbo = _find_turbo_lora(request.mode)
         if turbo and not any("turbo" in (item.get("id") or "").lower() for item in loras):
             loras.append({"id": turbo, "strength": 1.0})
         if steps >= 16:
@@ -250,25 +255,41 @@ def _apply_loras(pipe: Any, loras: list[dict[str, Any]]) -> None:
                 pass
 
 
-def _find_turbo_lora() -> str | None:
+def _find_turbo_lora(mode: str = "t2va") -> str | None:
     from minimax_studio.worker.model_paths import search_roots
 
-    name = "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors"
+    names = [
+        "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+        "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    ]
+    if mode == "ref2va":
+        names = [
+            "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+            *names,
+        ]
     root = runtime.config.models_root()
     roots = search_roots(root, runtime.config.comfy_models_dir)
     candidates: list[Path] = []
     for folder in roots:
-        candidates.extend(
-            [
-                folder / "h3-comfy" / "loras" / name,
-                folder / "minimax-h3" / "loras" / name,
-                folder / "loras" / name,
-            ]
-        )
+        for name in names:
+            candidates.extend(
+                [
+                    folder / "h3-comfy" / "loras" / name,
+                    folder / "minimax-h3" / "loras" / name,
+                    folder / "loras" / name,
+                ]
+            )
         lora_dir = folder / "loras"
         if lora_dir.is_dir():
+            if mode == "ref2va":
+                candidates.extend(sorted(lora_dir.glob("*ref2*turbo*.safetensors")))
             candidates.extend(sorted(lora_dir.glob("*turbo*.safetensors")))
+    seen: set[str] = set()
     for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
         if Path(path).is_file():
             return str(path)
     return None

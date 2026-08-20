@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
@@ -117,21 +117,43 @@ class SettingsPage(QWidget):
             return
         self._save_status.setText("Saved. Checking connections…")
         self._refresh_pings()
-        if self._save_status.text().startswith("Saved. Checking"):
-            self._save_status.setText("Saved.")
 
     def _refresh_pings(self) -> None:
-        try:
-            ping = self._client.ping()
-        except Exception as exc:
-            self._minimax_mark.set_state(False, str(exc))
-            self._llm_mark.set_state(False, str(exc))
-            self._comfy_mark.set_state(False, str(exc))
-            self._save_status.setText(str(exc))
-            return
-        self._apply_ping(self._minimax_mark, ping.get("minimax"))
-        self._apply_ping(self._llm_mark, ping.get("llm"))
-        self._apply_ping(self._comfy_mark, ping.get("comfy"))
+        class Worker(QObject):
+            finished = Signal(dict)
+            failed = Signal(str)
+
+            def run(inner_self) -> None:
+                try:
+                    inner_self.finished.emit(self._client.ping())
+                except Exception as exc:
+                    inner_self.failed.emit(str(exc))
+
+        thread = QThread(self)
+        worker = Worker()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+
+        def done(ping: dict) -> None:
+            self._apply_ping(self._minimax_mark, ping.get("minimax"))
+            self._apply_ping(self._llm_mark, ping.get("llm"))
+            self._apply_ping(self._comfy_mark, ping.get("comfy"))
+            if self._save_status.text().startswith("Saved"):
+                self._save_status.setText("Saved.")
+
+        def fail(err: str) -> None:
+            self._minimax_mark.set_state(False, err)
+            self._llm_mark.set_state(False, err)
+            self._comfy_mark.set_state(False, err)
+            if self._save_status.text().startswith("Saved"):
+                self._save_status.setText(err)
+
+        worker.finished.connect(done)
+        worker.failed.connect(fail)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.start()
+        self._ping_thread = thread
 
     @staticmethod
     def _apply_ping(mark: "_PingMark", result: object) -> None:

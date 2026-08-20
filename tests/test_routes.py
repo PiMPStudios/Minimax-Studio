@@ -9,6 +9,7 @@ def test_packs_and_stub_job(studio_home) -> None:
     assert packs.status_code == 200
     ids = {item["id"] for item in packs.json()}
     assert "music3-cuda" in ids
+    assert "music3-comfy" in ids
     assert "h3-fl2va" in ids
     created = client.post(
         "/jobs",

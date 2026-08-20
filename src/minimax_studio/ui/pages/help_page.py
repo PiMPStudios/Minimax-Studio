@@ -30,8 +30,16 @@ The MiniMax hosted API remains globally available.</li>
 via a running ComfyUI, then the MiniMax API if a key is set.</p>
 <p>The Comfy-Org INT8 files use Comfy <code>convrot</code> kernels. Diffusers cannot
 load them. Point Settings at your ComfyUI models folder (Studio auto-detects
-<code>~/ai/ComfyUI/models</code> and <code>~/models</code>) and keep ComfyUI at
+<code>~/ai/ComfyUI/models</code>, <code>~/models</code>, and Comfy
+<code>extra_model_paths.yaml</code>) and keep ComfyUI at
 <code>http://127.0.0.1:8188</code> to generate from those weights.</p>
+<p>Reference mode on INT8 uses the Ref2VA checkpoint via ComfyUI. Name files in the
+prompt as <code>&lt;Picture 1&gt;</code> / <code>&lt;Video 1&gt;</code> /
+<code>&lt;Audio 1&gt;</code> in the order you added them.</p>
+<p>Inspector <b>Sage</b> attention patches the Comfy graph (KJNodes
+<code>PathchSageAttentionKJ</code>). Official diffusers still uses PyTorch attention.</p>
+<p>MiniMax-Music3 INT8 works the same way: if those files are in a Comfy models
+folder and ComfyUI is running, Generate Music can submit to it.</p>
 """
 
 

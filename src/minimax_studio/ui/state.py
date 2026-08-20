@@ -18,6 +18,8 @@ class StudioState(QObject):
         self.lora_id = ""
         self.lora_strength = 1.0
         self.speed = "quality"
+        self.attention = "default"
+        self.ref_image_size = "match"
 
     def set_backend(self, value: str) -> None:
         key = value.strip().lower()
@@ -49,4 +51,16 @@ class StudioState(QObject):
         key = value.strip().lower()
         if key != self.speed:
             self.speed = key
+            self.changed.emit()
+
+    def set_attention(self, value: str) -> None:
+        key = value.strip().lower()
+        if key != self.attention:
+            self.attention = key
+            self.changed.emit()
+
+    def set_ref_image_size(self, value: str) -> None:
+        key = value.strip().lower()
+        if key != self.ref_image_size:
+            self.ref_image_size = key
             self.changed.emit()

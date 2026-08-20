@@ -27,6 +27,8 @@ class JobRequest(BaseModel):
     height: int = 544
     resolution: str = "768P"
     ratio: str = "16:9"
+    attention: str = "default"
+    ref_image_size: str = "match"
 
 
 def start_job(request: JobRequest) -> dict[str, Any]:

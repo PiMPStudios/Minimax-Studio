@@ -79,9 +79,7 @@ class VideoPage(QWidget):
         layout.addLayout(mode_row)
 
         self.prompt = QPlainTextEdit()
-        self.prompt.setPlaceholderText(
-            "Cinematic medium shot. Describe shots, camera, dialogue, SFX, and music."
-        )
+        self.prompt.setPlaceholderText(_placeholder("t2va"))
         layout.addWidget(self.prompt, 1)
 
         self._assets = QVBoxLayout()
@@ -92,7 +90,6 @@ class VideoPage(QWidget):
         self._assets.addWidget(self.last_path)
         self._assets.addWidget(self.refs_path)
         layout.addLayout(self._assets)
-        self._set_mode("t2va")
 
         res_row = QHBoxLayout()
         res_row.addWidget(QLabel("API resolution"))
@@ -103,8 +100,18 @@ class VideoPage(QWidget):
         self.ratio = QComboBox()
         self.ratio.addItems(["16:9", "9:16", "1:1", "4:3", "21:9"])
         res_row.addWidget(self.ratio)
+        self._ref_size_label = QLabel("Ref size")
+        self.ref_size = QComboBox()
+        self.ref_size.addItems(["match", "max"])
+        self.ref_size.setToolTip(
+            "match scales references to the output size (faster). "
+            "max keeps up to a 2048px short edge (stronger identity)."
+        )
+        res_row.addWidget(self._ref_size_label)
+        res_row.addWidget(self.ref_size)
         res_row.addStretch(1)
         layout.addLayout(res_row)
+        self._set_mode("t2va")
 
         run_row = QHBoxLayout()
         self.generate = QPushButton("Generate")
@@ -132,6 +139,9 @@ class VideoPage(QWidget):
         self.first_path.setVisible(mode in {"i2va", "fl2va"})
         self.last_path.setVisible(mode in {"l2va", "fl2va"})
         self.refs_path.setVisible(mode == "ref2va")
+        self._ref_size_label.setVisible(mode == "ref2va")
+        self.ref_size.setVisible(mode == "ref2va")
+        self.prompt.setPlaceholderText(_placeholder(mode))
 
     def poll(self) -> None:
         if not self._job_id:
@@ -175,8 +185,10 @@ class VideoPage(QWidget):
             "steps": self._state.steps,
             "assets": assets,
             "speed": self._state.speed,
+            "attention": self._state.attention,
             "resolution": self.resolution.currentText(),
             "ratio": self.ratio.currentText(),
+            "ref_image_size": self.ref_size.currentText(),
             "loras": (
                 [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
                 if self._state.lora_id
@@ -223,6 +235,10 @@ class VideoPage(QWidget):
             self._state.set_backend(str(entry["backend"]))
         if entry.get("speed"):
             self._state.set_speed(str(entry["speed"]))
+        if entry.get("attention"):
+            self._state.set_attention(str(entry["attention"]))
+        if entry.get("ref_image_size"):
+            self.ref_size.setCurrentText(str(entry["ref_image_size"]))
         loras = entry.get("loras") or []
         lora_id = entry.get("lora_id") or (loras[0].get("id") if loras else "")
         strength = entry.get("lora_strength")
@@ -259,6 +275,8 @@ class VideoPage(QWidget):
                     "resolution": self.resolution.currentText(),
                     "ratio": self.ratio.currentText(),
                     "speed": self._state.speed,
+                    "attention": self._state.attention,
+                    "ref_image_size": self.ref_size.currentText(),
                     "backend": self._state.backend,
                     "lora_id": self._state.lora_id,
                     "lora_strength": self._state.lora_strength,
@@ -365,6 +383,15 @@ class VideoPage(QWidget):
         worker.failed.connect(thread.quit)
         thread.start()
         self._ir_thread = thread
+
+
+def _placeholder(mode: str) -> str:
+    if mode == "ref2va":
+        return (
+            "Name references in order: <Picture 1>, <Video 1>, <Audio 1>. "
+            "Say which file drives identity, style, motion, or voice."
+        )
+    return "Cinematic medium shot. Describe shots, camera, dialogue, SFX, and music."
 
 
 class _AssetRow(QWidget):

@@ -32,7 +32,9 @@ def list_packs() -> list[dict[str, Any]]:
     hw = probe()
     recommended = set()
     if hw.get("cuda"):
-        recommended.update({"music3-cuda", "h3-fl2va", "h3-diffusers-fl2va"})
+        recommended.update(
+            {"music3-cuda", "music3-comfy", "h3-fl2va", "h3-ref2va", "h3-diffusers-fl2va"}
+        )
     if hw.get("apple_silicon"):
         recommended.add("music3-mlx")
     rows = []

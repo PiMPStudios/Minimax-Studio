@@ -6,7 +6,29 @@ from pathlib import Path
 from minimax_studio.worker.catalog import Pack
 from minimax_studio.worker.fsutil import dir_bytes
 
-_NESTED = ("", "h3-comfy", "minimax-h3")
+_NESTED = ("", "h3-comfy", "minimax-h3", "minimax-music-3", "music3-comfy")
+_FOLDER_KEYS = {
+    "checkpoints",
+    "configs",
+    "loras",
+    "vae",
+    "text_encoders",
+    "clip",
+    "clip_vision",
+    "diffusion_models",
+    "unet",
+    "embeddings",
+    "controlnet",
+    "style_models",
+    "upscale_models",
+    "latent_upscale_models",
+    "vae_approx",
+    "gligen",
+    "hypernetworks",
+    "photomaker",
+    "model_patches",
+    "audio_encoders",
+}
 
 
 def guess_comfy_model_dirs() -> list[Path]:
@@ -62,6 +84,82 @@ def search_roots(models_root: Path, comfy_models_dir: str | None = None) -> list
     else:
         for guessed in guess_comfy_model_dirs():
             add(guessed)
+        for extra in extra_model_path_roots():
+            add(extra)
+    return roots
+
+
+def extra_model_path_files() -> list[Path]:
+    home = Path.home()
+    files = [
+        home / "ai" / "ComfyUI" / "extra_model_paths.yaml",
+        home / "ComfyUI" / "extra_model_paths.yaml",
+        home / "Documents" / "ComfyUI" / "extra_model_paths.yaml",
+    ]
+    env = os.environ.get("COMFYUI_PATH")
+    if env:
+        files.append(Path(env).expanduser() / "extra_model_paths.yaml")
+    return files
+
+
+def extra_model_path_roots() -> list[Path]:
+    roots: list[Path] = []
+    for path in extra_model_path_files():
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        roots.extend(parse_extra_model_paths(text))
+    return roots
+
+
+def parse_extra_model_paths(text: str) -> list[Path]:
+    """Lightweight YAML subset for Comfy extra_model_paths.yaml."""
+    roots: list[Path] = []
+    section_base: Path | None = None
+    collecting = False
+    collect_indent = 0
+
+    def add_rel(rel: str) -> None:
+        if not section_base or not rel:
+            return
+        roots.append(section_base / rel.strip().rstrip("/"))
+
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        stripped = raw.strip()
+        if collecting:
+            if indent > collect_indent and ":" not in stripped.split(" ", 1)[0]:
+                add_rel(stripped)
+                continue
+            collecting = False
+        if indent == 0 and stripped.endswith(":") and "|" not in stripped:
+            section_base = None
+            continue
+        if ":" not in stripped:
+            continue
+        key, _, value = stripped.partition(":")
+        key = key.strip()
+        value = value.strip()
+        if key == "base_path" and value:
+            try:
+                section_base = Path(value).expanduser()
+            except OSError:
+                section_base = None
+            else:
+                roots.append(section_base)
+            continue
+        if value == "|":
+            if key in _FOLDER_KEYS:
+                collecting = True
+                collect_indent = indent
+            continue
+        if value and key in _FOLDER_KEYS:
+            add_rel(value)
     return roots
 
 

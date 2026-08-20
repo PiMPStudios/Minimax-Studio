@@ -40,6 +40,27 @@ PACKS: dict[str, Pack] = {
         ignore_patterns=("figures/*", "assets/*", "scripts/*", ".gitattributes"),
         marker_files=("modular_model_index.json", "config.json"),
     ),
+    "music3-comfy": Pack(
+        id="music3-comfy",
+        title="MiniMax-Music3 (Comfy INT8)",
+        summary="Consumer CUDA song pack. Detected in Studio or a ComfyUI models folder. Generate submits to ComfyUI when that server is running.",
+        repo_id="Comfy-Org/MiniMax-Music-3",
+        local_dir="music3-comfy",
+        approx_gb=12.0,
+        license_name="MiniMax-Music3 Community License",
+        family="music",
+        kind="comfy",
+        allow_patterns=(
+            "diffusion_models/minimax_music3_dit_int8_convrot.safetensors",
+            "text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+            "vae/minimax_music3_dav.safetensors",
+        ),
+        marker_files=(
+            "diffusion_models/minimax_music3_dit_int8_convrot.safetensors",
+            "text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+            "vae/minimax_music3_dav.safetensors",
+        ),
+    ),
     "music3-mlx": Pack(
         id="music3-mlx",
         title="MiniMax-Music3 (MLX MXFP8)",
@@ -119,7 +140,7 @@ PACKS: dict[str, Pack] = {
     "h3-ref2va": Pack(
         id="h3-ref2va",
         title="MiniMax H3 Ref2VA (pruned INT8)",
-        summary="Omni-reference checkpoint. Needs the FL2VA pack’s encoder and VAEs.",
+        summary="Omni-reference INT8. Generate via ComfyUI when that server is running. Needs the FL2VA pack’s encoder and VAEs.",
         repo_id="Comfy-Org/MiniMax-H3",
         local_dir="h3-comfy",
         approx_gb=21.0,

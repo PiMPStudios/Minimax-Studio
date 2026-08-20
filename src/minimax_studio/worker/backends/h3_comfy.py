@@ -13,9 +13,14 @@ from minimax_studio.worker.jobs import JobRequest, is_cancelled, update_job
 from minimax_studio.worker.runtime import runtime
 
 UNET_FL2VA = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+UNET_REF2VA = "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
 CLIP_NAME = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
 VIDEO_VAE = "minimax_h3_video_vae_fp16.safetensors"
 AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
+
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
+AUDIO_EXT = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"}
 
 
 def comfy_base() -> str:
@@ -37,11 +42,6 @@ def comfy_reachable() -> bool:
 
 
 def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
-    if request.mode == "ref2va":
-        raise RuntimeError(
-            "Reference mode is not wired through Comfy-Org INT8 yet. "
-            "Download the official Ref2VA transformer pack, or use the MiniMax API."
-        )
     if not comfy_reachable():
         raise RuntimeError(
             "Comfy-Org INT8 H3 needs a running ComfyUI. "
@@ -50,6 +50,8 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
         )
 
     from minimax_studio.worker.backends.h3 import duration_to_frames, resolve_dims
+    from minimax_studio.worker.catalog import PACKS
+    from minimax_studio.worker.downloads import pack_status
 
     dest = runtime.config.history_root() / job_id
     dest.mkdir(parents=True, exist_ok=True)
@@ -58,14 +60,27 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
     width, height = resolve_dims(request.resolution, request.ratio, request.width, request.height)
     seed = int(request.seed) if request.seed >= 0 else random.randint(0, 2_147_483_647)
     steps = int(request.steps)
+    mode = request.mode
+    unet_name = UNET_FL2VA
+    if mode == "ref2va":
+        ref_pack = pack_status(PACKS["h3-ref2va"], runtime.config.models_root())
+        if not ref_pack["ready"]:
+            raise RuntimeError(
+                "Reference mode on Comfy needs the Comfy-Org Ref2VA INT8 file. "
+                "Download that pack on Models, or use official Ref2VA / the MiniMax API."
+            )
+        unet_name = UNET_REF2VA
+        if steps >= 16 and request.speed == "fast":
+            steps = 4
+    elif request.speed == "fast" and steps >= 16:
+        steps = 8
+
     lora_name = None
     lora_strength = 1.0
     if request.speed == "fast":
-        if steps >= 16:
-            steps = 8
         from minimax_studio.worker.backends.h3 import _find_turbo_lora
 
-        turbo_path = _find_turbo_lora()
+        turbo_path = _find_turbo_lora(mode)
         if turbo_path:
             lora_name = Path(turbo_path).name
     elif request.loras:
@@ -75,29 +90,63 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
             lora_name = Path(str(path)).name
             lora_strength = float(first.get("strength") or 1.0)
 
+    use_sage = request.attention.strip().lower() in {"sage", "sageattention"}
+    refs = _split_assets(request) if mode == "ref2va" else {"images": [], "videos": [], "audios": []}
+    if mode == "ref2va" and not (refs["images"] or refs["videos"] or refs["audios"]):
+        raise RuntimeError("Reference mode needs at least one image, video, or audio file.")
+
     update_job(job_id, message="Uploading to ComfyUI", progress=0.12)
-    first_name = _maybe_upload(request, "first_frame")
-    last_name = _maybe_upload(request, "last_frame")
-    graph = build_h3_comfy_graph(
+    first_name = last_name = None
+    uploaded_images: list[str] = []
+    uploaded_videos: list[str] = []
+    uploaded_audios: list[str] = []
+    if mode == "ref2va":
+        uploaded_images = [_upload_file(path) for path in refs["images"][:9]]
+        uploaded_videos = [_upload_file(path) for path in refs["videos"][:3]]
+        uploaded_audios = [_upload_file(path) for path in refs["audios"][:3]]
+    else:
+        first_name = _maybe_upload(request, "first_frame")
+        last_name = _maybe_upload(request, "last_frame")
+
+    graph_kwargs: dict[str, Any] = dict(
         prompt=request.prompt,
         width=width,
         height=height,
         length=frames,
         seed=seed,
         steps=steps,
+        mode=mode,
         first_image=first_name,
         last_image=last_name,
+        ref_images=uploaded_images,
+        ref_videos=uploaded_videos,
+        ref_audios=uploaded_audios,
         lora_name=lora_name,
         lora_strength=lora_strength,
+        unet_name=unet_name,
+        sage=use_sage,
+        scheduler="beta" if mode == "ref2va" else "simple",
+        ref_image_size=request.ref_image_size or "match",
         prefix=f"minimax_studio/{job_id}",
     )
+    graph = build_h3_comfy_graph(**graph_kwargs)
     client_id = uuid.uuid4().hex
     update_job(job_id, message="Queued on ComfyUI", progress=0.2)
     with httpx.Client(timeout=30.0) as client:
-        submitted = client.post(
-            f"{comfy_base()}/prompt",
-            json={"prompt": graph, "client_id": client_id},
-        )
+        submitted = _submit_graph(client, graph, client_id)
+        if (
+            submitted.status_code >= 400
+            and use_sage
+            and "PathchSageAttentionKJ" in (submitted.text or "")
+        ):
+            graph_kwargs["sage"] = False
+            graph = build_h3_comfy_graph(**graph_kwargs)
+            update_job(
+                job_id,
+                message="SageAttention node missing; retrying without it",
+                progress=0.22,
+            )
+            submitted = _submit_graph(client, graph, client_id)
         if submitted.status_code >= 400:
             detail = submitted.text
             try:
@@ -134,15 +183,22 @@ def build_h3_comfy_graph(
     length: int,
     seed: int,
     steps: int,
+    mode: str = "t2va",
     first_image: str | None = None,
     last_image: str | None = None,
+    ref_images: list[str] | None = None,
+    ref_videos: list[str] | None = None,
+    ref_audios: list[str] | None = None,
     lora_name: str | None = None,
     lora_strength: float = 1.0,
     unet_name: str = UNET_FL2VA,
+    sage: bool = False,
+    scheduler: str = "simple",
+    ref_image_size: str = "match",
     prefix: str = "minimax_studio/h3",
 ) -> dict[str, Any]:
     use_lora = bool(lora_name)
-    model_src = ["lora", 0] if use_lora else ["unet", 0]
+    model_src: list[Any] = ["unet", 0]
     graph: dict[str, Any] = {
         "unet": {
             "class_type": "UNETLoader",
@@ -164,25 +220,6 @@ def build_h3_comfy_graph(
             "class_type": "VAELoader",
             "inputs": {"vae_name": AUDIO_VAE},
         },
-        "cond": {
-            "class_type": "MiniMaxH3ImageToVideo",
-            "inputs": {
-                "clip": ["clip", 0],
-                "vae": ["vae", 0],
-                "prompt": prompt,
-                "width": int(width),
-                "height": int(height),
-                "length": int(length),
-            },
-        },
-        "shift": {
-            "class_type": "MiniMaxH3SigmaShift",
-            "inputs": {
-                "model": model_src,
-                "shift_video": 12.0,
-                "shift_audio": 3.0,
-            },
-        },
         "noise": {
             "class_type": "RandomNoise",
             "inputs": {"noise_seed": int(seed)},
@@ -190,32 +227,6 @@ def build_h3_comfy_graph(
         "sampler": {
             "class_type": "KSamplerSelect",
             "inputs": {"sampler_name": "res_multistep"},
-        },
-        "sched": {
-            "class_type": "BasicScheduler",
-            "inputs": {
-                "model": ["shift", 0],
-                "scheduler": "simple",
-                "steps": int(steps),
-                "denoise": 1.0,
-            },
-        },
-        "guide": {
-            "class_type": "BasicGuider",
-            "inputs": {
-                "model": ["shift", 0],
-                "conditioning": ["cond", 0],
-            },
-        },
-        "sample": {
-            "class_type": "SamplerCustomAdvanced",
-            "inputs": {
-                "noise": ["noise", 0],
-                "guider": ["guide", 0],
-                "sampler": ["sampler", 0],
-                "sigmas": ["sched", 0],
-                "latent_image": ["cond", 1],
-            },
         },
         "vdec": {
             "class_type": "VAEDecode",
@@ -244,6 +255,116 @@ def build_h3_comfy_graph(
             },
         },
     }
+    if use_lora:
+        graph["lora"] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": ["unet", 0],
+                "lora_name": lora_name,
+                "strength_model": float(lora_strength),
+            },
+        }
+        model_src = ["lora", 0]
+    if sage:
+        graph["sage"] = {
+            "class_type": "PathchSageAttentionKJ",
+            "inputs": {
+                "model": model_src,
+                "sage_attention": "auto",
+                "allow_compile": False,
+            },
+        }
+        model_src = ["sage", 0]
+    graph["shift"] = {
+        "class_type": "MiniMaxH3SigmaShift",
+        "inputs": {
+            "model": model_src,
+            "shift_video": 12.0,
+            "shift_audio": 3.0,
+        },
+    }
+    graph["sched"] = {
+        "class_type": "BasicScheduler",
+        "inputs": {
+            "model": ["shift", 0],
+            "scheduler": scheduler,
+            "steps": int(steps),
+            "denoise": 1.0,
+        },
+    }
+    graph["guide"] = {
+        "class_type": "BasicGuider",
+        "inputs": {
+            "model": ["shift", 0],
+            "conditioning": ["cond", 0],
+        },
+    }
+    graph["sample"] = {
+        "class_type": "SamplerCustomAdvanced",
+        "inputs": {
+            "noise": ["noise", 0],
+            "guider": ["guide", 0],
+            "sampler": ["sampler", 0],
+            "sigmas": ["sched", 0],
+            "latent_image": ["cond", 1],
+        },
+    }
+
+    if mode == "ref2va":
+        cond_inputs: dict[str, Any] = {
+            "clip": ["clip", 0],
+            "vae": ["vae", 0],
+            "audio_vae": ["avae", 0],
+            "prompt": prompt,
+            "width": int(width),
+            "height": int(height),
+            "length": int(length),
+            "ref_image_size": ref_image_size if ref_image_size in {"match", "max"} else "match",
+        }
+        for index, name in enumerate(ref_images or []):
+            node_id = f"img{index}"
+            graph[node_id] = {
+                "class_type": "LoadImage",
+                "inputs": {"image": name},
+            }
+            cond_inputs[f"ref_images.ref_image_{index}"] = [node_id, 0]
+        for index, name in enumerate(ref_videos or []):
+            load_id = f"vid{index}"
+            split_id = f"vcomp{index}"
+            graph[load_id] = {
+                "class_type": "LoadVideo",
+                "inputs": {"file": name},
+            }
+            graph[split_id] = {
+                "class_type": "GetVideoComponents",
+                "inputs": {"video": [load_id, 0]},
+            }
+            cond_inputs[f"ref_videos.ref_video_{index}"] = [split_id, 0]
+            cond_inputs[f"ref_video_audios.ref_video_audio_{index}"] = [split_id, 1]
+        for index, name in enumerate(ref_audios or []):
+            node_id = f"aud{index}"
+            graph[node_id] = {
+                "class_type": "LoadAudio",
+                "inputs": {"audio": name},
+            }
+            cond_inputs[f"ref_audios.ref_audio_{index}"] = [node_id, 0]
+        graph["cond"] = {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "inputs": cond_inputs,
+        }
+        return graph
+
+    graph["cond"] = {
+        "class_type": "MiniMaxH3ImageToVideo",
+        "inputs": {
+            "clip": ["clip", 0],
+            "vae": ["vae", 0],
+            "prompt": prompt,
+            "width": int(width),
+            "height": int(height),
+            "length": int(length),
+        },
+    }
     if first_image:
         graph["first"] = {
             "class_type": "LoadImage",
@@ -256,41 +377,57 @@ def build_h3_comfy_graph(
             "inputs": {"image": last_image},
         }
         graph["cond"]["inputs"]["last_frame"] = ["last", 0]
-    if use_lora:
-        graph["lora"] = {
-            "class_type": "LoraLoaderModelOnly",
-            "inputs": {
-                "model": ["unet", 0],
-                "lora_name": lora_name,
-                "strength_model": float(lora_strength),
-            },
-        }
     return graph
+
+
+def _split_assets(request: JobRequest) -> dict[str, list[str]]:
+    images: list[str] = []
+    videos: list[str] = []
+    audios: list[str] = []
+    for item in request.assets:
+        path = item.get("path")
+        if not path:
+            continue
+        suffix = Path(path).suffix.lower()
+        if suffix in IMAGE_EXT:
+            images.append(path)
+        elif suffix in VIDEO_EXT:
+            videos.append(path)
+        elif suffix in AUDIO_EXT:
+            audios.append(path)
+    return {"images": images, "videos": videos, "audios": audios}
 
 
 def _maybe_upload(request: JobRequest, role: str) -> str | None:
     for item in request.assets:
         if item.get("role") == role and item.get("path"):
-            return _upload_image(item["path"])
+            return _upload_file(item["path"])
     return None
 
 
-def _upload_image(path: str) -> str:
+def _upload_file(path: str) -> str:
     source = Path(path)
     if not source.is_file():
-        raise RuntimeError(f"Missing image: {path}")
+        raise RuntimeError(f"Missing file: {path}")
     with source.open("rb") as handle:
         response = httpx.post(
             f"{comfy_base()}/upload/image",
             files={"image": (source.name, handle, "application/octet-stream")},
             data={"overwrite": "true"},
-            timeout=60.0,
+            timeout=120.0,
         )
     response.raise_for_status()
     body = response.json()
     name = body.get("name") or source.name
     sub = body.get("subfolder") or ""
     return f"{sub}/{name}" if sub else str(name)
+
+
+def _submit_graph(client: httpx.Client, graph: dict[str, Any], client_id: str) -> httpx.Response:
+    return client.post(
+        f"{comfy_base()}/prompt",
+        json={"prompt": graph, "client_id": client_id},
+    )
 
 
 def _poll_history(client: httpx.Client, prompt_id: str, job_id: str) -> dict[str, Any]:

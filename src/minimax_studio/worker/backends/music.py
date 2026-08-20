@@ -28,6 +28,10 @@ def generate_music(job_id: str, request: JobRequest) -> dict[str, Any]:
         return generate_music_api(job_id, request)
     if backend == "mlx":
         return _generate_mlx(job_id, request, wav_path)
+    if backend == "comfy":
+        from minimax_studio.worker.backends.music_comfy import generate_music_comfy
+
+        return generate_music_comfy(job_id, request)
     return _generate_cuda(job_id, request, wav_path)
 
 
@@ -35,30 +39,48 @@ def _resolve_backend(requested: str) -> str:
     name = requested.lower()
     if name == "stub" or os.environ.get("MINIMAX_STUDIO_STUB") == "1":
         return "stub"
-    if name in {"auto", "local"}:
-        root = runtime.config.models_root()
-        cuda = pack_status(PACKS["music3-cuda"], root)["ready"]
-        mlx = pack_status(PACKS["music3-mlx"], root)["ready"]
-        from minimax_studio.worker.probe import probe
+    root = runtime.config.models_root()
+    cuda = pack_status(PACKS["music3-cuda"], root)["ready"]
+    mlx = pack_status(PACKS["music3-mlx"], root)["ready"]
+    comfy_pack = pack_status(PACKS["music3-comfy"], root)
+    from minimax_studio.worker.backends.h3_comfy import comfy_reachable
+    from minimax_studio.worker.probe import probe
 
-        hw = probe()
-        if name == "local" or name == "auto":
-            if hw.get("cuda") and cuda:
-                return "cuda"
-            if hw.get("apple_silicon") and mlx:
-                return "mlx"
-            if cuda:
-                return "cuda"
-            if mlx:
-                return "mlx"
-            if runtime.config.minimax_api_key:
-                return "api"
-            if os.environ.get("MINIMAX_STUDIO_STUB") == "1":
-                return "stub"
+    hw = probe()
+    if name == "comfy":
+        if not comfy_pack["ready"]:
             raise RuntimeError(
-                "No Music 3 pack is installed and no MiniMax API key is set. "
-                "Download a pack or add a key in Settings."
+                "Comfy backend needs the Comfy-Org Music 3 INT8 files. "
+                "Download that pack or point Settings at your ComfyUI models folder."
             )
+        if not comfy_reachable():
+            raise RuntimeError(
+                "Music 3 INT8 is on disk, but those files use Comfy convrot kernels. "
+                f"Start ComfyUI at Settings → ComfyUI URL. Found at {comfy_pack['path']}."
+            )
+        return "comfy"
+    if name in {"auto", "local"}:
+        if hw.get("cuda") and cuda:
+            return "cuda"
+        if hw.get("apple_silicon") and mlx:
+            return "mlx"
+        if comfy_pack["ready"] and comfy_reachable():
+            return "comfy"
+        if cuda:
+            return "cuda"
+        if mlx:
+            return "mlx"
+        if runtime.config.minimax_api_key:
+            return "api"
+        if comfy_pack["ready"]:
+            raise RuntimeError(
+                "Music 3 INT8 is on disk, but those files use Comfy convrot kernels. "
+                f"Start ComfyUI at Settings → ComfyUI URL. Found at {comfy_pack['path']}."
+            )
+        raise RuntimeError(
+            "No Music 3 pack is installed and no MiniMax API key is set. "
+            "Download a pack or add a key in Settings."
+        )
     if name in {"cuda", "mlx", "api", "stub"}:
         return name
     raise RuntimeError(f"unknown music backend: {requested}")

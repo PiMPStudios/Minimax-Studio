@@ -12,6 +12,23 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.3] — 2026-08-19
+
+### Added
+
+- Comfy-Org INT8 **Ref2VA**: images, videos, and audio references submit to a running ComfyUI
+- Comfy-Org **Music 3 INT8** pack detect + generate via a running ComfyUI
+- Inspector **Sage** attention (KJNodes `PathchSageAttentionKJ` on the Comfy graph)
+- Models page also reads Comfy `extra_model_paths.yaml` when no Comfy models folder is set
+- Reference size `match` / `max` on Generate Video
+- Settings connection checks run off the UI thread
+
+### Notes
+
+- Name reference files in the prompt as `<Picture 1>` / `<Video 1>` / `<Audio 1>` in add order
+- SageAttention is a Comfy-path toggle. Official diffusers still uses PyTorch attention
+- If KJNodes is missing, generate retries without the Sage node
+
 ## [0.2.2] — 2026-08-19
 
 ### Added
@@ -30,7 +47,7 @@ The version string is defined once in `src/minimax_studio/__init__.py` (`__versi
 ### Notes
 
 - INT8 files use Comfy convrot kernels. Diffusers cannot load them; Studio will not try `from_single_file` on a 42 GB checkpoint just to fail. Start ComfyUI or download official FL2VA.
-- Reference mode (Ref2VA) is still official-diffusers or MiniMax API, not the Comfy INT8 path.
+- Reference mode on INT8 now goes through ComfyUI when that pack and server are present (0.2.3).
 
 ## [0.2.1] — 2026-08-19
 
