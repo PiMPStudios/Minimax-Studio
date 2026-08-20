@@ -11,6 +11,7 @@ class Runtime:
         self.lock = threading.Lock()
         self.config = load_config()
         self.downloads: dict[str, dict[str, Any]] = {}
+        self.download_stops: dict[str, threading.Event] = {}
         self.jobs: dict[str, dict[str, Any]] = {}
         self.music_pipe: Any = None
         self.music_pipe_path: str | None = None

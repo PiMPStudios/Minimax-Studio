@@ -67,6 +67,7 @@ def start_download(pack_id: str, snapshot: SnapshotFn | None = None) -> dict[str
     }
     with runtime.lock:
         runtime.downloads[job_id] = record
+        runtime.download_stops[job_id] = threading.Event()
     thread = threading.Thread(
         target=_run_download,
         args=(job_id, pack, dest, snapshot),
@@ -88,6 +89,26 @@ def get_download(job_id: str) -> dict[str, Any]:
 def list_downloads() -> list[dict[str, Any]]:
     with runtime.lock:
         return [dict(item) for item in runtime.downloads.values()]
+
+
+def cancel_download(job_id: str) -> dict[str, Any]:
+    with runtime.lock:
+        record = runtime.downloads.get(job_id)
+        if record is None:
+            raise KeyError(job_id)
+        if record.get("status") in {"done", "error", "cancelled"}:
+            return dict(record)
+        record["status"] = "cancelling"
+        record["message"] = "Cancel requested — Hugging Face may finish the current file"
+        stop = runtime.download_stops.get(job_id)
+        if stop:
+            stop.set()
+        return dict(record)
+
+
+def _stopped(job_id: str) -> bool:
+    stop = runtime.download_stops.get(job_id)
+    return bool(stop and stop.is_set())
 
 
 def _update(job_id: str, **fields: Any) -> None:
@@ -115,6 +136,9 @@ def _run_download(
             allow_patterns=list(pack.allow_patterns) if pack.allow_patterns else None,
             ignore_patterns=list(pack.ignore_patterns) if pack.ignore_patterns else None,
         )
+        if _stopped(job_id):
+            _update(job_id, status="cancelled", message="Cancelled")
+            return
         status = pack_status(pack, runtime.config.models_root())
         if not status["ready"] and pack.marker_files:
             # Some MLX packs use different markers; accept any file present.

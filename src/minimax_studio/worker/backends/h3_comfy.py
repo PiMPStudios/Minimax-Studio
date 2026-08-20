@@ -461,9 +461,22 @@ def _poll_history(client: httpx.Client, prompt_id: str, job_id: str) -> dict[str
             done = status.get("status_str") == "success" or status.get("completed") is True
             if done:
                 return outputs
-        update_job(job_id, message="Sampling on ComfyUI", progress=0.45)
+        update_job(job_id, message=_comfy_queue_message(client), progress=0.45)
         time.sleep(1.5)
     raise RuntimeError("Timed out waiting for ComfyUI.")
+
+
+def _comfy_queue_message(client: httpx.Client) -> str:
+    try:
+        response = client.get(f"{comfy_base()}/queue", timeout=3.0)
+        data = response.json()
+        running = len(data.get("queue_running") or [])
+        pending = len(data.get("queue_pending") or [])
+        if running or pending:
+            return f"ComfyUI: {running} running, {pending} queued"
+    except Exception:
+        pass
+    return "Sampling on ComfyUI"
 
 
 def _first_media(outputs: dict[str, Any]) -> dict[str, Any] | None:

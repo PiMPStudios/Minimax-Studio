@@ -108,6 +108,7 @@ class MainWindow(QMainWindow):
         self._backend = QComboBox()
         self._backend.addItems(["Auto", "Local", "Comfy", "API"])
         self._backend.currentTextChanged.connect(lambda text: self._state.set_backend(text))
+        self._backend.currentTextChanged.connect(lambda _t: self._refresh_route())
         self._speed = QComboBox()
         self._speed.addItems(["Quality", "Fast"])
         self._speed.currentTextChanged.connect(lambda text: self._state.set_speed(text))
@@ -160,6 +161,10 @@ class MainWindow(QMainWindow):
         inspector = QWidget()
         form = QFormLayout(inspector)
         form.addRow("Backend", self._backend)
+        self._route = QLabel("Will use: …")
+        self._route.setObjectName("pageSubtitle")
+        self._route.setWordWrap(True)
+        form.addRow("", self._route)
         form.addRow("Speed", self._speed)
         form.addRow("Attention", self._attention)
         form.addRow("Duration", self._duration)
@@ -215,6 +220,8 @@ class MainWindow(QMainWindow):
         self._timer.setInterval(500)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
+        self._route_ticks = 0
+        QTimer.singleShot(0, self._refresh_route)
 
     def show_page(self, key: str) -> None:
         row = next(i for i, item in enumerate(self._nav_keys) if item == key)
@@ -240,6 +247,7 @@ class MainWindow(QMainWindow):
         if key == "presets":
             self._presets.refresh()
         self._apply_duration_mode(key)
+        self._refresh_route()
 
     def _sync_inspector(self) -> None:
         mapping = {"auto": 0, "local": 1, "cuda": 1, "comfy": 2, "api": 3}
@@ -380,6 +388,25 @@ class MainWindow(QMainWindow):
         row = self._nav.currentRow()
         if 0 <= row < len(self._nav_keys) and self._nav_keys[row] == "models":
             self._models.refresh()
+        self._route_ticks += 1
+        if self._route_ticks >= 8:
+            self._route_ticks = 0
+            self._refresh_route()
+
+    def _refresh_route(self) -> None:
+        row = self._nav.currentRow()
+        key = self._nav_keys[row] if 0 <= row < len(self._nav_keys) else None
+        kind = "h3" if key == "video" else "music"
+        mode = getattr(self._video, "_mode", "t2va") if kind == "h3" else "ttm"
+        try:
+            check = self._client.preflight(kind, self._state.backend, mode)
+        except Exception:
+            self._route.setText("Will use: worker unreachable")
+            return
+        if check.get("ok"):
+            self._route.setText(str(check.get("detail") or f"Will use {check.get('backend')}"))
+        else:
+            self._route.setText("Not ready: " + str(check.get("detail") or "no backend"))
 
 
 def _format_probe(probe: dict[str, Any]) -> str:

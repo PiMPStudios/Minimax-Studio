@@ -24,6 +24,7 @@ def studio_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     runtime.reload_config()
     runtime.downloads.clear()
+    runtime.download_stops.clear()
     runtime.jobs.clear()
     runtime.music_pipe = None
     runtime.music_pipe_path = None

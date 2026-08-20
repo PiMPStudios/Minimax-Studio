@@ -186,6 +186,30 @@ def test_mac_h3_local_is_gated(monkeypatch, studio_home: Path) -> None:
         resolve_h3_backend("local")
 
 
+def test_auto_prefers_int8_on_10gb_when_comfy_up(monkeypatch, studio_home: Path) -> None:
+    monkeypatch.setattr(
+        "minimax_studio.worker.backends.h3.pack_status",
+        lambda pack, root: {
+            "ready": pack.id in {"h3-diffusers-fl2va", "h3-fl2va"},
+            "path": "x",
+        },
+    )
+    monkeypatch.setattr(
+        "minimax_studio.worker.probe.probe",
+        lambda: {
+            "cuda": True,
+            "torch_available": True,
+            "gpus": [{"name": "RTX 3080", "vram_gb": 10.0}],
+            "vram_gb": 10.0,
+        },
+    )
+    monkeypatch.setattr(
+        "minimax_studio.worker.backends.h3_comfy.comfy_reachable",
+        lambda: True,
+    )
+    assert resolve_h3_backend("auto") == "comfy"
+
+
 def test_auto_backend_prefers_official(monkeypatch, studio_home: Path) -> None:
     monkeypatch.setattr(
         "minimax_studio.worker.backends.h3.pack_status",

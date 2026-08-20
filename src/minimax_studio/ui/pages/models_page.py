@@ -65,7 +65,7 @@ class ModelsPage(QWidget):
         for pack in packs:
             card = self._cards.get(pack["id"])
             if card is None:
-                card = _PackCard(pack, self._start, self._remove)
+                card = _PackCard(pack, self._start, self._remove, self._cancel_dl)
                 self._cards[pack["id"]] = card
                 self._list.addWidget(card)
             card.update_pack(pack, downloads.get(pack["id"]))
@@ -105,6 +105,15 @@ class ModelsPage(QWidget):
             return
         self.refresh()
 
+    def _cancel_dl(self, pack: dict[str, Any], download_id: str | None) -> None:
+        if not download_id:
+            return
+        try:
+            self._client.cancel_download(download_id)
+        except Exception as exc:
+            QMessageBox.warning(self, "Cancel failed", str(exc))
+        self.refresh()
+
     def _remove(self, pack: dict[str, Any]) -> None:
         if pack.get("source") == "comfy":
             QMessageBox.information(
@@ -130,11 +139,13 @@ class ModelsPage(QWidget):
 
 
 class _PackCard(QFrame):
-    def __init__(self, pack: dict[str, Any], on_download, on_remove) -> None:
+    def __init__(self, pack: dict[str, Any], on_download, on_remove, on_cancel) -> None:
         super().__init__()
         self._pack = pack
         self._on_download = on_download
         self._on_remove = on_remove
+        self._on_cancel = on_cancel
+        self._download_id: str | None = None
         self.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(self)
         self._title = QLabel()
@@ -154,7 +165,13 @@ class _PackCard(QFrame):
         self._button.clicked.connect(lambda: self._on_download(self._pack))
         self._remove = QPushButton("Remove")
         self._remove.clicked.connect(lambda: self._on_remove(self._pack))
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.hide()
+        self._cancel_btn.clicked.connect(
+            lambda: self._on_cancel(self._pack, self._download_id)
+        )
         row.addWidget(self._button)
+        row.addWidget(self._cancel_btn)
         row.addWidget(self._remove)
         row.addStretch(1)
         layout.addWidget(self._title)
@@ -174,7 +191,7 @@ class _PackCard(QFrame):
         status = "Ready" if pack.get("ready") else "Not installed"
         if pack.get("ready") and pack.get("source") == "comfy":
             status = "Ready (ComfyUI models folder)"
-        if download and download.get("status") in {"queued", "running"}:
+        if download and download.get("status") in {"queued", "running", "cancelling"}:
             status = download.get("message") or "Downloading"
             total = download.get("total_bytes") or 0
             done = download.get("bytes") or 0
@@ -183,14 +200,26 @@ class _PackCard(QFrame):
             self._bar.setValue(pct)
             self._button.setEnabled(False)
             self._button.setText("Downloading…")
+            self._download_id = str(download.get("id") or "") or None
+            cancelling = download.get("status") == "cancelling"
+            self._cancel_btn.show()
+            self._cancel_btn.setEnabled(not cancelling)
+            if cancelling:
+                self._cancel_btn.setText("Cancelling…")
+            else:
+                self._cancel_btn.setText("Cancel")
         elif download and download.get("status") == "error":
             status = f"Error: {download.get('error')}"
             self._bar.hide()
             self._button.setEnabled(True)
             self._button.setText("Retry")
+            self._download_id = None
+            self._cancel_btn.hide()
         else:
             self._bar.hide()
             self._button.setEnabled(True)
+            self._download_id = None
+            self._cancel_btn.hide()
             if pack.get("ready"):
                 self._button.setText("Re-download")
             elif pack.get("partial") or gb > 0.01:

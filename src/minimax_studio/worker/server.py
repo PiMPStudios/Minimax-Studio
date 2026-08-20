@@ -137,6 +137,14 @@ def all_downloads() -> list[dict[str, object]]:
     return downloads.list_downloads()
 
 
+@app.post("/downloads/{job_id}/cancel")
+def stop_download(job_id: str) -> dict[str, object]:
+    try:
+        return downloads.cancel_download(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/downloads/{job_id}")
 def one_download(job_id: str) -> dict[str, object]:
     try:

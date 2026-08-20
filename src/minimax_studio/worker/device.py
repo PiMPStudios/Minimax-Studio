@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from minimax_studio.worker.runtime import runtime
 
 
@@ -19,3 +21,13 @@ def select_cuda_device() -> str:
         index = 0
     torch.cuda.set_device(index)
     return f"cuda:{index}"
+
+
+def selected_vram_gb(hw: dict[str, Any]) -> float:
+    gpus = hw.get("gpus") or []
+    index = max(0, int(runtime.config.cuda_device or 0))
+    if gpus:
+        if index >= len(gpus):
+            index = 0
+        return float(gpus[index].get("vram_gb") or 0)
+    return float(hw.get("vram_gb") or 0)

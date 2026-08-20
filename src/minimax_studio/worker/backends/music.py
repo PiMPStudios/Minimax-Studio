@@ -14,6 +14,7 @@ from minimax_studio.worker.runtime import runtime
 
 
 def generate_music(job_id: str, request: JobRequest) -> dict[str, Any]:
+    request.duration_s = max(1.0, min(300.0, float(request.duration_s)))
     backend = resolve_music_backend(request.backend)
     dest = runtime.config.history_root() / job_id
     dest.mkdir(parents=True, exist_ok=True)

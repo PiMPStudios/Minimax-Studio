@@ -211,9 +211,16 @@ def resolve_h3_backend(requested: str) -> str:
             raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
         return "cuda"
 
-    if official and hw.get("cuda") and torch_ok:
+    from minimax_studio.worker.device import selected_vram_gb
+
+    vram = selected_vram_gb(hw)
+    comfy_ok = int8["ready"] and _comfy_up()
+    official_ok = official and hw.get("cuda") and torch_ok and (vram >= 24 or vram == 0)
+    if vram and vram < 24 and comfy_ok:
+        return "comfy"
+    if official_ok:
         return "cuda"
-    if int8["ready"] and _comfy_up():
+    if comfy_ok:
         return "comfy"
     if runtime.config.minimax_api_key:
         return "api"

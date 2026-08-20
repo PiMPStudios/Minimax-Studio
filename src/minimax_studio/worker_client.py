@@ -54,6 +54,9 @@ class WorkerClient:
     def get_download(self, job_id: str) -> dict[str, Any]:
         return self._get(f"/downloads/{job_id}")
 
+    def cancel_download(self, job_id: str) -> dict[str, Any]:
+        return self._post(f"/downloads/{job_id}/cancel", {})
+
     def start_job(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._post("/jobs", payload)
 

@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QLabel,
+    QPushButton,
     QVBoxLayout,
 )
 
@@ -28,6 +29,10 @@ class WelcomeDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Open studio")
         buttons.accepted.connect(self.accept)
+        recommended = QPushButton("Download recommended")
+        recommended.setToolTip("Pull only the consumer packs for this GPU, not the 130 GB official H3 tree.")
+        recommended.clicked.connect(lambda: _download_recommended(client, body, recommended))
+        buttons.addButton(recommended, QDialogButtonBox.ButtonRole.ActionRole)
         layout.addWidget(title)
         layout.addWidget(body)
         layout.addWidget(buttons)
@@ -97,3 +102,29 @@ def _welcome_text(client: WorkerClient) -> str:
             "Comfy-Org INT8 files, or download official diffusers packs for in-process generate."
         )
     return "\n".join(lines)
+
+
+def _download_recommended(client: WorkerClient, body: QLabel, button: QPushButton) -> None:
+    try:
+        packs = client.list_packs()
+    except Exception as exc:
+        body.setText(body.text() + f"\n\nCould not list packs: {exc}")
+        return
+    started = 0
+    for pack in packs:
+        if not pack.get("recommended") or pack.get("ready"):
+            continue
+        try:
+            client.start_download(pack["id"])
+            started += 1
+        except Exception:
+            continue
+    button.setEnabled(False)
+    if started:
+        body.setText(
+            body.text()
+            + f"\n\nStarted {started} recommended download{'s' if started != 1 else ''}. "
+            "Watch progress on the Models page."
+        )
+    else:
+        body.setText(body.text() + "\n\nNothing to download — recommended packs are already ready.")

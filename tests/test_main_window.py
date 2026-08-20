@@ -30,6 +30,12 @@ class FakeWorker:
     def list_packs(self) -> list:
         return []
 
+    def start_download(self, pack_id: str) -> dict:
+        return {"id": "x", "pack_id": pack_id, "status": "queued"}
+
+    def cancel_download(self, job_id: str) -> dict:
+        return {"id": job_id, "status": "cancelling"}
+
     def list_downloads(self) -> list:
         return []
 

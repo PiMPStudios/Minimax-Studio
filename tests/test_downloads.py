@@ -23,6 +23,22 @@ def test_download_uses_injected_snapshot(studio_home: Path) -> None:
     assert (studio_home / "models" / "music3-cuda" / "modular_model_index.json").is_file()
 
 
+def test_cancel_download_marks_cancelling(studio_home: Path) -> None:
+    from minimax_studio.worker.downloads import cancel_download
+
+    def snapshot(**kwargs):
+        import time as _time
+
+        _time.sleep(0.2)
+        dest = Path(kwargs["local_dir"])
+        (dest / "modular_model_index.json").write_text("{}", encoding="utf-8")
+        return str(dest)
+
+    record = start_download("music3-cuda", snapshot=snapshot)
+    rec = cancel_download(record["id"])
+    assert rec["status"] in {"cancelling", "cancelled", "done"}
+
+
 def test_delete_pack_removes_studio_copy(studio_home: Path) -> None:
     dest = studio_home / "models" / PACKS["music3-cuda"].local_dir
     dest.mkdir(parents=True)

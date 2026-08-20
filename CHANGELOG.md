@@ -12,6 +12,20 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.8] — 2026-08-19
+
+### Added
+
+- Inspector **Will use** line from generate preflight (updates every few seconds)
+- Welcome **Download recommended** (consumer INT8 packs only)
+- Cancel on Models downloads (cooperative; HF may finish the current file)
+- Comfy generate status includes queue running/pending counts
+
+### Changed
+
+- Auto H3 prefers Comfy INT8 when the selected GPU has under 24 GB VRAM, even if official diffusers is installed
+- Music duration is capped at 5 minutes
+
 ## [0.2.7] — 2026-08-19
 
 ### Added
