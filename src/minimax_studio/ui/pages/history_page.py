@@ -117,7 +117,12 @@ class HistoryPage(QWidget):
                 continue
             self._visible.append(entry)
             prompt = (entry.get("prompt") or "")[:80]
-            self._list.addItem(QListWidgetItem(f"{kind}  ·  {prompt}"))
+            bits = [str(kind)]
+            if entry.get("backend"):
+                bits.append(str(entry["backend"]))
+            if entry.get("duration_s"):
+                bits.append(f"{int(entry['duration_s'])}s")
+            self._list.addItem(QListWidgetItem(f"{'  ·  '.join(bits)}  ·  {prompt}"))
 
     def _current(self) -> dict | None:
         row = self._list.currentRow()

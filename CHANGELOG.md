@@ -12,6 +12,15 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.11] — 2026-08-20
+
+### Added
+
+- Status bar shows active model download progress
+- Generate confirms when preflight has warnings (missing ffmpeg)
+- Models **Show in folder** for a pack on disk
+- History rows include backend and duration
+
 ## [0.2.10] — 2026-08-20
 
 ### Added

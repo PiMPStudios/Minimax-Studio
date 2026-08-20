@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from minimax_studio.worker_client import WorkerClient
+
+
+def classify_preflight(check: dict[str, Any]) -> str:
+    if not check.get("ok"):
+        return "block"
+    if check.get("warnings"):
+        return "warn"
+    return "ok"
 
 
 def confirm_generate(
@@ -17,8 +27,18 @@ def confirm_generate(
     except Exception as exc:
         QMessageBox.warning(parent, "Worker unreachable", str(exc))
         return False
-    if check.get("ok"):
+    verdict = classify_preflight(check)
+    if verdict == "ok":
         return True
+    if verdict == "warn":
+        warnings = check.get("warnings") or []
+        text = "\n".join(str(item) for item in warnings)
+        answer = QMessageBox.question(
+            parent,
+            "Generate anyway?",
+            text + "\n\nGenerate anyway?",
+        )
+        return answer == QMessageBox.StandardButton.Yes
     QMessageBox.warning(
         parent,
         "Can't generate yet",

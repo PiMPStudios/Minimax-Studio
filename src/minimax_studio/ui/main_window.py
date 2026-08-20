@@ -220,8 +220,10 @@ class MainWindow(QMainWindow):
         self._status_cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._status_cancel.setFlat(True)
         self._status_cancel.clicked.connect(self._cancel_active_job)
+        self._status_dl = QLabel("")
         self._active_job_id: str | None = None
         status.addWidget(self._status_worker)
+        status.addPermanentWidget(self._status_dl)
         status.addPermanentWidget(self._status_job)
         status.addPermanentWidget(self._status_cancel)
         self.setStatusBar(status)
@@ -416,7 +418,7 @@ class MainWindow(QMainWindow):
         try:
             jobs = self._client.list_jobs()
         except Exception:
-            return
+            jobs = []
         active = next(
             (
                 item
@@ -429,14 +431,40 @@ class MainWindow(QMainWindow):
             self._active_job_id = None
             self._status_job.setText("Job: idle")
             self._status_cancel.setEnabled(False)
+        else:
+            self._active_job_id = str(active.get("id") or "")
+            pct = int(float(active.get("progress") or 0) * 100)
+            kind = active.get("kind") or "job"
+            status = active.get("status") or ""
+            message = active.get("message") or ""
+            self._status_job.setText(f"Job: {kind} {status} {pct}% — {message}")
+            self._status_cancel.setEnabled(
+                status != "cancelling" and bool(self._active_job_id)
+            )
+        self._refresh_download_status()
+
+    def _refresh_download_status(self) -> None:
+        try:
+            downloads = self._client.list_downloads()
+        except Exception:
+            downloads = []
+        active_dl = next(
+            (
+                item
+                for item in downloads
+                if item.get("status") in {"queued", "running", "cancelling"}
+            ),
+            None,
+        )
+        if not active_dl:
+            self._status_dl.setText("")
             return
-        self._active_job_id = str(active.get("id") or "")
-        pct = int(float(active.get("progress") or 0) * 100)
-        kind = active.get("kind") or "job"
-        status = active.get("status") or ""
-        message = active.get("message") or ""
-        self._status_job.setText(f"Job: {kind} {status} {pct}% — {message}")
-        self._status_cancel.setEnabled(status != "cancelling" and bool(self._active_job_id))
+        total = float(active_dl.get("total_bytes") or 0)
+        done = float(active_dl.get("bytes") or 0)
+        pct = int(min(99, (done / total) * 100)) if total else 0
+        pack = active_dl.get("pack_id") or "download"
+        dl_msg = active_dl.get("message") or active_dl.get("status") or ""
+        self._status_dl.setText(f"DL: {pack} {pct}% — {dl_msg}")
 
     def _cancel_active_job(self) -> None:
         job_id = self._active_job_id

@@ -65,7 +65,9 @@ class ModelsPage(QWidget):
         for pack in packs:
             card = self._cards.get(pack["id"])
             if card is None:
-                card = _PackCard(pack, self._start, self._remove, self._cancel_dl)
+                card = _PackCard(
+                    pack, self._start, self._remove, self._cancel_dl, self._reveal
+                )
                 self._cards[pack["id"]] = card
                 self._list.addWidget(card)
             card.update_pack(pack, downloads.get(pack["id"]))
@@ -87,6 +89,20 @@ class ModelsPage(QWidget):
                 "stay on disk here — they are not shipped in the app. Comfy-Org INT8 "
                 "is the consumer CUDA default."
             )
+
+    def _reveal(self, pack: dict[str, Any]) -> None:
+        from pathlib import Path
+
+        from minimax_studio.ui.reveal import reveal_path
+
+        src = pack.get("path")
+        if not src or not Path(src).exists():
+            QMessageBox.information(self, "Show in folder", "This pack is not on disk yet.")
+            return
+        try:
+            reveal_path(src)
+        except OSError as exc:
+            QMessageBox.warning(self, "Show in folder failed", str(exc))
 
     def _start(self, pack: dict[str, Any]) -> None:
         notice = pack.get("territory_notice")
@@ -139,12 +155,15 @@ class ModelsPage(QWidget):
 
 
 class _PackCard(QFrame):
-    def __init__(self, pack: dict[str, Any], on_download, on_remove, on_cancel) -> None:
+    def __init__(
+        self, pack: dict[str, Any], on_download, on_remove, on_cancel, on_reveal
+    ) -> None:
         super().__init__()
         self._pack = pack
         self._on_download = on_download
         self._on_remove = on_remove
         self._on_cancel = on_cancel
+        self._on_reveal = on_reveal
         self._download_id: str | None = None
         self.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(self)
@@ -170,9 +189,12 @@ class _PackCard(QFrame):
         self._cancel_btn.clicked.connect(
             lambda: self._on_cancel(self._pack, self._download_id)
         )
+        self._reveal = QPushButton("Show in folder")
+        self._reveal.clicked.connect(lambda: self._on_reveal(self._pack))
         row.addWidget(self._button)
         row.addWidget(self._cancel_btn)
         row.addWidget(self._remove)
+        row.addWidget(self._reveal)
         row.addStretch(1)
         layout.addWidget(self._title)
         layout.addWidget(self._summary)
@@ -232,6 +254,10 @@ class _PackCard(QFrame):
             self._remove.setToolTip("Won’t delete files in your ComfyUI models folder.")
         else:
             self._remove.setToolTip("Delete the Studio copy of this pack.")
+        from pathlib import Path
+
+        path = pack.get("path")
+        self._reveal.setEnabled(bool(path and Path(path).exists()))
         self._meta.setText(
             f"{status}  ·  ~{pack.get('approx_gb')} GB  ·  {pack.get('license_name')}\n"
             f"{pack.get('path')}"

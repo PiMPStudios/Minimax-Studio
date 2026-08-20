@@ -61,6 +61,9 @@ for MP4 mux.</p>
 <code>main.py</code> install as a separate process — extra args in Settings
 (for example <code>--listen 0.0.0.0 --default-device 1</code>). History can
 filter by Video/Music and prompt text.</p>
+<p>Generate asks before continuing if preflight has warnings (for example
+missing ffmpeg). The status bar also shows an active model download.
+Models and History can both reveal the file on disk.</p>
 """
 
 
