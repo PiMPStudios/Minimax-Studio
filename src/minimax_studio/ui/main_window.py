@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from minimax_studio import __version__
 from minimax_studio.config import AppConfig
 from minimax_studio.ui.pages import (
     HelpPage,
@@ -55,7 +56,7 @@ class MainWindow(QMainWindow):
         self._client = client
         self._config = config
         self._state = StudioState()
-        self.setWindowTitle("MiniMax Studio")
+        self.setWindowTitle(f"MiniMax Studio {__version__}")
         self.resize(1320, 840)
 
         self._music = MusicPage(client, self._state)
@@ -278,7 +279,8 @@ class MainWindow(QMainWindow):
     def _tick(self) -> None:
         self._music.poll()
         self._video.poll()
-        if self._nav_keys[self._nav.currentRow()] == "models":
+        row = self._nav.currentRow()
+        if 0 <= row < len(self._nav_keys) and self._nav_keys[row] == "models":
             self._models.refresh()
 
 

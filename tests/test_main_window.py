@@ -48,5 +48,7 @@ def test_main_window_builds(tmp_path) -> None:
     apply_theme(app)
     config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
     window = MainWindow(FakeWorker(), config)  # type: ignore[arg-type]
-    assert window.windowTitle() == "MiniMax Studio"
+    from minimax_studio import __version__
+
+    assert window.windowTitle() == f"MiniMax Studio {__version__}"
     assert window._stack.count() == 7

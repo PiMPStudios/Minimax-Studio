@@ -18,3 +18,11 @@ def test_h3_api_payload_t2va() -> None:
     assert payload["ratio"] == "16:9"
     assert payload["duration"] == 8
     assert payload["content"][0]["text"] == "a red fox"
+
+
+def test_context_ir_payload_drops_resolution_rules() -> None:
+    i2v = _payload(
+        JobRequest(kind="h3", mode="i2va", prompt="steam", duration_s=5)
+    )
+    assert i2v["ratio"] == "adaptive"
+    assert i2v["resolution"] == "768P"

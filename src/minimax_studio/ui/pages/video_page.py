@@ -53,10 +53,14 @@ class VideoPage(QWidget):
         enhance = QPushButton("Enhance prompt")
         enhance.clicked.connect(self._enhance)
         self._enhance_btn = enhance
+        ir = QPushButton("Context-IR (API)")
+        ir.clicked.connect(self._context_ir)
+        self._ir_btn = ir
         header = QHBoxLayout()
         header.addWidget(title)
         header.addStretch(1)
         header.addWidget(enhance)
+        header.addWidget(ir)
         layout.addLayout(header)
         layout.addWidget(brand)
         layout.addWidget(sub)
@@ -261,6 +265,63 @@ class VideoPage(QWidget):
 
         start_enhance(self, self._client, "h3", seed, "", done, fail)
 
+    def _context_ir(self) -> None:
+        from PySide6.QtCore import QThread, QObject, Signal
+
+        seed = self.prompt.toPlainText().strip()
+        if not seed:
+            QMessageBox.information(self, "Prompt needed", "Write a short idea first.")
+            return
+        assets = []
+        if self.first_path.isVisible() and self.first_path.path:
+            assets.append({"role": "first_frame", "path": self.first_path.path})
+        if self.last_path.isVisible() and self.last_path.path:
+            assets.append({"role": "last_frame", "path": self.last_path.path})
+        if self.refs_path.isVisible():
+            for path in self.refs_path.paths:
+                assets.append({"role": "reference", "path": path})
+        self._ir_btn.setEnabled(False)
+        self._status.setText("Running MiniMax H3 Context-IR…")
+
+        class Worker(QObject):
+            finished = Signal(str)
+            failed = Signal(str)
+
+            def run(inner_self) -> None:
+                try:
+                    payload = self._client.context_ir(
+                        prompt=seed,
+                        mode=self._mode,
+                        duration_s=min(self._state.duration, 15),
+                        ratio=self.ratio.currentText(),
+                        assets=assets,
+                    )
+                    inner_self.finished.emit(str(payload.get("text") or ""))
+                except Exception as exc:
+                    inner_self.failed.emit(str(exc))
+
+        thread = QThread(self)
+        worker = Worker()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+
+        def done(text: str) -> None:
+            self._ir_btn.setEnabled(True)
+            if text:
+                self.prompt.setPlainText(text)
+            self._status.setText("Context-IR prompt ready")
+
+        def fail(err: str) -> None:
+            self._ir_btn.setEnabled(True)
+            self._status.setText(err)
+
+        worker.finished.connect(done)
+        worker.failed.connect(fail)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.start()
+        self._ir_thread = thread
+
 
 class _AssetRow(QWidget):
     def __init__(self, label: str, kind: str) -> None:
@@ -277,7 +338,10 @@ class _AssetRow(QWidget):
 
     @property
     def path(self) -> str:
-        return self._edit.text().strip().split(";")[0] if self._edit.text().strip() else ""
+        text = self._edit.text().strip()
+        if self._kind == "image":
+            return text
+        return text.split(";")[0] if text else ""
 
     @property
     def paths(self) -> list[str]:

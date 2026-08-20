@@ -1,6 +1,6 @@
 [project]
 name = "minimax-studio"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Point-and-click desktop studio for MiniMax H3 and MiniMax Music 3"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,6 +27,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "minimax_studio.__version__"}
 
 [tool.ruff]
 line-length = 100

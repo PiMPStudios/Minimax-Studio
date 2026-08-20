@@ -28,7 +28,10 @@ def generate_h3_api(job_id: str, request: JobRequest) -> dict[str, Any]:
         if not task_id:
             raise RuntimeError(f"API create returned no task_id: {body}")
         update_job(job_id, message=f"API task {task_id}", progress=0.2)
-        url = _poll(client, base, headers, task_id, job_id)
+        task = _poll_task(client, base, headers, task_id, job_id)
+        url = (task.get("content") or {}).get("url")
+        if not url:
+            raise RuntimeError(f"API succeeded without url: {task}")
         dest = runtime.config.history_root() / job_id
         dest.mkdir(parents=True, exist_ok=True)
         out_path = dest / "video.mp4"
@@ -89,20 +92,46 @@ def _payload(request: JobRequest) -> dict[str, Any]:
     }
     if request.mode == "t2va":
         payload["ratio"] = request.ratio or "16:9"
+    elif request.mode in {"i2va", "l2va", "fl2va"}:
+        payload["ratio"] = "adaptive"
     return payload
 
 
-def _poll(
+def run_context_ir(request: JobRequest) -> str:
+    key = runtime.config.minimax_api_key
+    if not key:
+        raise RuntimeError("Context-IR needs a MiniMax API key in Settings.")
+    base = (runtime.config.minimax_api_base or "https://api.minimax.io").rstrip("/")
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = _payload(request)
+    payload.pop("resolution", None)
+    if request.mode == "t2va" and not payload.get("ratio"):
+        payload["ratio"] = "16:9"
+    with httpx.Client(timeout=60.0) as client:
+        created = client.post(f"{base}/v2/h3_context_ir", headers=headers, json=payload)
+        created.raise_for_status()
+        body = created.json()
+        task_id = body.get("task_id") or (body.get("task") or {}).get("id")
+        if not task_id:
+            raise RuntimeError(f"Context-IR returned no task_id: {body}")
+        task = _poll_task(client, base, headers, task_id, job_id=None)
+    prompt = (task.get("content") or {}).get("prompt")
+    if not prompt:
+        raise RuntimeError(f"Context-IR succeeded without prompt: {task}")
+    return str(prompt)
+
+
+def _poll_task(
     client: httpx.Client,
     base: str,
     headers: dict[str, str],
     task_id: str,
-    job_id: str,
-) -> str:
+    job_id: str | None,
+) -> dict[str, Any]:
     deadline = time.monotonic() + 20 * 60
     first = True
     while time.monotonic() < deadline:
-        if is_cancelled(job_id):
+        if job_id and is_cancelled(job_id):
             raise RuntimeError("Cancelled")
         if not first:
             time.sleep(5)
@@ -116,12 +145,10 @@ def _poll(
         parsed = response.json()
         task = parsed.get("task") or parsed
         status = task.get("status")
-        update_job(job_id, message=f"API {status}", progress=0.5)
+        if job_id:
+            update_job(job_id, message=f"API {status}", progress=0.5)
         if status == "succeeded":
-            url = (task.get("content") or {}).get("url")
-            if not url:
-                raise RuntimeError(f"API succeeded without url: {task}")
-            return url
+            return task
         if status in {"failed", "cancelled"}:
             raise RuntimeError(f"API task {status}: {task.get('error')}")
     raise RuntimeError("API task timed out after 20 minutes")

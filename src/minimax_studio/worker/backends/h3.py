@@ -9,6 +9,26 @@ from minimax_studio.worker.jobs import JobRequest, update_job
 from minimax_studio.worker.runtime import runtime
 
 
+def resolve_dims(
+    resolution: str, ratio: str, width: int | None, height: int | None
+) -> tuple[int, int]:
+    if width and height and (width, height) != (960, 544):
+        return int(width), int(height)
+    short = 1088 if str(resolution).upper().startswith("2") else 768
+    parts = str(ratio or "16:9").split(":")
+    try:
+        rw, rh = int(parts[0]), int(parts[1])
+    except (ValueError, IndexError):
+        rw, rh = 16, 9
+    if rw >= rh:
+        h = short
+        w = int(round(short * rw / rh / 32) * 32)
+    else:
+        w = short
+        h = int(round(short * rh / rw / 32) * 32)
+    return max(32, w), max(32, h)
+
+
 def duration_to_frames(seconds: float) -> int:
     """Snap duration to H3's 17n+5 frame grid at 24 fps, clamped to 5–15 s."""
     raw = max(5.0, min(15.0, float(seconds)))
@@ -86,8 +106,7 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         if steps >= 16:
             steps = 8
     num_frames = duration_to_frames(request.duration_s)
-    width = int(request.width or 960)
-    height = int(request.height or 544)
+    width, height = resolve_dims(request.resolution, request.ratio, request.width, request.height)
     generator = None
     if request.seed >= 0:
         generator = torch.Generator().manual_seed(int(request.seed))
@@ -108,13 +127,7 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         message=f"Sampling {num_frames} frames ({num_frames / 24:.1f}s)",
         progress=0.35,
     )
-    for item in loras:
-        path = item.get("id")
-        if path and hasattr(pipe, "load_lora_weights"):
-            try:
-                pipe.load_lora_weights(path)
-            except Exception:
-                pass
+    _apply_loras(pipe, loras)
     results = pipe(**kwargs)
     update_job(job_id, message="Muxing MP4", progress=0.9)
     encode_video(
@@ -149,6 +162,37 @@ def _resolve_backend(requested: str) -> str:
         "No local H3 diffusers pack and no MiniMax API key. "
         "Download the official FL2VA pack or add a key in Settings."
     )
+
+
+def _apply_loras(pipe: Any, loras: list[dict[str, Any]]) -> None:
+    if not loras or not hasattr(pipe, "load_lora_weights"):
+        return
+    names: list[str] = []
+    weights: list[float] = []
+    for index, item in enumerate(loras):
+        path = item.get("id") or item.get("path")
+        if not path:
+            continue
+        name = f"adapter{index}"
+        try:
+            pipe.load_lora_weights(path, adapter_name=name)
+        except TypeError:
+            pipe.load_lora_weights(path)
+            names = []
+            break
+        except Exception:
+            continue
+        names.append(name)
+        weights.append(float(item.get("strength") or 1.0))
+    setter = getattr(pipe, "set_adapters", None)
+    if setter and names:
+        try:
+            setter(names, adapter_weights=weights)
+        except Exception:
+            try:
+                setter(names)
+            except Exception:
+                pass
 
 
 def _find_turbo_lora() -> str | None:

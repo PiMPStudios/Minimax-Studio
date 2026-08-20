@@ -33,6 +33,15 @@ class HistoryPage(QWidget):
         self._list = QListWidget()
         self._list.currentRowChanged.connect(self._show)
         layout.addWidget(self._list, 1)
+        self._video = None
+        try:
+            from PySide6.QtMultimediaWidgets import QVideoWidget
+
+            self._video = QVideoWidget()
+            self._video.setMinimumHeight(180)
+            layout.addWidget(self._video)
+        except Exception:
+            self._video = None
         self._detail = QLabel("Select a take.")
         self._detail.setWordWrap(True)
         self._detail.setObjectName("pageSubtitle")
@@ -58,6 +67,8 @@ class HistoryPage(QWidget):
             self._player = QMediaPlayer(self)
             output = QAudioOutput(self)
             self._player.setAudioOutput(output)
+            if self._video is not None:
+                self._player.setVideoOutput(self._video)
         except Exception:
             self._player = None
             self._play.setEnabled(False)

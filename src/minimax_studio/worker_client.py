@@ -80,6 +80,26 @@ class WorkerClient:
             timeout=180.0,
         )
 
+    def context_ir(
+        self,
+        prompt: str,
+        mode: str = "t2va",
+        duration_s: float = 8,
+        ratio: str = "16:9",
+        assets: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/context-ir",
+            {
+                "prompt": prompt,
+                "mode": mode,
+                "duration_s": duration_s,
+                "ratio": ratio,
+                "assets": assets or [],
+            },
+            timeout=300.0,
+        )
+
     def delete_preset(self, preset_id: str) -> dict[str, Any]:
         with httpx.Client(timeout=self._timeout) as client:
             response = client.delete(f"{self._base}/presets/{preset_id}")

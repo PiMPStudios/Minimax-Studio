@@ -30,6 +30,13 @@ class JobRequest(BaseModel):
 
 
 def start_job(request: JobRequest) -> dict[str, Any]:
+    with runtime.lock:
+        busy = any(
+            item.get("status") in {"queued", "running", "cancelling"}
+            for item in runtime.jobs.values()
+        )
+    if busy:
+        raise RuntimeError("A generate job is already running. Cancel it or wait.")
     job_id = uuid.uuid4().hex[:12]
     record: dict[str, Any] = {
         "id": job_id,

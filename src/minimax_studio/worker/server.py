@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from minimax_studio import __version__
 from minimax_studio.config import AppConfig, save_config
 from minimax_studio.worker import downloads
+from minimax_studio.worker.backends.h3_api import run_context_ir
 from minimax_studio.worker.history import delete_entry, get_entry, list_history
 from minimax_studio.worker.jobs import (
     JobRequest,
@@ -53,8 +54,16 @@ def get_settings() -> dict[str, object]:
 @app.post("/settings")
 def post_settings(body: SettingsIn) -> dict[str, object]:
     data = runtime.config.model_dump()
-    incoming = body.model_dump(exclude_none=True)
-    data.update(incoming)
+    incoming = body.model_dump()
+    for key, value in incoming.items():
+        if value == "":
+            data[key] = None
+        elif value is not None:
+            data[key] = value
+    runtime.h3_pipe = None
+    runtime.h3_pipe_path = None
+    runtime.music_pipe = None
+    runtime.music_pipe_path = None
     config = AppConfig.model_validate(data)
     save_config(config)
     runtime.config = config
@@ -102,7 +111,10 @@ def one_download(job_id: str) -> dict[str, object]:
 
 @app.post("/jobs")
 def create_job(body: JobRequest) -> dict[str, object]:
-    return start_job(body)
+    try:
+        return start_job(body)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/jobs")
@@ -212,6 +224,32 @@ class EnhanceIn(BaseModel):
     kind: str = "music"
     text: str
     extra: str = ""
+
+
+class ContextIRIn(BaseModel):
+    prompt: str
+    mode: str = "t2va"
+    duration_s: float = 8
+    ratio: str = "16:9"
+    assets: list[dict[str, str]] = []
+
+
+@app.post("/context-ir")
+def context_ir(body: ContextIRIn) -> dict[str, object]:
+    request = JobRequest(
+        kind="h3",
+        mode=body.mode,
+        prompt=body.prompt,
+        duration_s=body.duration_s,
+        ratio=body.ratio,
+        assets=body.assets,
+    )
+    try:
+        return {"text": run_context_ir(request)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Context-IR failed: {exc}") from exc
 
 
 @app.post("/enhance")

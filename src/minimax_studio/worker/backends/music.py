@@ -116,7 +116,12 @@ def _generate_cuda(job_id: str, request: JobRequest, wav_path: Path) -> dict[str
         output="audios",
     )[0]
     update_job(job_id, message="Writing WAV", progress=0.9)
-    array = audio.T.float().cpu().numpy() if hasattr(audio, "T") else np.asarray(audio)
+    if hasattr(audio, "float") and hasattr(audio, "cpu"):
+        array = audio.T.float().cpu().numpy()
+    else:
+        array = np.asarray(audio)
+        if array.ndim == 2 and array.shape[0] == 2:
+            array = array.T
     rate = int(getattr(pipe, "sampling_rate", 32000))
     sf.write(str(wav_path), array, rate)
     return {"output_path": str(wav_path), "backend": "cuda", "media_type": "audio"}
@@ -159,19 +164,9 @@ def _generate_mlx(job_id: str, request: JobRequest, wav_path: Path) -> dict[str,
 
 
 def _apply_loras(pipe: Any, loras: list[dict[str, Any]]) -> None:
-    if not loras:
-        return
-    loader = getattr(pipe, "load_lora_weights", None)
-    if loader is None:
-        return
-    for item in loras:
-        path = item.get("id") or item.get("path")
-        if not path:
-            continue
-        try:
-            loader(path)
-        except Exception:
-            continue
+    from minimax_studio.worker.backends.h3 import _apply_loras as apply
+
+    apply(pipe, loras)
 
 
 def _write_stub(path: Path, duration_s: float) -> None:
