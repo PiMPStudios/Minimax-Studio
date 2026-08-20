@@ -100,6 +100,10 @@ def test_main_window_builds(tmp_path) -> None:
     menus = [action.text() for action in window.menuBar().actions()]
     assert "&File" in menus
     assert "&Go" in menus
+    assert "&View" in menus
+    view = next(action for action in window.menuBar().actions() if action.text() == "&View")
+    view_texts = [child.text() for child in view.menu().actions()]
+    assert any("Setup checklist" in text for text in view_texts)
 
 
 def test_history_filter(tmp_path) -> None:

@@ -210,6 +210,9 @@ class MainWindow(QMainWindow):
         toggle.setText("Show Inspector")
         view_menu = self.menuBar().addMenu("&View")
         view_menu.addAction(toggle)
+        welcome_again = QAction("Setup checklist…", self)
+        welcome_again.triggered.connect(self._show_welcome)
+        view_menu.addAction(welcome_again)
         self._add_go_menu()
 
         status = QStatusBar()
@@ -539,6 +542,11 @@ class MainWindow(QMainWindow):
             return
         self._status_worker.setText(str(result.get("detail") or "Started ComfyUI"))
         QTimer.singleShot(2000, self.refresh_probe)
+
+    def _show_welcome(self) -> None:
+        from minimax_studio.ui.welcome import WelcomeDialog
+
+        WelcomeDialog(self._client).exec()
 
     def _refresh_route(self) -> None:
         row = self._nav.currentRow()
