@@ -9,6 +9,7 @@ from minimax_studio.config import AppConfig, load_config
 class Runtime:
     def __init__(self) -> None:
         self.lock = threading.Lock()
+        self.job_changed = threading.Condition()
         self.config = load_config()
         self.downloads: dict[str, dict[str, Any]] = {}
         self.download_stops: dict[str, threading.Event] = {}

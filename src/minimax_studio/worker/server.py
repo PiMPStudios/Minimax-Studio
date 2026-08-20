@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from minimax_studio import __version__
@@ -13,6 +16,7 @@ from minimax_studio.worker.jobs import (
     JobRequest,
     cancel_job,
     get_job,
+    iter_job_snapshots,
     list_jobs,
     start_job,
 )
@@ -172,6 +176,35 @@ def one_job(job_id: str) -> dict[str, object]:
         return get_job(job_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/jobs/{job_id}/events")
+def job_events(job_id: str) -> StreamingResponse:
+    try:
+        get_job(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    def generate():
+        try:
+            for snap in iter_job_snapshots(job_id):
+                if snap is None:
+                    yield ": keepalive\n\n"
+                    continue
+                yield f"data: {json.dumps(snap)}\n\n"
+            yield "event: end\ndata: {}\n\n"
+        except KeyError:
+            yield f"event: error\ndata: {json.dumps({'detail': 'job not found'})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/jobs/{job_id}/cancel")

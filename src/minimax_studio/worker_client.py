@@ -63,6 +63,25 @@ class WorkerClient:
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self._get(f"/jobs/{job_id}")
 
+    def iter_job_events(self, job_id: str, timeout: float = 600.0):
+        import json
+
+        with httpx.Client(timeout=timeout) as client:
+            with client.stream("GET", f"{self._base}/jobs/{job_id}/events") as response:
+                self._raise(response)
+                for line in response.iter_lines():
+                    if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("event:"):
+                        name = line.split(":", 1)[1].strip()
+                        if name == "end":
+                            return
+                        continue
+                    if line.startswith("data:"):
+                        payload = line.split(":", 1)[1].strip()
+                        if payload and payload != "{}":
+                            yield json.loads(payload)
+
     def cancel_job(self, job_id: str) -> dict[str, Any]:
         return self._post(f"/jobs/{job_id}/cancel", {})
 

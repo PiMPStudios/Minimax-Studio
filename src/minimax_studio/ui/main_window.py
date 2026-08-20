@@ -201,12 +201,28 @@ class MainWindow(QMainWindow):
         quit_action = QAction("Quit", self)
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
+        open_out = QAction("Open Output Folder", self)
+        open_out.triggered.connect(lambda: self._open_folder(self._config.output_dir))
+        open_models = QAction("Open Models Folder", self)
+        open_models.triggered.connect(lambda: self._open_folder(self._config.models_dir))
         file_menu = self.menuBar().addMenu("&File")
+        file_menu.addAction(open_out)
+        file_menu.addAction(open_models)
+        file_menu.addSeparator()
         file_menu.addAction(quit_action)
 
         status = QStatusBar()
         self._status_worker = QLabel("Worker: connecting…")
+        self._status_job = QLabel("Job: idle")
+        self._status_cancel = QPushButton("Cancel")
+        self._status_cancel.setEnabled(False)
+        self._status_cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._status_cancel.setFlat(True)
+        self._status_cancel.clicked.connect(self._cancel_active_job)
+        self._active_job_id: str | None = None
         status.addWidget(self._status_worker)
+        status.addPermanentWidget(self._status_job)
+        status.addPermanentWidget(self._status_cancel)
         self.setStatusBar(status)
 
         first_page_row = next(i for i, key in enumerate(self._nav_keys) if key == "music")
@@ -222,6 +238,7 @@ class MainWindow(QMainWindow):
         self._timer.start()
         self._route_ticks = 0
         QTimer.singleShot(0, self._refresh_route)
+        QTimer.singleShot(0, self._refresh_job_status)
 
     def show_page(self, key: str) -> None:
         row = next(i for i, item in enumerate(self._nav_keys) if item == key)
@@ -385,6 +402,7 @@ class MainWindow(QMainWindow):
     def _tick(self) -> None:
         self._music.poll()
         self._video.poll()
+        self._refresh_job_status()
         row = self._nav.currentRow()
         if 0 <= row < len(self._nav_keys) and self._nav_keys[row] == "models":
             self._models.refresh()
@@ -392,6 +410,55 @@ class MainWindow(QMainWindow):
         if self._route_ticks >= 8:
             self._route_ticks = 0
             self._refresh_route()
+
+    def _refresh_job_status(self) -> None:
+        try:
+            jobs = self._client.list_jobs()
+        except Exception:
+            return
+        active = next(
+            (
+                item
+                for item in jobs
+                if item.get("status") in {"queued", "running", "cancelling"}
+            ),
+            None,
+        )
+        if not active:
+            self._active_job_id = None
+            self._status_job.setText("Job: idle")
+            self._status_cancel.setEnabled(False)
+            return
+        self._active_job_id = str(active.get("id") or "")
+        pct = int(float(active.get("progress") or 0) * 100)
+        kind = active.get("kind") or "job"
+        status = active.get("status") or ""
+        message = active.get("message") or ""
+        self._status_job.setText(f"Job: {kind} {status} {pct}% — {message}")
+        self._status_cancel.setEnabled(status != "cancelling" and bool(self._active_job_id))
+
+    def _cancel_active_job(self) -> None:
+        job_id = self._active_job_id
+        if not job_id:
+            return
+        try:
+            self._client.cancel_job(job_id)
+        except Exception:
+            return
+        self._refresh_job_status()
+
+    def _open_folder(self, path: str | None) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        from minimax_studio.ui.reveal import reveal_path
+
+        if not path:
+            QMessageBox.information(self, "Folder", "Set this folder in Settings first.")
+            return
+        try:
+            reveal_path(path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Open folder failed", str(exc))
 
     def _refresh_route(self) -> None:
         row = self._nav.currentRow()

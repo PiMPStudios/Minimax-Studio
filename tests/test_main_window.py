@@ -42,6 +42,12 @@ class FakeWorker:
     def get_job(self, _job_id: str) -> dict:
         return {"status": "done", "progress": 1, "message": "Done"}
 
+    def list_jobs(self) -> list:
+        return []
+
+    def cancel_job(self, job_id: str) -> dict:
+        return {"id": job_id, "status": "cancelling"}
+
     def list_presets(self) -> list:
         return []
 

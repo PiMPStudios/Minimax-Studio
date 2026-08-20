@@ -10,6 +10,30 @@ from pydantic import BaseModel, Field
 from minimax_studio.worker.history import record_entry
 from minimax_studio.worker.runtime import runtime
 
+TERMINAL_STATUSES = frozenset({"done", "error", "cancelled"})
+ACTIVE_STATUSES = frozenset({"queued", "running", "cancelling"})
+
+
+def public_job(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record.get("id"),
+        "kind": record.get("kind"),
+        "backend": record.get("backend"),
+        "mode": record.get("mode"),
+        "status": record.get("status"),
+        "progress": record.get("progress"),
+        "message": record.get("message"),
+        "error": record.get("error"),
+        "output_path": record.get("output_path"),
+        "created_at": record.get("created_at"),
+        "seq": record.get("seq", 0),
+    }
+
+
+def _notify_jobs() -> None:
+    with runtime.job_changed:
+        runtime.job_changed.notify_all()
+
 
 class JobRequest(BaseModel):
     kind: str
@@ -36,7 +60,7 @@ class JobRequest(BaseModel):
 def start_job(request: JobRequest) -> dict[str, Any]:
     with runtime.lock:
         busy = any(
-            item.get("status") in {"queued", "running", "cancelling"}
+            item.get("status") in ACTIVE_STATUSES
             for item in runtime.jobs.values()
         )
     if busy:
@@ -53,10 +77,12 @@ def start_job(request: JobRequest) -> dict[str, Any]:
         "error": None,
         "output_path": None,
         "created_at": time.time(),
+        "seq": 0,
         "request": request.model_dump(),
     }
     with runtime.lock:
         runtime.jobs[job_id] = record
+    _notify_jobs()
     thread = threading.Thread(
         target=_run_job, args=(job_id, request), daemon=True, name=f"job-{job_id}"
     )
@@ -81,8 +107,11 @@ def list_jobs() -> list[dict[str, Any]]:
 
 def update_job(job_id: str, **fields: Any) -> None:
     with runtime.lock:
-        if job_id in runtime.jobs:
-            runtime.jobs[job_id].update(fields)
+        if job_id not in runtime.jobs:
+            return
+        runtime.jobs[job_id].update(fields)
+        runtime.jobs[job_id]["seq"] = int(runtime.jobs[job_id].get("seq") or 0) + 1
+    _notify_jobs()
 
 
 def cancel_job(job_id: str) -> dict[str, Any]:
@@ -90,11 +119,43 @@ def cancel_job(job_id: str) -> dict[str, Any]:
         record = runtime.jobs.get(job_id)
         if record is None:
             raise KeyError(job_id)
-        if record.get("status") in {"done", "error", "cancelled"}:
+        if record.get("status") in TERMINAL_STATUSES:
             return dict(record)
         record["status"] = "cancelling"
         record["message"] = "Cancel requested"
-        return dict(record)
+        record["seq"] = int(record.get("seq") or 0) + 1
+        snapshot = dict(record)
+    _notify_jobs()
+    return snapshot
+
+
+def iter_job_snapshots(job_id: str, heartbeat_s: float = 1.0):
+    """Yield public job dicts on change, or None on heartbeat. Stops at terminal."""
+    last_seq = -1
+    while True:
+        with runtime.lock:
+            record = runtime.jobs.get(job_id)
+            if record is None:
+                raise KeyError(job_id)
+            seq = int(record.get("seq") or 0)
+            snap = public_job(record)
+        if seq != last_seq:
+            last_seq = seq
+            yield snap
+            if snap.get("status") in TERMINAL_STATUSES:
+                return
+            continue
+        with runtime.job_changed:
+            woke = runtime.job_changed.wait(timeout=heartbeat_s)
+        if not woke:
+            yield None
+
+
+def active_job() -> dict[str, Any] | None:
+    for item in list_jobs():
+        if item.get("status") in ACTIVE_STATUSES:
+            return item
+    return None
 
 
 def step_cancel_callback(job_id: str, total_steps: int):

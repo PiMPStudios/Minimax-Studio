@@ -26,8 +26,10 @@ The MiniMax hosted API remains globally available.</li>
 <b>medium</b> (<code>reasoning_effort=medium</code>, 512-token budget).</p>
 
 <h3>Backends</h3>
-<p>Inspector: <b>Auto</b> prefers official diffusers on this GPU, then Comfy-Org INT8
-via a running ComfyUI, then the MiniMax API if a key is set.</p>
+<p>Inspector: <b>Auto</b> prefers Comfy-Org INT8 via a running ComfyUI when the
+selected GPU has under 24 GB VRAM, or when PyTorch is missing from the Studio
+venv. Official diffusers is used when VRAM is large enough and torch is installed.
+Then the MiniMax API if a key is set.</p>
 <p>The Comfy-Org INT8 files use Comfy <code>convrot</code> kernels. Diffusers cannot
 load them. Point Settings at your ComfyUI models folder (Studio auto-detects
 <code>~/ai/ComfyUI/models</code>, <code>~/models</code>, and Comfy
@@ -50,6 +52,10 @@ copy, never a ComfyUI folder.</p>
 <p>First launch picks an output folder, then a welcome screen lists GPU and any
 packs already on disk. H3 duration in the inspector snaps to the model’s
 5–15 s / 24 fps frame grid.</p>
+<p>The status bar shows the live generate job (Cancel stops it). History
+<b>Show in folder</b> opens the take in the file manager. File menu opens the
+output and models folders. H3 local generate wants <code>ffmpeg</code> on PATH
+for MP4 mux.</p>
 """
 
 

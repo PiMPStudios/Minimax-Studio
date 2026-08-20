@@ -12,6 +12,20 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.9] — 2026-08-20
+
+### Added
+
+- Worker `GET /jobs/{id}/events` Server-Sent Events stream for generate progress
+- Status bar live job (kind, status, progress, message) with Cancel
+- History **Show in folder**; File menu opens output and models folders
+- H3 preflight warns when `ffmpeg` is not on PATH
+- Welcome notes whether ffmpeg is available
+
+### Changed
+
+- Help Auto copy matches VRAM-aware routing (INT8/Comfy under 24 GB)
+
 ## [0.2.8] — 2026-08-19
 
 ### Added

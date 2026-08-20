@@ -56,9 +56,12 @@ class HistoryPage(QWidget):
         delete.clicked.connect(self._delete_current)
         export = QPushButton("Export…")
         export.clicked.connect(self._export_current)
+        show = QPushButton("Show in folder")
+        show.clicked.connect(self._show_in_folder)
         row.addWidget(self._play)
         row.addWidget(restore)
         row.addWidget(export)
+        row.addWidget(show)
         row.addWidget(delete)
         row.addStretch(1)
         layout.addLayout(row)
@@ -152,6 +155,21 @@ class HistoryPage(QWidget):
             shutil.copy2(src, dest)
         except OSError as exc:
             QMessageBox.warning(self, "Export failed", str(exc))
+
+    def _show_in_folder(self) -> None:
+        from minimax_studio.ui.reveal import reveal_path
+
+        entry = self._current()
+        if not entry:
+            return
+        src = entry.get("output_path")
+        if not src or not Path(src).exists():
+            QMessageBox.information(self, "Show in folder", "This take has no file on disk.")
+            return
+        try:
+            reveal_path(src)
+        except OSError as exc:
+            QMessageBox.warning(self, "Show in folder failed", str(exc))
 
     def _delete_current(self) -> None:
         entry = self._current()

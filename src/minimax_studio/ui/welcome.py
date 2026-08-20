@@ -73,6 +73,12 @@ def _welcome_text(client: WorkerClient) -> str:
         lines.append(f"RAM: {probe.get('ram_gb')} GB.")
     if probe.get("sageattention"):
         lines.append("SageAttention is installed (Inspector → Attention → Sage, Comfy path).")
+    if probe.get("ffmpeg"):
+        lines.append("ffmpeg is on PATH.")
+    else:
+        lines.append(
+            "ffmpeg is not on PATH. Install it for H3 MP4 mux and media probe."
+        )
 
     titles = probe.get("packs_ready_titles") or []
     if titles:

@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from minimax_studio.worker.server import app
@@ -25,3 +27,36 @@ def test_packs_and_stub_job(studio_home) -> None:
     history = client.get("/history")
     assert history.status_code == 200
     assert any(item["id"] == job_id for item in history.json())
+
+
+def test_job_sse_stream(studio_home, monkeypatch) -> None:
+    monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
+    client = TestClient(app)
+    created = client.post(
+        "/jobs",
+        json={"kind": "music", "backend": "stub", "prompt": "sse", "lyrics": ""},
+    )
+    assert created.status_code == 200
+    job_id = created.json()["id"]
+    events = []
+    with client.stream("GET", f"/jobs/{job_id}/events") as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        for line in response.iter_lines():
+            if isinstance(line, bytes):
+                line = line.decode()
+            if line.startswith("data: "):
+                payload = line[6:].strip()
+                if payload and payload != "{}":
+                    events.append(json.loads(payload))
+            if line.startswith("event: end"):
+                break
+    assert events
+    assert events[-1]["status"] == "done"
+    assert events[-1]["id"] == job_id
+
+
+def test_job_sse_404(studio_home) -> None:
+    client = TestClient(app)
+    response = client.get("/jobs/no-such-job/events")
+    assert response.status_code == 404

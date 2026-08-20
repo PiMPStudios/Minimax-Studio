@@ -23,6 +23,8 @@ def preflight(kind: str, backend: str = "auto", mode: str = "t2va") -> dict[str,
         "gpus": hw.get("gpus") or [],
         "cuda_device": runtime.config.cuda_device,
         "comfy_url": runtime.config.comfy_url,
+        "ffmpeg": bool(hw.get("ffmpeg")),
+        "warnings": [],
     }
     try:
         if kind == "h3":
@@ -64,4 +66,12 @@ def preflight(kind: str, backend: str = "auto", mode: str = "t2va") -> dict[str,
         result["detail"] = "Will write a stub tone (dev)."
     else:
         result["detail"] = f"Will generate via {resolved}."
+    if (
+        kind == "h3"
+        and resolved in {"cuda", "comfy"}
+        and not result["ffmpeg"]
+    ):
+        warning = "ffmpeg is not in PATH. Install it for MP4 mux and media probe."
+        result["warnings"].append(warning)
+        result["detail"] = f"{result['detail']} {warning}"
     return result
