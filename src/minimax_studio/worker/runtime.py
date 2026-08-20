@@ -14,6 +14,8 @@ class Runtime:
         self.jobs: dict[str, dict[str, Any]] = {}
         self.music_pipe: Any = None
         self.music_pipe_path: str | None = None
+        self.h3_pipe: Any = None
+        self.h3_pipe_path: str | None = None
 
     def reload_config(self) -> AppConfig:
         with self.lock:

@@ -50,7 +50,14 @@ class VideoPage(QWidget):
         )
         sub.setObjectName("pageSubtitle")
         sub.setWordWrap(True)
-        layout.addWidget(title)
+        enhance = QPushButton("Enhance prompt")
+        enhance.clicked.connect(self._enhance)
+        self._enhance_btn = enhance
+        header = QHBoxLayout()
+        header.addWidget(title)
+        header.addStretch(1)
+        header.addWidget(enhance)
+        layout.addLayout(header)
         layout.addWidget(brand)
         layout.addWidget(sub)
 
@@ -215,6 +222,28 @@ class VideoPage(QWidget):
             QMessageBox.warning(self, "Save failed", str(exc))
             return
         self._status.setText(f"Saved preset “{name.strip()}”")
+
+    def _enhance(self) -> None:
+        from minimax_studio.ui.enhance import start_enhance
+
+        seed = self.prompt.toPlainText().strip()
+        if not seed:
+            QMessageBox.information(self, "Prompt needed", "Write a short idea first.")
+            return
+        self._enhance_btn.setEnabled(False)
+        self._status.setText("Enhancing with local LLM…")
+
+        def done(text: str) -> None:
+            self._enhance_btn.setEnabled(True)
+            if text:
+                self.prompt.setPlainText(text)
+            self._status.setText("Prompt enhanced")
+
+        def fail(err: str) -> None:
+            self._enhance_btn.setEnabled(True)
+            self._status.setText(err)
+
+        start_enhance(self, self._client, "h3", seed, "", done, fail)
 
 
 class _AssetRow(QWidget):

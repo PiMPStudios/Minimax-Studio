@@ -44,7 +44,14 @@ class MusicPage(QWidget):
         )
         sub.setObjectName("pageSubtitle")
         sub.setWordWrap(True)
-        layout.addWidget(title)
+        enhance = QPushButton("Enhance caption")
+        enhance.clicked.connect(self._enhance)
+        self._enhance_btn = enhance
+        header = QHBoxLayout()
+        header.addWidget(title)
+        header.addStretch(1)
+        header.addWidget(enhance)
+        layout.addLayout(header)
         layout.addWidget(brand)
         layout.addWidget(sub)
 
@@ -208,3 +215,27 @@ class MusicPage(QWidget):
             QMessageBox.warning(self, "Save failed", str(exc))
             return
         self._status.setText(f"Saved preset “{name.strip()}”")
+
+    def _enhance(self) -> None:
+        from minimax_studio.ui.enhance import start_enhance
+
+        seed = self.caption() or self.global_box.toPlainText().strip()
+        if not seed:
+            QMessageBox.information(self, "Caption needed", "Write a short idea first.")
+            return
+        self._enhance_btn.setEnabled(False)
+        self._status.setText("Enhancing with local LLM…")
+
+        def done(text: str) -> None:
+            self._enhance_btn.setEnabled(True)
+            if text:
+                self.global_box.setPlainText(text)
+                self.vocal_box.clear()
+                self.arrange_box.clear()
+            self._status.setText("Caption enhanced")
+
+        def fail(err: str) -> None:
+            self._enhance_btn.setEnabled(True)
+            self._status.setText(err)
+
+        start_enhance(self, self._client, "music", seed, self.lyrics.toPlainText(), done, fail)

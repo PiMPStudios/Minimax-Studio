@@ -34,11 +34,19 @@ class SettingsPage(QWidget):
         self.api = QLineEdit(config.minimax_api_key or "")
         self.api.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_base = QLineEdit(config.minimax_api_base)
+        self.llm_base = QLineEdit(config.llm_base_url)
+        self.llm_model = QLineEdit(config.llm_model)
+        self.llm_key = QLineEdit(config.llm_api_key or "")
+        self.llm_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.llm_key.setPlaceholderText("optional — falls back to ~/.config/llama-api.key")
         form.addRow("Output folder", _browse_row(self.output, self))
         form.addRow("Models folder", _browse_row(self.models, self))
         form.addRow("Hugging Face token", self.hf)
         form.addRow("MiniMax API key", self.api)
         form.addRow("MiniMax API base", self.api_base)
+        form.addRow("Local LLM URL", self.llm_base)
+        form.addRow("Local LLM model", self.llm_model)
+        form.addRow("Local LLM key", self.llm_key)
         layout.addLayout(form)
         save = QPushButton("Save")
         save.setObjectName("primary")
@@ -60,6 +68,9 @@ class SettingsPage(QWidget):
             "hf_token": self.hf.text().strip() or None,
             "minimax_api_key": self.api.text().strip() or None,
             "minimax_api_base": self.api_base.text().strip() or "https://api.minimax.io",
+            "llm_base_url": self.llm_base.text().strip() or "http://127.0.0.1:8080/v1",
+            "llm_model": self.llm_model.text().strip() or "qwen3.8-27b-q4kxl",
+            "llm_api_key": self.llm_key.text().strip() or None,
         }
         try:
             saved = self._client.put_settings(payload)
@@ -70,6 +81,9 @@ class SettingsPage(QWidget):
             self._config.hf_token = updated.hf_token
             self._config.minimax_api_key = updated.minimax_api_key
             self._config.minimax_api_base = updated.minimax_api_base
+            self._config.llm_base_url = updated.llm_base_url
+            self._config.llm_model = updated.llm_model
+            self._config.llm_api_key = updated.llm_api_key
         except Exception as exc:
             QMessageBox.warning(self, "Save failed", str(exc))
             return

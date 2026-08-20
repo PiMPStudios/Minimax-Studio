@@ -62,15 +62,20 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
     ).exists():
         raise RuntimeError("Download the official Ref2VA transformer pack for reference mode.")
 
-    manager = ComponentsManager()
-    if torch.cuda.is_available():
-        manager.enable_auto_cpu_offload(device="cuda")
-    pipe = ModularPipeline.from_pretrained(
-        str(pack_dir),
-        workflow=workflow,
-        components_manager=manager,
-    )
-    pipe.load_components(workflow=workflow, dtype=torch.bfloat16)
+    cache_key = f"{pack_dir}:{workflow}"
+    pipe = runtime.h3_pipe if runtime.h3_pipe_path == cache_key else None
+    if pipe is None:
+        manager = ComponentsManager()
+        if torch.cuda.is_available():
+            manager.enable_auto_cpu_offload(device="cuda")
+        pipe = ModularPipeline.from_pretrained(
+            str(pack_dir),
+            workflow=workflow,
+            components_manager=manager,
+        )
+        pipe.load_components(workflow=workflow, dtype=torch.bfloat16)
+        runtime.h3_pipe = pipe
+        runtime.h3_pipe_path = cache_key
 
     num_frames = duration_to_frames(request.duration_s)
     width = int(request.width or 960)

@@ -100,15 +100,19 @@ def _poll(
     job_id: str,
 ) -> str:
     deadline = time.monotonic() + 20 * 60
+    first = True
     while time.monotonic() < deadline:
-        time.sleep(5)
+        if not first:
+            time.sleep(5)
+        first = False
         response = client.get(
             f"{base}/v2/query/video_generation/{task_id}",
             headers=headers,
             timeout=30.0,
         )
         response.raise_for_status()
-        task = response.json().get("task") or response.json()
+        parsed = response.json()
+        task = parsed.get("task") or parsed
         status = task.get("status")
         update_job(job_id, message=f"API {status}", progress=0.5)
         if status == "succeeded":
@@ -121,8 +125,29 @@ def _poll(
     raise RuntimeError("API task timed out after 20 minutes")
 
 
+_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+}
+
+
 def _file_data_url(path: str) -> str:
-    raw = Path(path).read_bytes()
-    mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise RuntimeError(f"Asset not found: {path}")
+    raw = file_path.read_bytes()
+    mime = _MIME.get(file_path.suffix.lower()) or mimetypes.guess_type(path)[0] or "application/octet-stream"
     encoded = base64.b64encode(raw).decode("ascii")
     return f"data:{mime};base64,{encoded}"

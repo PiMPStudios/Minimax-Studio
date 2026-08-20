@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -8,6 +9,7 @@ from minimax_studio.config import AppConfig, save_config
 from minimax_studio.worker import downloads
 from minimax_studio.worker.history import get_entry, list_history
 from minimax_studio.worker.jobs import JobRequest, get_job, list_jobs, start_job
+from minimax_studio.worker.llm import enhance_prompt
 from minimax_studio.worker.loras import import_lora, list_loras
 from minimax_studio.worker.presets import delete_preset, list_presets, save_preset
 from minimax_studio.worker.probe import probe
@@ -22,6 +24,9 @@ class SettingsIn(BaseModel):
     hf_token: str | None = None
     minimax_api_key: str | None = None
     minimax_api_base: str | None = None
+    llm_base_url: str | None = None
+    llm_model: str | None = None
+    llm_api_key: str | None = None
 
 
 @app.get("/health")
@@ -157,3 +162,19 @@ def lora_import(body: LoraImportIn) -> dict[str, object]:
         return import_lora(body.path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class EnhanceIn(BaseModel):
+    kind: str = "music"
+    text: str
+    extra: str = ""
+
+
+@app.post("/enhance")
+def enhance(body: EnhanceIn) -> dict[str, object]:
+    try:
+        return {"text": enhance_prompt(body.kind, body.text, body.extra)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Local LLM failed: {exc}") from exc

@@ -58,6 +58,13 @@ class WorkerClient:
     def import_lora(self, path: str) -> dict[str, Any]:
         return self._post("/loras/import", {"path": path})
 
+    def enhance(self, kind: str, text: str, extra: str = "") -> dict[str, Any]:
+        return self._post(
+            "/enhance",
+            {"kind": kind, "text": text, "extra": extra},
+            timeout=180.0,
+        )
+
     def delete_preset(self, preset_id: str) -> dict[str, Any]:
         with httpx.Client(timeout=self._timeout) as client:
             response = client.delete(f"{self._base}/presets/{preset_id}")
@@ -85,8 +92,10 @@ class WorkerClient:
                 raise RuntimeError(f"unexpected list payload from {path}")
             return data
 
-    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        with httpx.Client(timeout=self._timeout) as client:
+    def _post(
+        self, path: str, payload: dict[str, Any], timeout: float | None = None
+    ) -> dict[str, Any]:
+        with httpx.Client(timeout=timeout or self._timeout) as client:
             response = client.post(f"{self._base}{path}", json=payload)
             self._raise(response)
             data = response.json()

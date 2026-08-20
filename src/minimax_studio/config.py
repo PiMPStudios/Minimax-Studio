@@ -28,6 +28,21 @@ class AppConfig(BaseModel):
     hf_token: str | None = None
     minimax_api_key: str | None = None
     minimax_api_base: str = "https://api.minimax.io"
+    llm_base_url: str = "http://127.0.0.1:8080/v1"
+    llm_model: str = "qwen3.8-27b-q4kxl"
+    llm_api_key: str | None = None
+
+    def resolved_llm_key(self) -> str | None:
+        if self.llm_api_key:
+            return self.llm_api_key
+        env = os.environ.get("MINIMAX_STUDIO_LLM_KEY")
+        if env:
+            return env
+        path = Path.home() / ".config" / "llama-api.key"
+        if path.is_file():
+            text = path.read_text(encoding="utf-8").strip()
+            return text or None
+        return None
 
     def has_output_dir(self) -> bool:
         return bool(self.output_dir) and Path(self.output_dir).is_dir()
