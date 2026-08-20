@@ -223,10 +223,10 @@ class VideoPage(QWidget):
             QMessageBox.warning(self, "Generate failed", str(exc))
             return
         self._job_id = str(job["id"])
-        self.generate.setEnabled(False)
         self._cancel.setEnabled(True)
         self._bar.show()
-        self._status.setText("Queued")
+        status = job.get("status") or "queued"
+        self._status.setText("Queued" if status == "queued" else str(status))
 
     def _cancel_job(self) -> None:
         if not self._job_id:

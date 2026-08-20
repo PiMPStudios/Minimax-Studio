@@ -4,7 +4,7 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.13** generate studio. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
+Status: **0.2.14** generate studio. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Locked for v1
 
@@ -31,6 +31,14 @@ Local Music 3 generate also needs PyTorch + diffusers (CUDA) or mlx-audio (Mac):
 ```bash
 pip install torch diffusers accelerate
 ```
+
+Optional OS keychain for API tokens:
+
+```bash
+pip install 'minimax-studio[secrets]'
+```
+
+Then enable **Store tokens in the OS keychain** in Settings.
 
 ## License (models)
 

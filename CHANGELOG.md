@@ -12,6 +12,13 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.14] — 2026-08-20
+
+### Changed
+
+- Generate stays enabled while a job runs, so another take can queue from the same page
+- Presets filter by Video/Music and name
+
 ## [0.2.13] — 2026-08-20
 
 ### Added

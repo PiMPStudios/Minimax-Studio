@@ -64,8 +64,9 @@ filter by Video/Music and prompt text.</p>
 <p>Generate asks before continuing if preflight has warnings (for example
 missing ffmpeg). The status bar also shows an active model download.
 Models and History can both reveal the file on disk.</p>
-<p>One job runs at a time. Further Generate clicks queue (up to 8). Cancel on
-a queued take drops it; Cancel on the status bar stops the running job.</p>
+<p>One job runs at a time. Further Generate clicks queue (up to 8), including
+from the same page. Cancel on a queued take drops it; Cancel on the status
+bar stops the running job. Presets can be filtered like History.</p>
 <p>Settings can store API tokens in the OS keychain instead of
 <code>config.json</code> when the optional <code>keyring</code> package is
 installed.</p>

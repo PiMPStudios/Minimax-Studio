@@ -129,3 +129,29 @@ def test_history_filter(tmp_path) -> None:
     page._search.setText("")
     page.refresh()
     assert page._list.currentRow() == 0
+
+
+def test_presets_filter(tmp_path) -> None:
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+
+    class PresetClient(FakeWorker):
+        def list_presets(self) -> list:
+            return [
+                {"id": "1", "name": "cinematic night", "kind": "h3"},
+                {"id": "2", "name": "folk acoustic", "kind": "music"},
+            ]
+
+    from minimax_studio.ui.pages.presets_page import PresetsPage
+    from minimax_studio.ui.state import StudioState
+
+    page = PresetsPage(PresetClient(), StudioState())  # type: ignore[arg-type]
+    page.refresh()
+    assert page._list.count() == 2
+    page._kind.setCurrentText("Video")
+    assert page._list.count() == 1
+    assert page._visible[0]["kind"] == "h3"
+    page._kind.setCurrentText("All")
+    page._search.setText("folk")
+    assert page._list.count() == 1
+    assert page._visible[0]["id"] == "2"
