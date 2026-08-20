@@ -39,12 +39,14 @@ def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
     caption = request.prompt or ""
     lyrics = request.lyrics or ""
     dit = DIT_INT8
+    cfg = float(request.cfg or 1.7)
     graph = build_music_comfy_graph(
         caption=caption,
         lyrics=lyrics,
         duration_s=duration,
         seed=seed,
         steps=steps,
+        cfg=cfg,
         dit_name=dit,
         prefix=f"minimax_studio/{job_id}",
     )
@@ -58,6 +60,7 @@ def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
                 duration_s=duration,
                 seed=seed,
                 steps=steps,
+                cfg=cfg,
                 dit_name=DIT_FP16,
                 prefix=f"minimax_studio/{job_id}",
             )
@@ -98,6 +101,7 @@ def build_music_comfy_graph(
     duration_s: float,
     seed: int,
     steps: int,
+    cfg: float = 1.7,
     dit_name: str = DIT_INT8,
     clip_name: str = CLIP_INT8,
     vae_name: str = VAE_NAME,
@@ -128,7 +132,7 @@ def build_music_comfy_graph(
                 "lyrics": lyrics,
                 "seed": int(seed),
                 "max_duration": float(duration_s),
-                "cfg_scale": 1.7,
+                "cfg_scale": float(cfg),
                 "top_k": 50,
             },
         },
@@ -152,7 +156,7 @@ def build_music_comfy_graph(
                 "latent_image": ["empty", 0],
                 "seed": int(seed),
                 "steps": int(steps),
-                "cfg": 1.7,
+                "cfg": float(cfg),
                 "sampler_name": "euler",
                 "scheduler": "simple",
                 "denoise": 1.0,

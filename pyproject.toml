@@ -3,6 +3,7 @@ name = "minimax-studio"
 dynamic = ["version"]
 description = "Point-and-click desktop studio for MiniMax H3 and MiniMax Music 3"
 readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
 dependencies = [
     "pyside6>=6.6",

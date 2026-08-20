@@ -3,31 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from minimax_studio.h3_timing import duration_to_frames
+from minimax_studio.h3_timing import duration_to_frames, resolve_dims
 from minimax_studio.worker.catalog import PACKS
 from minimax_studio.worker.downloads import pack_status
 from minimax_studio.worker.jobs import JobRequest, update_job
 from minimax_studio.worker.runtime import runtime
-
-
-def resolve_dims(
-    resolution: str, ratio: str, width: int | None, height: int | None
-) -> tuple[int, int]:
-    if width and height and (width, height) != (960, 544):
-        return int(width), int(height)
-    short = 1088 if str(resolution).upper().startswith("2") else 768
-    parts = str(ratio or "16:9").split(":")
-    try:
-        rw, rh = int(parts[0]), int(parts[1])
-    except (ValueError, IndexError):
-        rw, rh = 16, 9
-    if rw >= rh:
-        h = short
-        w = int(round(short * rw / rh / 32) * 32)
-    else:
-        w = short
-        h = int(round(short * rh / rw / 32) * 32)
-    return max(32, w), max(32, h)
 
 
 INT8_NEEDS_COMFY = (
@@ -116,7 +96,13 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         if steps >= 16:
             steps = 8
     num_frames = duration_to_frames(request.duration_s)
-    width, height = resolve_dims(request.resolution, request.ratio, request.width, request.height)
+    width, height = resolve_dims(
+        request.resolution,
+        request.ratio,
+        request.width,
+        request.height,
+        request.quality,
+    )
     generator = None
     if request.seed >= 0:
         generator = torch.Generator().manual_seed(int(request.seed))
@@ -175,8 +161,22 @@ def resolve_h3_backend(requested: str) -> str:
     if name == "stub":
         return "stub"
     if name == "cuda":
+        from minimax_studio.worker.probe import probe as _probe
+
+        hw = _probe()
+        if hw.get("apple_silicon") and not hw.get("cuda"):
+            raise RuntimeError(
+                "Local MiniMax H3 on Apple Silicon is gated in v1. Use the MiniMax API."
+            )
         return "cuda"
     if name == "comfy":
+        from minimax_studio.worker.probe import probe as _probe_comfy
+
+        hw = _probe_comfy()
+        if hw.get("apple_silicon") and not hw.get("cuda"):
+            raise RuntimeError(
+                "Local MiniMax H3 on Apple Silicon is gated in v1. Use the MiniMax API."
+            )
         if not int8["ready"]:
             raise RuntimeError(
                 "Comfy backend needs the Comfy-Org INT8 FL2VA files. "
@@ -188,6 +188,19 @@ def resolve_h3_backend(requested: str) -> str:
     from minimax_studio.worker.probe import probe
 
     hw = probe()
+    if hw.get("apple_silicon") and not hw.get("cuda"):
+        if name in {"local", "cuda", "comfy"}:
+            raise RuntimeError(
+                "Local MiniMax H3 on Apple Silicon is gated in v1 (slow and RAM-hungry). "
+                "Use the MiniMax API, or generate on an NVIDIA CUDA machine."
+            )
+        if name in {"auto", ""}:
+            if runtime.config.minimax_api_key:
+                return "api"
+            raise RuntimeError(
+                "Local MiniMax H3 on Apple Silicon is gated in v1. "
+                "Add a MiniMax API key in Settings, or use a CUDA machine."
+            )
     torch_ok = bool(hw.get("torch_available"))
     if name == "local":
         if official and torch_ok:

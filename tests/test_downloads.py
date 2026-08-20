@@ -1,7 +1,8 @@
 from pathlib import Path
 import time
 
-from minimax_studio.worker.downloads import get_download, start_download
+from minimax_studio.worker.catalog import PACKS
+from minimax_studio.worker.downloads import delete_pack, get_download, start_download
 
 
 def test_download_uses_injected_snapshot(studio_home: Path) -> None:
@@ -20,3 +21,12 @@ def test_download_uses_injected_snapshot(studio_home: Path) -> None:
     current = get_download(record["id"])
     assert current["status"] == "done"
     assert (studio_home / "models" / "music3-cuda" / "modular_model_index.json").is_file()
+
+
+def test_delete_pack_removes_studio_copy(studio_home: Path) -> None:
+    dest = studio_home / "models" / PACKS["music3-cuda"].local_dir
+    dest.mkdir(parents=True)
+    (dest / "modular_model_index.json").write_text("{}", encoding="utf-8")
+    result = delete_pack("music3-cuda")
+    assert result["ok"] is True
+    assert not dest.exists()

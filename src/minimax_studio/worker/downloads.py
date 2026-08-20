@@ -120,6 +120,7 @@ def _run_download(
             # Some MLX packs use different markers; accept any file present.
             if first_existing(dest, pack.marker_files) is None and dir_bytes(dest) == 0:
                 raise RuntimeError("download finished but pack files are missing")
+        _ensure_license(pack.repo_id, dest, runtime.config.hf_token)
         _update(
             job_id,
             status="done",
@@ -158,3 +159,49 @@ def _hf_snapshot(
     if ignore_patterns:
         kwargs["ignore_patterns"] = ignore_patterns
     return snapshot_download(**kwargs)
+
+
+def _ensure_license(repo_id: str, dest: Path, token: str | None) -> None:
+    for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "NOTICE"):
+        if (dest / name).is_file():
+            return
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        return
+    for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "NOTICE"):
+        try:
+            hf_hub_download(
+                repo_id=repo_id,
+                filename=name,
+                local_dir=str(dest),
+                token=token,
+            )
+            return
+        except Exception:
+            continue
+
+
+def delete_pack(pack_id: str) -> dict[str, Any]:
+    pack = pack_or_raise(pack_id)
+    root = runtime.config.models_root().resolve()
+    dest = (root / pack.local_dir).resolve()
+    if dest != root and root not in dest.parents:
+        raise RuntimeError("refusing to delete outside the Studio models folder")
+    if not dest.exists():
+        return {"ok": True, "id": pack_id, "removed": False}
+    shared = [
+        other
+        for other in PACKS.values()
+        if other.local_dir == pack.local_dir and other.id != pack.id
+    ]
+    if shared and pack.marker_files:
+        for marker in pack.marker_files:
+            path = dest / marker
+            if path.is_file():
+                path.unlink()
+        return {"ok": True, "id": pack_id, "removed": True, "shared": True}
+    import shutil
+
+    shutil.rmtree(dest)
+    return {"ok": True, "id": pack_id, "removed": True, "shared": False}

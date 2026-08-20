@@ -141,6 +141,8 @@ class MusicPage(QWidget):
             self._state.set_backend(str(entry["backend"]))
         if entry.get("speed"):
             self._state.set_speed(str(entry["speed"]))
+        if entry.get("cfg") is not None:
+            self._state.set_cfg(float(entry["cfg"]))
         loras = entry.get("loras") or []
         lora_id = entry.get("lora_id") or (loras[0].get("id") if loras else "")
         strength = entry.get("lora_strength")
@@ -207,6 +209,7 @@ class MusicPage(QWidget):
                 else []
             ),
             "speed": self._state.speed,
+            "cfg": self._state.cfg,
         }
         try:
             job = self._client.start_job(payload)

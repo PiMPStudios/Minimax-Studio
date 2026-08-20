@@ -44,6 +44,8 @@ def save_preset(payload: dict[str, Any]) -> dict[str, Any]:
         "speed": payload.get("speed", "quality"),
         "attention": payload.get("attention", "default"),
         "ref_image_size": payload.get("ref_image_size", "match"),
+        "quality": payload.get("quality", "native"),
+        "cfg": payload.get("cfg", 1.7),
         "assets": payload.get("assets") or [],
         "loras": payload.get("loras") or [],
         "lora_id": payload.get("lora_id") or "",

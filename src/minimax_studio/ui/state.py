@@ -20,6 +20,8 @@ class StudioState(QObject):
         self.speed = "quality"
         self.attention = "default"
         self.ref_image_size = "match"
+        self.cfg = 1.7
+        self.quality = "native"
 
     def set_backend(self, value: str) -> None:
         key = value.strip().lower()
@@ -63,4 +65,15 @@ class StudioState(QObject):
         key = value.strip().lower()
         if key != self.ref_image_size:
             self.ref_image_size = key
+            self.changed.emit()
+
+    def set_cfg(self, value: float) -> None:
+        if float(value) != self.cfg:
+            self.cfg = float(value)
+            self.changed.emit()
+
+    def set_quality(self, value: str) -> None:
+        key = value.strip().lower()
+        if key != self.quality:
+            self.quality = key
             self.changed.emit()

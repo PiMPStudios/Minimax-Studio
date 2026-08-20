@@ -152,11 +152,16 @@ def _generate_cuda(job_id: str, request: JobRequest, wav_path: Path) -> dict[str
         num_inference_steps=steps,
         generator=generator,
         output="audios",
+        guidance_scale=float(request.cfg or 1.7),
     )
     try:
         audio = pipe(**call, callback_on_step_end=step_cancel_callback(job_id, steps))[0]
     except TypeError:
-        audio = pipe(**call)[0]
+        call.pop("guidance_scale", None)
+        try:
+            audio = pipe(**call, callback_on_step_end=step_cancel_callback(job_id, steps))[0]
+        except TypeError:
+            audio = pipe(**call)[0]
     update_job(job_id, message="Writing WAV", progress=0.9)
     if hasattr(audio, "float") and hasattr(audio, "cpu"):
         array = audio.T.float().cpu().numpy()

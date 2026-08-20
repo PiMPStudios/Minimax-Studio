@@ -175,6 +175,17 @@ def test_music_comfy_graph_core_nodes() -> None:
     assert graph["save"]["class_type"] == "SaveAudio"
 
 
+def test_mac_h3_local_is_gated(monkeypatch, studio_home: Path) -> None:
+    monkeypatch.setattr(
+        "minimax_studio.worker.probe.probe",
+        lambda: {"apple_silicon": True, "cuda": False, "ram_gb": 32},
+    )
+    with pytest.raises(RuntimeError, match="Apple Silicon"):
+        resolve_h3_backend("auto")
+    with pytest.raises(RuntimeError, match="Apple Silicon"):
+        resolve_h3_backend("local")
+
+
 def test_auto_backend_prefers_official(monkeypatch, studio_home: Path) -> None:
     monkeypatch.setattr(
         "minimax_studio.worker.backends.h3.pack_status",

@@ -57,7 +57,13 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
     dest.mkdir(parents=True, exist_ok=True)
     out_path = dest / "video.mp4"
     frames = duration_to_frames(request.duration_s)
-    width, height = resolve_dims(request.resolution, request.ratio, request.width, request.height)
+    width, height = resolve_dims(
+        request.resolution,
+        request.ratio,
+        request.width,
+        request.height,
+        request.quality,
+    )
     seed = int(request.seed) if request.seed >= 0 else random.randint(0, 2_147_483_647)
     steps = int(request.steps)
     mode = request.mode

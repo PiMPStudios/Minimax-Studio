@@ -128,6 +128,12 @@ class MainWindow(QMainWindow):
         self._steps.setRange(1, 100)
         self._steps.setValue(self._state.steps)
         self._steps.valueChanged.connect(self._state.set_steps)
+        self._cfg = QDoubleSpinBox()
+        self._cfg.setRange(0.0, 20.0)
+        self._cfg.setSingleStep(0.1)
+        self._cfg.setValue(self._state.cfg)
+        self._cfg.setToolTip("Music CFG / guidance. H3 local sampling does not use this.")
+        self._cfg.valueChanged.connect(self._state.set_cfg)
         self._gpu_pick = QComboBox()
         self._gpu_pick.addItem("GPU 0", 0)
         self._gpu_pick.currentIndexChanged.connect(self._gpu_changed)
@@ -135,6 +141,9 @@ class MainWindow(QMainWindow):
         self._gpu_label.setWordWrap(True)
         self._lora = QComboBox()
         self._lora.addItem("None", "")
+        self._lora.setToolTip(
+            "Community MiniMax adapters are still rare. Import a .safetensors to apply."
+        )
         self._lora.currentIndexChanged.connect(self._lora_changed)
         self._lora_strength = QDoubleSpinBox()
         self._lora_strength.setRange(0.0, 2.0)
@@ -160,6 +169,7 @@ class MainWindow(QMainWindow):
         form.addRow("", self._duration_hint)
         form.addRow("Seed", self._seed)
         form.addRow("Steps", self._steps)
+        form.addRow("CFG", self._cfg)
         form.addRow("LoRA", self._lora)
         form.addRow("LoRA strength", self._lora_strength)
         form.addRow(import_lora)
@@ -239,12 +249,14 @@ class MainWindow(QMainWindow):
         self._duration.blockSignals(True)
         self._seed.blockSignals(True)
         self._steps.blockSignals(True)
+        self._cfg.blockSignals(True)
         self._backend.setCurrentIndex(mapping.get(self._state.backend, 0))
         self._speed.setCurrentIndex(0 if self._state.speed != "fast" else 1)
         self._attention.setCurrentIndex(1 if self._state.attention == "sage" else 0)
         self._duration.setValue(self._state.duration)
         self._seed.setValue(self._state.seed)
         self._steps.setValue(self._state.steps)
+        self._cfg.setValue(self._state.cfg)
         self._lora.blockSignals(True)
         self._lora_strength.blockSignals(True)
         if self._state.lora_id and self._lora.findData(self._state.lora_id) < 0:
@@ -262,6 +274,7 @@ class MainWindow(QMainWindow):
         self._duration.blockSignals(False)
         self._seed.blockSignals(False)
         self._steps.blockSignals(False)
+        self._cfg.blockSignals(False)
 
     def refresh_loras(self) -> None:
         current = self._lora.currentData()

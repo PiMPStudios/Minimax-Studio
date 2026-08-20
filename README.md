@@ -4,7 +4,7 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.6** generate studio. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
+Status: **0.2.7** generate studio. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Locked for v1
 
@@ -37,4 +37,4 @@ pip install torch diffusers accelerate
 - H3 weights: MiniMax H3 Community License (territory limits; US/EU/UK/Korea need a separate grant or the API)
 - Music 3 weights: MiniMax-Music3 Community License (no geo carve-out; UI must show “MiniMax-Music3” on commercial products)
 
-This repo will be our own code license (TBD). Model weights stay MiniMax’s.
+This repo is Apache-2.0. Model weights stay MiniMax’s.

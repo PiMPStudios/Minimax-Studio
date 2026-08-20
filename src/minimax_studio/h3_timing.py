@@ -26,3 +26,34 @@ def format_h3_duration(seconds: float) -> str:
     frames = duration_to_frames(seconds)
     snapped = frames_to_seconds(frames)
     return f"{snapped:.1f}s / {frames}f"
+
+
+def resolve_dims(
+    resolution: str,
+    ratio: str,
+    width: int | None = None,
+    height: int | None = None,
+    quality: str = "native",
+) -> tuple[int, int]:
+    """H3 canvas: Preview ~480 short edge, Native 768, API 2K ~1088, multiple of 32."""
+    if width and height and (int(width), int(height)) != (960, 544):
+        return int(width), int(height)
+    res = str(resolution or "").upper()
+    if res.startswith("2"):
+        short = 1088
+    elif str(quality or "native").lower() == "preview":
+        short = 480
+    else:
+        short = 768
+    parts = str(ratio or "16:9").split(":")
+    try:
+        rw, rh = int(parts[0]), int(parts[1])
+    except (ValueError, IndexError):
+        rw, rh = 16, 9
+    if rw >= rh:
+        h = short
+        w = int(round(short * rw / rh / 32) * 32)
+    else:
+        w = short
+        h = int(round(short * rh / rw / 32) * 32)
+    return max(32, w), max(32, h)

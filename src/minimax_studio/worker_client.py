@@ -39,6 +39,15 @@ class WorkerClient:
     def start_download(self, pack_id: str) -> dict[str, Any]:
         return self._post("/downloads", {"pack_id": pack_id})
 
+    def delete_pack(self, pack_id: str) -> dict[str, Any]:
+        with httpx.Client(timeout=self._timeout) as client:
+            response = client.delete(f"{self._base}/packs/{pack_id}")
+            self._raise(response)
+            data = response.json()
+            if not isinstance(data, dict):
+                raise RuntimeError("unexpected delete payload")
+            return data
+
     def list_downloads(self) -> list[dict[str, Any]]:
         return self._get_list("/downloads")
 

@@ -112,6 +112,16 @@ class DownloadIn(BaseModel):
     pack_id: str
 
 
+@app.delete("/packs/{pack_id}")
+def remove_pack(pack_id: str) -> dict[str, object]:
+    try:
+        return downloads.delete_pack(pack_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/downloads")
 def create_download(body: DownloadIn) -> dict[str, object]:
     try:

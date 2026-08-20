@@ -54,12 +54,16 @@ class VideoPage(QWidget):
         enhance = QPushButton("Enhance prompt")
         enhance.clicked.connect(self._enhance)
         self._enhance_btn = enhance
+        structure = QPushButton("Structure")
+        structure.setToolTip("Insert MiniMax H3 shot-list scaffolding (local, no LLM).")
+        structure.clicked.connect(self._insert_structure)
         ir = QPushButton("Context-IR (API)")
         ir.clicked.connect(self._context_ir)
         self._ir_btn = ir
         header = QHBoxLayout()
         header.addWidget(title)
         header.addStretch(1)
+        header.addWidget(structure)
         header.addWidget(enhance)
         header.addWidget(ir)
         layout.addLayout(header)
@@ -92,13 +96,18 @@ class VideoPage(QWidget):
         layout.addLayout(self._assets)
 
         res_row = QHBoxLayout()
+        res_row.addWidget(QLabel("Quality"))
+        self.quality = QComboBox()
+        self.quality.addItems(["Preview", "Native 768"])
+        self.quality.setToolTip("Preview is a faster ~480px short edge. Native is H3’s 768px canvas.")
+        res_row.addWidget(self.quality)
         res_row.addWidget(QLabel("API resolution"))
         self.resolution = QComboBox()
         self.resolution.addItems(["768P", "2K"])
         res_row.addWidget(self.resolution)
         res_row.addWidget(QLabel("Ratio"))
         self.ratio = QComboBox()
-        self.ratio.addItems(["16:9", "9:16", "1:1", "4:3", "21:9"])
+        self.ratio.addItems(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"])
         res_row.addWidget(self.ratio)
         self._ref_size_label = QLabel("Ref size")
         self.ref_size = QComboBox()
@@ -201,6 +210,7 @@ class VideoPage(QWidget):
             "resolution": self.resolution.currentText(),
             "ratio": self.ratio.currentText(),
             "ref_image_size": self.ref_size.currentText(),
+            "quality": "preview" if self.quality.currentIndex() == 0 else "native",
             "loras": (
                 [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
                 if self._state.lora_id
@@ -268,6 +278,8 @@ class VideoPage(QWidget):
             self.last_path.set_paths(str(last))
         if refs:
             self.refs_path.set_paths([str(p) for p in refs])
+        quality = str(entry.get("quality") or "native")
+        self.quality.setCurrentIndex(0 if quality == "preview" else 1)
 
     def _save_preset(self) -> None:
         name, ok = QInputDialog.getText(self, "Save preset", "Name")
@@ -286,6 +298,7 @@ class VideoPage(QWidget):
                     "steps": self._state.steps,
                     "resolution": self.resolution.currentText(),
                     "ratio": self.ratio.currentText(),
+                    "quality": "preview" if self.quality.currentIndex() == 0 else "native",
                     "speed": self._state.speed,
                     "attention": self._state.attention,
                     "ref_image_size": self.ref_size.currentText(),
@@ -396,6 +409,24 @@ class VideoPage(QWidget):
         thread.start()
         self._ir_thread = thread
 
+    def _insert_structure(self) -> None:
+        scaffold = (
+            "Scene overview: \n"
+            "\n"
+            "Timeline:\n"
+            "[0s-2s] Shot 1: camera, action, dialogue/SFX.\n"
+            "[2s-5s] Shot 2: \n"
+            "\n"
+            "Camera: \n"
+            "Audio: dialogue, SFX, music.\n"
+        )
+        current = self.prompt.toPlainText().strip()
+        if current:
+            self.prompt.setPlainText(current + "\n\n" + scaffold)
+        else:
+            self.prompt.setPlainText(scaffold)
+        self._status.setText("Inserted H3 shot-list structure")
+
 
 def _placeholder(mode: str) -> str:
     if mode == "ref2va":
@@ -410,14 +441,36 @@ class _AssetRow(QWidget):
     def __init__(self, label: str, kind: str) -> None:
         super().__init__()
         self._kind = kind
+        self.setAcceptDrops(True)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(QLabel(label))
         self._edit = QLineEdit()
+        self._edit.setPlaceholderText("Drop files here or Browse…")
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse)
         row.addWidget(self._edit, 1)
         row.addWidget(browse)
+
+    def dragEnterEvent(self, event) -> None:  # noqa: ANN001
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:  # noqa: ANN001
+        paths = []
+        for url in event.mimeData().urls():
+            local = url.toLocalFile()
+            if local:
+                paths.append(str(Path(local)))
+        if not paths:
+            return
+        if self._kind == "image":
+            self._edit.setText(paths[0])
+        else:
+            existing = self.paths
+            merged = existing + [path for path in paths if path not in existing]
+            self._edit.setText(";".join(merged))
+        event.acceptProposedAction()
 
     @property
     def path(self) -> str:

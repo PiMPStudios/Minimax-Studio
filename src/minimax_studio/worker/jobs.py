@@ -29,6 +29,8 @@ class JobRequest(BaseModel):
     ratio: str = "16:9"
     attention: str = "default"
     ref_image_size: str = "match"
+    quality: str = "native"
+    cfg: float = 1.7
 
 
 def start_job(request: JobRequest) -> dict[str, Any]:

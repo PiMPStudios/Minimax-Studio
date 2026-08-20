@@ -12,6 +12,20 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.7] — 2026-08-19
+
+### Added
+
+- Generate Video: drag-and-drop on asset rows, Preview vs Native 768, 3:4 ratio, Structure shot-list insert
+- Models: Remove deletes the Studio copy only (never a ComfyUI folder)
+- Downloads pull MiniMax LICENSE/NOTICE into the pack folder when Hugging Face has one
+- Inspector CFG for Music 3 (default 1.7)
+- Apache-2.0 license for this repo’s code (model weights stay MiniMax’s)
+
+### Changed
+
+- Local MiniMax H3 on Apple Silicon is gated in v1 (API or CUDA machine)
+
 ## [0.2.6] — 2026-08-19
 
 ### Added

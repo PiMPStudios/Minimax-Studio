@@ -65,7 +65,7 @@ class ModelsPage(QWidget):
         for pack in packs:
             card = self._cards.get(pack["id"])
             if card is None:
-                card = _PackCard(pack, self._start)
+                card = _PackCard(pack, self._start, self._remove)
                 self._cards[pack["id"]] = card
                 self._list.addWidget(card)
             card.update_pack(pack, downloads.get(pack["id"]))
@@ -105,12 +105,36 @@ class ModelsPage(QWidget):
             return
         self.refresh()
 
+    def _remove(self, pack: dict[str, Any]) -> None:
+        if pack.get("source") == "comfy":
+            QMessageBox.information(
+                self,
+                "Comfy pack",
+                "This pack was found in a ComfyUI models folder. "
+                "Studio will not delete files outside its own models directory.",
+            )
+            return
+        answer = QMessageBox.question(
+            self,
+            "Remove pack",
+            f"Delete the Studio copy of “{pack.get('title')}” from disk?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self._client.delete_pack(pack["id"])
+        except Exception as exc:
+            QMessageBox.warning(self, "Remove failed", str(exc))
+            return
+        self.refresh()
+
 
 class _PackCard(QFrame):
-    def __init__(self, pack: dict[str, Any], on_download) -> None:
+    def __init__(self, pack: dict[str, Any], on_download, on_remove) -> None:
         super().__init__()
         self._pack = pack
         self._on_download = on_download
+        self._on_remove = on_remove
         self.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(self)
         self._title = QLabel()
@@ -128,7 +152,10 @@ class _PackCard(QFrame):
         self._button = QPushButton("Download")
         self._button.setObjectName("primary")
         self._button.clicked.connect(lambda: self._on_download(self._pack))
+        self._remove = QPushButton("Remove")
+        self._remove.clicked.connect(lambda: self._on_remove(self._pack))
         row.addWidget(self._button)
+        row.addWidget(self._remove)
         row.addStretch(1)
         layout.addWidget(self._title)
         layout.addWidget(self._summary)
@@ -170,6 +197,12 @@ class _PackCard(QFrame):
                 self._button.setText("Resume")
             else:
                 self._button.setText("Download")
+        studio_copy = bool(pack.get("ready")) and pack.get("source") != "comfy"
+        self._remove.setEnabled(studio_copy)
+        if pack.get("source") == "comfy":
+            self._remove.setToolTip("Won’t delete files in your ComfyUI models folder.")
+        else:
+            self._remove.setToolTip("Delete the Studio copy of this pack.")
         self._meta.setText(
             f"{status}  ·  ~{pack.get('approx_gb')} GB  ·  {pack.get('license_name')}\n"
             f"{pack.get('path')}"

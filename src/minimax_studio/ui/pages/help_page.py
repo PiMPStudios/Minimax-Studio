@@ -43,6 +43,10 @@ folder and ComfyUI is running, Generate Music can submit to it.</p>
 <p>Inspector <b>CUDA GPU</b> is for in-process diffusers only. ComfyUI uses the
 device it was launched with (<code>--default-device</code>). Generate runs a
 preflight check and will tell you if ComfyUI or PyTorch is missing.</p>
+<p>Generate Video accepts drag-and-drop on frame/reference rows. Quality is
+Preview (~480px) or Native 768. Structure inserts a local shot-list scaffold
+(Enhance/Context-IR still do the rewrite). Models Remove only deletes Studio’s
+copy, never a ComfyUI folder.</p>
 <p>First launch picks an output folder, then a welcome screen lists GPU and any
 packs already on disk. H3 duration in the inspector snaps to the model’s
 5–15 s / 24 fps frame grid.</p>
