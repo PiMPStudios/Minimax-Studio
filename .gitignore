@@ -1,0 +1,47 @@
+# Models and user data — never commit weights
+models/
+outputs/
+datasets/
+cache/
+*.safetensors
+*.gguf
+*.pth
+*.ckpt
+*.bin
+*.pt
+*.wav
+*.mp4
+*.flac
+*.mp3
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Node / Tauri
+node_modules/
+frontend/dist/
+src-tauri/target/
+src-tauri/gen/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+huggingface_token
