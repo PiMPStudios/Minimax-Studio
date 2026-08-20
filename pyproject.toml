@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+secrets = ["keyring>=25"]
 
 [project.scripts]
 minimax-studio = "minimax_studio.app:main"

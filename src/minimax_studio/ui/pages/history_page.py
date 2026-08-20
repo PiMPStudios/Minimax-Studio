@@ -123,6 +123,8 @@ class HistoryPage(QWidget):
             if entry.get("duration_s"):
                 bits.append(f"{int(entry['duration_s'])}s")
             self._list.addItem(QListWidgetItem(f"{'  ·  '.join(bits)}  ·  {prompt}"))
+        if self._list.count() and self._list.currentRow() < 0:
+            self._list.setCurrentRow(0)
 
     def _current(self) -> dict | None:
         row = self._list.currentRow()

@@ -45,6 +45,7 @@ class SettingsIn(BaseModel):
     comfy_root: str | None = None
     comfy_extra_args: str | None = None
     cuda_device: int | None = None
+    use_os_keyring: bool | None = None
 
 
 @app.get("/health")

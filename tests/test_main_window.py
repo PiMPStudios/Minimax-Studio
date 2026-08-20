@@ -126,3 +126,6 @@ def test_history_filter(tmp_path) -> None:
     page._search.setText("cat")
     assert page._list.count() == 1
     assert page._visible[0]["id"] == "a"
+    page._search.setText("")
+    page.refresh()
+    assert page._list.currentRow() == 0

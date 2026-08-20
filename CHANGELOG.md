@@ -12,6 +12,13 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.13] — 2026-08-20
+
+### Added
+
+- Settings **Store tokens in the OS keychain** (optional `keyring` extra). Hugging Face, MiniMax, and LLM keys leave `config.json` when a keychain backend is available
+- History selects the newest take after a refresh (so a finished generate is ready to play)
+
 ## [0.2.12] — 2026-08-20
 
 ### Added

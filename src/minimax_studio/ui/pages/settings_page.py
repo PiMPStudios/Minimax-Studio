@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QCheckBox,
     QComboBox,
     QLineEdit,
     QMessageBox,
@@ -69,6 +70,18 @@ class SettingsPage(QWidget):
         form.addRow("Local LLM URL", _field_with_mark(self.llm_base, self._llm_mark))
         form.addRow("Local LLM model", self.llm_model)
         form.addRow("Local LLM key", self.llm_key)
+        self.use_keyring = QCheckBox("Store tokens in the OS keychain")
+        from minimax_studio.secrets import keyring_available
+
+        if keyring_available():
+            self.use_keyring.setChecked(bool(config.use_os_keyring))
+        else:
+            self.use_keyring.setChecked(False)
+            self.use_keyring.setEnabled(False)
+            self.use_keyring.setToolTip(
+                "Install the keyring package and an OS keychain backend to enable this."
+            )
+        form.addRow("", self.use_keyring)
         layout.addLayout(form)
         buttons = QHBoxLayout()
         save = QPushButton("Save")
@@ -88,8 +101,9 @@ class SettingsPage(QWidget):
         self._save_status.setWordWrap(True)
         layout.addWidget(self._save_status)
         note = QLabel(
-            "Tokens stay in the local config file. They are sent to the worker "
-            "process on this machine only. MiniMax / LLM / Comfy status is shown "
+            "Tokens stay on this machine. Default is the local config file. "
+            "OS keychain (optional `keyring` package) keeps Hugging Face / MiniMax / "
+            "LLM keys out of config.json. MiniMax / LLM / Comfy status is shown "
             "inline — ✓ reachable, ✗ not. Studio CUDA device is for in-process "
             "diffusers only. ComfyUI uses the GPU it was launched with "
             "(--default-device). Start ComfyUI launches that install as a "
@@ -140,6 +154,7 @@ class SettingsPage(QWidget):
             "llm_base_url": self.llm_base.text().strip() or "http://127.0.0.1:8080/v1",
             "llm_model": self.llm_model.text().strip() or "qwen3.8-27b-q4kxl",
             "llm_api_key": self.llm_key.text().strip(),
+            "use_os_keyring": self.use_keyring.isChecked(),
         }
         try:
             saved = self._client.put_settings(payload)
@@ -158,6 +173,7 @@ class SettingsPage(QWidget):
             self._config.llm_base_url = updated.llm_base_url
             self._config.llm_model = updated.llm_model
             self._config.llm_api_key = updated.llm_api_key
+            self._config.use_os_keyring = updated.use_os_keyring
         except Exception as exc:
             QMessageBox.warning(self, "Save failed", str(exc))
             return False

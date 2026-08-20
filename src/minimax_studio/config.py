@@ -37,6 +37,7 @@ class AppConfig(BaseModel):
     comfy_extra_args: str | None = None
     welcome_seen: bool = False
     cuda_device: int = 0
+    use_os_keyring: bool = False
 
     def resolved_llm_key(self) -> str | None:
         if self.llm_api_key:
@@ -77,10 +78,31 @@ def load_config(path: Path | None = None) -> AppConfig:
     if not path.is_file():
         return AppConfig()
     data = json.loads(path.read_text(encoding="utf-8"))
-    return AppConfig.model_validate(data)
+    config = AppConfig.model_validate(data)
+    if config.use_os_keyring:
+        from minimax_studio.secrets import keyring_available, load_secrets
+
+        if keyring_available():
+            secrets = load_secrets()
+            updates = {key: value for key, value in secrets.items() if value}
+            if updates:
+                config = config.model_copy(update=updates)
+    return config
 
 
 def save_config(config: AppConfig, path: Path | None = None) -> None:
     path = path or default_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    data = json.loads(config.model_dump_json())
+    if config.use_os_keyring:
+        from minimax_studio.secrets import (
+            SECRET_FIELDS,
+            keyring_available,
+            persist_secrets,
+        )
+
+        if keyring_available():
+            persist_secrets({key: data.get(key) for key in SECRET_FIELDS})
+            for key in SECRET_FIELDS:
+                data[key] = None
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
