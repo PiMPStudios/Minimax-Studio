@@ -8,6 +8,7 @@ from minimax_studio.config import AppConfig, save_config
 from minimax_studio.worker import downloads
 from minimax_studio.worker.history import get_entry, list_history
 from minimax_studio.worker.jobs import JobRequest, get_job, list_jobs, start_job
+from minimax_studio.worker.presets import delete_preset, list_presets, save_preset
 from minimax_studio.worker.probe import probe
 from minimax_studio.worker.runtime import runtime
 
@@ -119,3 +120,19 @@ def history_item(entry_id: str) -> dict[str, object]:
         return get_entry(entry_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/presets")
+def presets() -> list[dict[str, object]]:
+    return list_presets()
+
+
+@app.post("/presets")
+def create_preset(body: dict) -> dict[str, object]:
+    return save_preset(body)
+
+
+@app.delete("/presets/{preset_id}")
+def remove_preset(preset_id: str) -> dict[str, object]:
+    delete_preset(preset_id)
+    return {"ok": True, "id": preset_id}

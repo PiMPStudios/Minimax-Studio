@@ -24,6 +24,7 @@ from minimax_studio.ui.pages import (
     HistoryPage,
     ModelsPage,
     MusicPage,
+    PresetsPage,
     SettingsPage,
     VideoPage,
 )
@@ -57,19 +58,14 @@ class MainWindow(QMainWindow):
         self._history = HistoryPage(client, self._state)
         self._models = ModelsPage(client)
         self._settings = SettingsPage(client, config)
-        presets = QWidget()
-        presets_layout = QFormLayout(presets)
-        presets_layout.addRow(
-            QLabel("Presets"),
-            QLabel("Saved generate settings land here next."),
-        )
+        self._presets = PresetsPage(client, self._state)
 
         self._stack = QStackedWidget()
         self._pages = {
             "video": self._video,
             "music": self._music,
             "history": self._history,
-            "presets": presets,
+            "presets": self._presets,
             "models": self._models,
             "settings": self._settings,
         }
@@ -123,6 +119,7 @@ class MainWindow(QMainWindow):
         self._state.changed.connect(self._sync_inspector)
         self._state.open_history.connect(lambda: self.show_page("history"))
         self._state.restore_music.connect(lambda _: self.show_page("music"))
+        self._state.restore_video.connect(lambda _: self.show_page("video"))
 
         inspector = QWidget()
         form = QFormLayout(inspector)
@@ -191,6 +188,8 @@ class MainWindow(QMainWindow):
             self._history.refresh()
         if key == "models":
             self._models.refresh()
+        if key == "presets":
+            self._presets.refresh()
 
     def _sync_inspector(self) -> None:
         mapping = {"auto": 0, "local": 1, "api": 2}

@@ -4,8 +4,10 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -80,10 +82,25 @@ class VideoPage(QWidget):
         layout.addLayout(self._assets)
         self._set_mode("t2va")
 
+        res_row = QHBoxLayout()
+        res_row.addWidget(QLabel("API resolution"))
+        self.resolution = QComboBox()
+        self.resolution.addItems(["768P", "2K"])
+        res_row.addWidget(self.resolution)
+        res_row.addWidget(QLabel("Ratio"))
+        self.ratio = QComboBox()
+        self.ratio.addItems(["16:9", "9:16", "1:1", "4:3", "21:9"])
+        res_row.addWidget(self.ratio)
+        res_row.addStretch(1)
+        layout.addLayout(res_row)
+
         run_row = QHBoxLayout()
         self.generate = QPushButton("Generate")
         self.generate.setObjectName("primary")
         self.generate.clicked.connect(self._generate)
+        save = QPushButton("Save preset")
+        save.clicked.connect(self._save_preset)
+        run_row.addWidget(save)
         self._status = QLabel("")
         self._status.setObjectName("pageSubtitle")
         run_row.addWidget(self.generate)
@@ -92,6 +109,7 @@ class VideoPage(QWidget):
         self._bar = QProgressBar()
         self._bar.hide()
         layout.addWidget(self._bar)
+        state.restore_video.connect(self.apply_restore)
 
     def _set_mode(self, mode: str) -> None:
         self._mode = mode
@@ -138,6 +156,8 @@ class VideoPage(QWidget):
             "steps": self._state.steps,
             "assets": assets,
             "speed": "quality",
+            "resolution": self.resolution.currentText(),
+            "ratio": self.ratio.currentText(),
         }
         try:
             job = self._client.start_job(payload)
@@ -148,6 +168,48 @@ class VideoPage(QWidget):
         self.generate.setEnabled(False)
         self._bar.show()
         self._status.setText("Queued")
+
+    def apply_restore(self, entry: dict) -> None:
+        self.prompt.setPlainText(str(entry.get("prompt") or ""))
+        mode = str(entry.get("mode") or "t2va")
+        for button in self._mode_group.buttons():
+            if button.text() == dict(MODES).get(mode, ""):
+                button.setChecked(True)
+        self._set_mode(mode)
+        if entry.get("resolution"):
+            self.resolution.setCurrentText(str(entry["resolution"]))
+        if entry.get("ratio"):
+            self.ratio.setCurrentText(str(entry["ratio"]))
+        if entry.get("duration_s"):
+            self._state.set_duration(int(entry["duration_s"]))
+        if entry.get("seed") is not None:
+            self._state.set_seed(int(entry["seed"]))
+        if entry.get("steps"):
+            self._state.set_steps(int(entry["steps"]))
+
+    def _save_preset(self) -> None:
+        name, ok = QInputDialog.getText(self, "Save preset", "Name")
+        if not ok or not name.strip():
+            return
+        try:
+            self._client.save_preset(
+                {
+                    "name": name.strip(),
+                    "kind": "h3",
+                    "backend": self._state.backend,
+                    "mode": self._mode,
+                    "prompt": self.prompt.toPlainText(),
+                    "duration_s": self._state.duration,
+                    "seed": self._state.seed,
+                    "steps": self._state.steps,
+                    "resolution": self.resolution.currentText(),
+                    "ratio": self.ratio.currentText(),
+                }
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Save failed", str(exc))
+            return
+        self._status.setText(f"Saved preset “{name.strip()}”")
 
 
 class _AssetRow(QWidget):

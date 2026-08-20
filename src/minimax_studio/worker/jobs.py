@@ -24,6 +24,8 @@ class JobRequest(BaseModel):
     speed: str = "quality"
     width: int = 960
     height: int = 544
+    resolution: str = "768P"
+    ratio: str = "16:9"
 
 
 def start_job(request: JobRequest) -> dict[str, Any]:

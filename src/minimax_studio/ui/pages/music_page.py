@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPlainTextEdit,
@@ -87,9 +88,12 @@ class MusicPage(QWidget):
         self.generate = QPushButton("Generate")
         self.generate.setObjectName("primary")
         self.generate.clicked.connect(self._generate)
+        save = QPushButton("Save preset")
+        save.clicked.connect(self._save_preset)
         self._status = QLabel("")
         self._status.setObjectName("pageSubtitle")
         run_row.addWidget(self.generate)
+        run_row.addWidget(save)
         run_row.addWidget(self._status, 1)
         layout.addLayout(run_row)
         self._bar = QProgressBar()
@@ -176,3 +180,26 @@ class MusicPage(QWidget):
         self._bar.show()
         self._bar.setValue(0)
         self._status.setText("Queued")
+
+    def _save_preset(self) -> None:
+        name, ok = QInputDialog.getText(self, "Save preset", "Name")
+        if not ok or not name.strip():
+            return
+        try:
+            self._client.save_preset(
+                {
+                    "name": name.strip(),
+                    "kind": "music",
+                    "backend": self._state.backend,
+                    "mode": "ttm",
+                    "prompt": self.caption(),
+                    "lyrics": self.lyrics.toPlainText(),
+                    "duration_s": self._state.duration,
+                    "seed": self._state.seed,
+                    "steps": self._state.steps,
+                }
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Save failed", str(exc))
+            return
+        self._status.setText(f"Saved preset “{name.strip()}”")

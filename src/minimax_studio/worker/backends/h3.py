@@ -25,10 +25,13 @@ def duration_to_frames(seconds: float) -> int:
 
 
 def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
-    if request.backend.lower() == "api":
-        raise RuntimeError("MiniMax H3 API backend is not wired yet.")
-    if request.backend.lower() == "stub":
-        raise RuntimeError("H3 has no stub renderer. Use a real pack or wait.")
+    backend = _resolve_backend(request.backend)
+    if backend == "api":
+        from minimax_studio.worker.backends.h3_api import generate_h3_api
+
+        return generate_h3_api(job_id, request)
+    if backend == "stub":
+        raise RuntimeError("H3 has no stub renderer.")
 
     dest = runtime.config.history_root() / job_id
     dest.mkdir(parents=True, exist_ok=True)
@@ -102,6 +105,30 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         audio_sample_rate=results["sampling_rate"],
     )
     return {"output_path": str(out_path), "backend": "cuda", "media_type": "video"}
+
+
+def _resolve_backend(requested: str) -> str:
+    name = requested.lower()
+    if name in {"api", "local", "cuda", "stub"}:
+        if name == "local":
+            return "cuda"
+        return name
+    # auto
+    root = runtime.config.models_root()
+    local_ready = pack_status(PACKS["h3-diffusers-fl2va"], root)["ready"]
+    from minimax_studio.worker.probe import probe
+
+    hw = probe()
+    if local_ready and hw.get("cuda"):
+        return "cuda"
+    if runtime.config.minimax_api_key:
+        return "api"
+    if local_ready:
+        return "cuda"
+    raise RuntimeError(
+        "No local H3 diffusers pack and no MiniMax API key. "
+        "Download the official FL2VA pack or add a key in Settings."
+    )
 
 
 def _attach_media(request: JobRequest, kwargs: dict[str, Any], load_image) -> None:

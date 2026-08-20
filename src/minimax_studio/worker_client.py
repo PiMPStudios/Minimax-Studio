@@ -46,6 +46,21 @@ class WorkerClient:
     def list_history(self) -> list[dict[str, Any]]:
         return self._get_list("/history")
 
+    def list_presets(self) -> list[dict[str, Any]]:
+        return self._get_list("/presets")
+
+    def save_preset(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/presets", payload)
+
+    def delete_preset(self, preset_id: str) -> dict[str, Any]:
+        with httpx.Client(timeout=self._timeout) as client:
+            response = client.delete(f"{self._base}/presets/{preset_id}")
+            self._raise(response)
+            data = response.json()
+            if not isinstance(data, dict):
+                raise RuntimeError("unexpected delete payload")
+            return data
+
     def _get(self, path: str) -> dict[str, Any]:
         with httpx.Client(timeout=self._timeout) as client:
             response = client.get(f"{self._base}{path}")

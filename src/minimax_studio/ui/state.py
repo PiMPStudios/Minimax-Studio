@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, Signal
 class StudioState(QObject):
     changed = Signal()
     restore_music = Signal(dict)
+    restore_video = Signal(dict)
     open_history = Signal()
 
     def __init__(self) -> None:

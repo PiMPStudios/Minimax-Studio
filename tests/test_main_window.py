@@ -36,6 +36,9 @@ class FakeWorker:
     def get_job(self, _job_id: str) -> dict:
         return {"status": "done", "progress": 1, "message": "Done"}
 
+    def list_presets(self) -> list:
+        return []
+
 
 def test_main_window_builds(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])
