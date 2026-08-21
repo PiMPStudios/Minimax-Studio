@@ -58,8 +58,9 @@ output and models folders. H3 local generate wants <code>ffmpeg</code> on PATH
 for MP4 mux.</p>
 <p>Go menu: Ctrl+1…7 switches pages, Ctrl+Enter generates on Video/Music.
 <b>Start ComfyUI</b> (Welcome, Settings, or Go) launches a detected
-<code>main.py</code> install as a separate process — extra args in Settings
-(for example <code>--listen 0.0.0.0 --default-device 1</code>). History can
+<code>main.py</code> install as a separate process and waits until it answers
+— extra args in Settings (for example
+<code>--listen 0.0.0.0 --default-device 1</code>). History can
 filter by Video/Music and prompt text.</p>
 <p>Generate asks before continuing if preflight has warnings (for example
 missing ffmpeg). The status bar also shows an active model download.

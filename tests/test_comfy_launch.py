@@ -56,6 +56,9 @@ def test_detect_comfy_from_config_root(studio_home: Path, tmp_path: Path) -> Non
     assert info["python"]
     assert info["argv"]
     assert "main.py" in info["argv"][1]
+    assert "running" in info
+    assert "starting" in info
+    assert "dead" in info
 
 
 def test_start_already_running(studio_home: Path, monkeypatch) -> None:
@@ -99,6 +102,7 @@ def test_start_popen(studio_home: Path, tmp_path: Path, monkeypatch) -> None:
     result = start_comfy()
     assert result["ok"] is True
     assert result["already"] is False
+    assert result["starting"] is True
     assert result["pid"] == 4242
     assert captured["argv"][1].endswith("main.py")
     assert captured["kwargs"]["cwd"] == str(root.resolve())

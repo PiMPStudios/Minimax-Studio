@@ -189,14 +189,13 @@ class SettingsPage(QWidget):
     def _start_comfy(self) -> None:
         if not self._save():
             return
-        try:
-            result = self._client.start_comfy()
-        except Exception as exc:
-            QMessageBox.warning(self, "Start ComfyUI failed", str(exc))
-            return
-        self._save_status.setText(str(result.get("detail") or "Started ComfyUI."))
-        QTimer.singleShot(2000, self._refresh_pings)
-        QTimer.singleShot(500, self._refresh_comfy_detect)
+        from minimax_studio.ui.comfy_watch import watch_comfy_start
+
+        def done(_ok: bool, _info: dict) -> None:
+            self._refresh_pings()
+            self._refresh_comfy_detect()
+
+        watch_comfy_start(self, self._client, self._save_status.setText, done)
 
     def _refresh_comfy_detect(self) -> None:
         try:

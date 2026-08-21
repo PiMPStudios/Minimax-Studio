@@ -32,6 +32,12 @@ _REACH_OK = False
 _REACH_TTL_S = 2.0
 
 
+def reset_comfy_reach_cache() -> None:
+    global _REACH_AT, _REACH_OK
+    _REACH_AT = 0.0
+    _REACH_OK = False
+
+
 def comfy_reachable() -> bool:
     global _REACH_AT, _REACH_OK
     now = time.monotonic()

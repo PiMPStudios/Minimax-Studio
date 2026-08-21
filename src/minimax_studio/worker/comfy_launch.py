@@ -99,7 +99,31 @@ def build_comfy_argv(
 
 def detect_comfy() -> dict[str, Any]:
     url = runtime.config.comfy_url or "http://127.0.0.1:8188"
+    proc_state = _process_state()
+    if proc_state["starting"] or proc_state["dead"]:
+        from minimax_studio.worker.backends.h3_comfy import reset_comfy_reach_cache
+
+        reset_comfy_reach_cache()
     running = _comfy_running()
+    if running:
+        proc_state["starting"] = False
+        proc_state["dead"] = False
+    found = {
+        "root": None,
+        "python": None,
+        "url": url,
+        "running": running,
+        "starting": bool(proc_state["starting"]) and not running,
+        "dead": bool(proc_state["dead"]) and not running,
+        "pid": proc_state["pid"],
+        "exit_code": proc_state["exit_code"],
+        "argv": None,
+        "log_tail": _log_tail(),
+        "detail": (
+            "No ComfyUI install found. Looked for main.py under ~/ai/ComfyUI, "
+            "~/ComfyUI, Settings → ComfyUI folder, and COMFYUI_PATH."
+        ),
+    }
     for root in guess_comfy_app_roots():
         if not (root / "main.py").is_file():
             continue
@@ -114,25 +138,29 @@ def detect_comfy() -> dict[str, Any]:
                 f"Found ComfyUI at {root} but no venv python "
                 "(.venv, venv, or python_embeded)."
             )
-        return {
-            "root": str(root),
-            "python": str(python) if python else None,
-            "url": url,
-            "running": running,
-            "argv": argv,
-            "detail": detail,
-        }
-    return {
-        "root": None,
-        "python": None,
-        "url": url,
-        "running": running,
-        "argv": None,
-        "detail": (
-            "No ComfyUI install found. Looked for main.py under ~/ai/ComfyUI, "
-            "~/ComfyUI, Settings → ComfyUI folder, and COMFYUI_PATH."
-        ),
-    }
+        elif running:
+            detail = f"ComfyUI is up at {url} ({root})"
+        elif found["starting"]:
+            detail = f"Starting ComfyUI (pid {found['pid']}) from {root}…"
+        elif found["dead"]:
+            detail = (
+                f"ComfyUI exited ({found['exit_code']}) from {root}. "
+                + (found["log_tail"] or "No log.")
+            )
+        found.update(
+            {
+                "root": str(root),
+                "python": str(python) if python else None,
+                "argv": argv,
+                "detail": detail,
+            }
+        )
+        return found
+    if found["dead"] and found["log_tail"]:
+        found["detail"] = (
+            f"ComfyUI exited ({found['exit_code']}). " + found["log_tail"]
+        )
+    return found
 
 
 def start_comfy() -> dict[str, Any]:
@@ -175,21 +203,56 @@ def start_comfy() -> dict[str, Any]:
     proc = subprocess.Popen(argv, **kwargs)
     runtime.comfy_proc = proc
     runtime.comfy_log = log_handle
+    from minimax_studio.worker.backends.h3_comfy import reset_comfy_reach_cache
+
+    reset_comfy_reach_cache()
+    log_path = str(getattr(log_handle, "name", "") or "")
     return {
         "ok": True,
         "already": False,
+        "starting": True,
         "pid": proc.pid,
         "argv": argv,
-        "log": str(getattr(log_handle, "name", "") or ""),
-        "detail": f"Started ComfyUI (pid {proc.pid}) from {root}.",
+        "log": log_path,
+        "detail": (
+            f"Starting ComfyUI (pid {proc.pid}) from {root}. "
+            f"Waiting until it answers at {url}."
+        ),
     }
 
 
 def _comfy_running() -> bool:
-    from minimax_studio.worker.ping import ping_services
+    from minimax_studio.worker.backends.h3_comfy import comfy_reachable
 
-    comfy = ping_services().get("comfy") or {}
-    return bool(comfy.get("ok"))
+    return comfy_reachable()
+
+
+def _process_state() -> dict[str, Any]:
+    proc = runtime.comfy_proc
+    if proc is None:
+        return {"pid": None, "starting": False, "dead": False, "exit_code": None}
+    code = proc.poll()
+    if code is None:
+        return {"pid": proc.pid, "starting": True, "dead": False, "exit_code": None}
+    return {"pid": proc.pid, "starting": False, "dead": True, "exit_code": code}
+
+
+def _log_tail(limit: int = 2000) -> str:
+    path = None
+    handle = runtime.comfy_log
+    name = getattr(handle, "name", None)
+    if name:
+        path = Path(name)
+    elif runtime.config.output_dir:
+        path = Path(runtime.config.output_dir) / "comfy-studio.log"
+    if path is None or not path.is_file():
+        return ""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    text = data[-limit:].decode("utf-8", errors="replace").strip()
+    return text
 
 
 def _open_comfy_log():

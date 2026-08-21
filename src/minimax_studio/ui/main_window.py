@@ -535,13 +535,22 @@ class MainWindow(QMainWindow):
     def _start_comfy(self) -> None:
         from PySide6.QtWidgets import QMessageBox
 
-        try:
-            result = self._client.start_comfy()
-        except Exception as exc:
-            QMessageBox.warning(self, "Start ComfyUI failed", str(exc))
-            return
-        self._status_worker.setText(str(result.get("detail") or "Started ComfyUI"))
-        QTimer.singleShot(2000, self.refresh_probe)
+        from minimax_studio.ui.comfy_watch import watch_comfy_start
+
+        def done(ok: bool, info: dict) -> None:
+            self.refresh_probe()
+            if not ok:
+                QMessageBox.warning(
+                    self,
+                    "Start ComfyUI failed",
+                    str(
+                        info.get("detail")
+                        or info.get("log_tail")
+                        or "ComfyUI did not come up."
+                    ),
+                )
+
+        watch_comfy_start(self, self._client, self._status_worker.setText, done)
 
     def _show_welcome(self) -> None:
         from minimax_studio.ui.welcome import WelcomeDialog

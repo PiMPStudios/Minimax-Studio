@@ -12,6 +12,13 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.19] — 2026-08-20
+
+### Changed
+
+- **Start ComfyUI** waits until `8188` answers (or the process dies / 90s timeout) and surfaces the log tail on failure
+- Status/Welcome/Settings no longer claim Comfy is up the instant the process is spawned
+
 ## [0.2.18] — 2026-08-20
 
 ### Changed

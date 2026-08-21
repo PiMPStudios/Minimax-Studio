@@ -34,7 +34,9 @@ class WelcomeDialog(QDialog):
         recommended.clicked.connect(lambda: _download_recommended(client, body, recommended))
         buttons.addButton(recommended, QDialogButtonBox.ButtonRole.ActionRole)
         start_comfy = QPushButton("Start ComfyUI")
-        start_comfy.clicked.connect(lambda: _start_comfy(client, body, start_comfy))
+        start_comfy.clicked.connect(
+            lambda: _start_comfy(self, client, body, start_comfy)
+        )
         buttons.addButton(start_comfy, QDialogButtonBox.ButtonRole.ActionRole)
         layout.addWidget(title)
         layout.addWidget(body)
@@ -139,11 +141,19 @@ def _download_recommended(client: WorkerClient, body: QLabel, button: QPushButto
         body.setText(body.text() + "\n\nNothing to download — recommended packs are already ready.")
 
 
-def _start_comfy(client: WorkerClient, body: QLabel, button: QPushButton) -> None:
-    try:
-        result = client.start_comfy()
-    except Exception as exc:
-        body.setText(body.text() + f"\n\nCould not start ComfyUI: {exc}")
-        return
+def _start_comfy(
+    dialog: QDialog, client: WorkerClient, body: QLabel, button: QPushButton
+) -> None:
+    from minimax_studio.ui.comfy_watch import watch_comfy_start
+
     button.setEnabled(False)
-    body.setText(body.text() + "\n\n" + str(result.get("detail") or "Started ComfyUI."))
+    base = body.text()
+
+    def on_text(text: str) -> None:
+        body.setText(base + "\n\n" + text)
+
+    def on_done(ok: bool, _info: dict) -> None:
+        if not ok:
+            button.setEnabled(True)
+
+    watch_comfy_start(dialog, client, on_text, on_done)
