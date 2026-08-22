@@ -137,6 +137,26 @@ def test_history_filter(tmp_path) -> None:
     assert page._list.currentRow() == 0
 
 
+def test_history_detail_includes_seed() -> None:
+    from minimax_studio.ui.pages.history_page import _history_detail
+
+    text = _history_detail(
+        {
+            "kind": "h3",
+            "backend": "comfy",
+            "mode": "t2va",
+            "duration_s": 8,
+            "seed": 7,
+            "steps": 30,
+            "prompt": "a fox",
+            "output_path": "/tmp/x.mp4",
+        }
+    )
+    assert "seed 7" in text
+    assert "8s" in text
+    assert "a fox" in text
+
+
 def test_presets_filter(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])
     apply_theme(app)

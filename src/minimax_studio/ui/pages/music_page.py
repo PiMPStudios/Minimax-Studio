@@ -91,6 +91,18 @@ class MusicPage(QWidget):
         self.lyrics.setPlaceholderText("[Verse]\nMorning light filtering through the pine\n[Chorus]\nSoftly the world begins to breathe")
         layout.addWidget(self.lyrics, 1)
 
+        length_row = QHBoxLayout()
+        length_row.addWidget(QLabel("Length"))
+        for secs in (30, 60, 120, 180, 300):
+            label = "5m" if secs == 300 else f"{secs}s"
+            chip = QPushButton(label)
+            chip.setFixedWidth(44)
+            chip.setToolTip("Music 3 max is 5 minutes.")
+            chip.clicked.connect(lambda _=False, value=secs: self._state.set_duration(value))
+            length_row.addWidget(chip)
+        length_row.addStretch(1)
+        layout.addLayout(length_row)
+
         run_row = QHBoxLayout()
         self.generate = QPushButton("Generate")
         self.generate.setObjectName("primary")

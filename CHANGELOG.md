@@ -12,6 +12,14 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.23] — 2026-08-20
+
+### Added
+
+- Generate Music length chips: 30s / 60s / 2m / 3m / 5m
+- History detail shows mode, duration, seed, steps, speed, ratio
+- History meta now stores speed, CFG, ratio, quality, attention, LoRAs so Restore is complete
+
 ## [0.2.22] — 2026-08-20
 
 ### Added

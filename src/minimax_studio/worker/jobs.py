@@ -263,6 +263,13 @@ def _run_job(job_id: str, request: JobRequest) -> None:
                 "duration_s": request.duration_s,
                 "seed": request.seed,
                 "steps": request.steps,
+                "speed": request.speed,
+                "cfg": request.cfg,
+                "ratio": request.ratio,
+                "quality": request.quality,
+                "attention": request.attention,
+                "resolution": request.resolution,
+                "loras": request.loras,
                 "output_path": result["output_path"],
                 "media_type": result.get("media_type", "audio"),
             }

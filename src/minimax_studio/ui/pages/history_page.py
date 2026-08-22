@@ -21,6 +21,37 @@ from minimax_studio.ui.state import StudioState
 from minimax_studio.worker_client import WorkerClient
 
 
+def _history_detail(entry: dict) -> str:
+    bits = [
+        f"{entry.get('kind')} / {entry.get('backend') or '?'}",
+        str(entry.get("output_path") or ""),
+    ]
+    meta = []
+    if entry.get("mode"):
+        meta.append(str(entry["mode"]))
+    if entry.get("duration_s"):
+        meta.append(f"{entry['duration_s']}s")
+    if entry.get("seed") is not None and int(entry.get("seed") or -1) >= 0:
+        meta.append(f"seed {entry['seed']}")
+    if entry.get("steps"):
+        meta.append(f"{entry['steps']} steps")
+    if entry.get("speed") and entry.get("speed") != "quality":
+        meta.append(str(entry["speed"]))
+    if entry.get("ratio"):
+        meta.append(str(entry["ratio"]))
+    if entry.get("quality"):
+        meta.append(str(entry["quality"]))
+    if meta:
+        bits.append(" · ".join(meta))
+    bits.append("")
+    bits.append(str(entry.get("prompt") or ""))
+    lyrics = str(entry.get("lyrics") or "").strip()
+    if lyrics:
+        bits.append("")
+        bits.append(lyrics)
+    return "\n".join(bits)
+
+
 class HistoryPage(QWidget):
     def __init__(self, client: WorkerClient, state: StudioState) -> None:
         super().__init__()
@@ -140,11 +171,7 @@ class HistoryPage(QWidget):
         if not entry:
             self._detail.setText("Select a take.")
             return
-        self._detail.setText(
-            f"{entry.get('kind')} / {entry.get('backend')}\n"
-            f"{entry.get('output_path')}\n\n"
-            f"{entry.get('prompt')}"
-        )
+        self._detail.setText(_history_detail(entry))
         path = entry.get("output_path")
         if self._player and path and Path(path).is_file():
             self._player.setSource(QUrl.fromLocalFile(path))

@@ -277,6 +277,8 @@ class VideoPage(QWidget):
             self.resolution.setCurrentText(str(entry["resolution"]))
         if entry.get("ratio"):
             self.ratio.setCurrentText(str(entry["ratio"]))
+        if entry.get("quality"):
+            self.quality.setCurrentIndex(0 if entry["quality"] == "preview" else 1)
         if entry.get("duration_s"):
             self._state.set_duration(int(entry["duration_s"]))
         if entry.get("seed") is not None:

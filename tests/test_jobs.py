@@ -19,6 +19,11 @@ def test_stub_music_job_writes_history(studio_home: Path, monkeypatch) -> None:
     assert current["output_path"]
     assert Path(current["output_path"]).is_file()
     assert (studio_home / "history" / job["id"] / "meta.json").is_file()
+    import json
+
+    meta = json.loads((studio_home / "history" / job["id"] / "meta.json").read_text())
+    assert meta["speed"] == "quality"
+    assert "cfg" in meta
 
 
 def test_job_queue_runs_second_after_first(studio_home: Path, monkeypatch) -> None:
