@@ -111,7 +111,11 @@ class MainWindow(QMainWindow):
         self._backend.currentTextChanged.connect(lambda _t: self._refresh_route())
         self._speed = QComboBox()
         self._speed.addItems(["Quality", "Fast"])
-        self._speed.currentTextChanged.connect(lambda text: self._state.set_speed(text))
+        self._speed.setToolTip(
+            "H3 Fast needs the Turbo LoRA on Models (8 steps, 4 for Ref2VA). "
+            "Music ignores this."
+        )
+        self._speed.currentTextChanged.connect(self._on_speed)
         self._attention = QComboBox()
         self._attention.addItems(["Default", "Sage"])
         self._attention.currentTextChanged.connect(lambda text: self._state.set_attention(text))
@@ -337,6 +341,14 @@ class MainWindow(QMainWindow):
             return
         self.refresh_loras()
 
+    def _on_speed(self, text: str) -> None:
+        self._state.set_speed(text)
+        row = self._nav.currentRow()
+        key = self._nav_keys[row] if 0 <= row < len(self._nav_keys) else None
+        if text.lower() == "fast" and key == "video" and self._state.steps >= 16:
+            self._state.set_steps(8)
+        self._refresh_route()
+
     def _on_duration(self, value: int) -> None:
         self._state.set_duration(value)
         self._refresh_duration_hint()
@@ -561,7 +573,9 @@ class MainWindow(QMainWindow):
         kind = "h3" if key == "video" else "music"
         mode = getattr(self._video, "_mode", "t2va") if kind == "h3" else "ttm"
         try:
-            check = self._client.preflight(kind, self._state.backend, mode)
+            check = self._client.preflight(
+                kind, self._state.backend, mode, self._state.speed
+            )
         except Exception:
             self._route.setText("Will use: worker unreachable")
             return

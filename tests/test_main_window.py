@@ -54,7 +54,9 @@ class FakeWorker:
     def list_loras(self) -> list:
         return []
 
-    def preflight(self, kind: str, backend: str = "auto", mode: str = "t2va") -> dict:
+    def preflight(
+        self, kind: str, backend: str = "auto", mode: str = "t2va", speed: str = "quality"
+    ) -> dict:
         return {
             "ok": False,
             "detail": "ComfyUI is not running",

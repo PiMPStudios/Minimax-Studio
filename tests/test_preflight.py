@@ -39,3 +39,49 @@ def test_preflight_h3_cuda_warns_without_ffmpeg(studio_home: Path, monkeypatch) 
     assert result["ffmpeg"] is False
     assert result["warnings"]
     assert "ffmpeg" in result["detail"].lower()
+
+
+def test_preflight_fast_blocks_without_turbo(studio_home: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "minimax_studio.worker.preflight.probe",
+        lambda: {
+            "torch_available": False,
+            "cuda": True,
+            "gpus": [{"name": "RTX", "vram_gb": 32}],
+            "ffmpeg": True,
+        },
+    )
+    monkeypatch.setattr(
+        "minimax_studio.worker.backends.h3.resolve_h3_backend",
+        lambda _backend: "comfy",
+    )
+    monkeypatch.setattr(
+        "minimax_studio.worker.backends.h3._find_turbo_lora",
+        lambda _mode="t2va": None,
+    )
+    result = preflight("h3", "comfy", "t2va", "fast")
+    assert result["ok"] is False
+    assert "Turbo" in result["detail"]
+
+
+def test_preflight_fast_ok_with_turbo(studio_home: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "minimax_studio.worker.preflight.probe",
+        lambda: {
+            "torch_available": False,
+            "cuda": True,
+            "gpus": [{"name": "RTX", "vram_gb": 32}],
+            "ffmpeg": True,
+        },
+    )
+    monkeypatch.setattr(
+        "minimax_studio.worker.backends.h3.resolve_h3_backend",
+        lambda _backend: "comfy",
+    )
+    monkeypatch.setattr(
+        "minimax_studio.worker.backends.h3._find_turbo_lora",
+        lambda _mode="t2va": "/models/loras/turbo.safetensors",
+    )
+    result = preflight("h3", "comfy", "t2va", "fast")
+    assert result["ok"] is True
+    assert "Turbo" in result["detail"]

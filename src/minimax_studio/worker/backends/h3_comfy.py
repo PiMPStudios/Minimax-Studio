@@ -93,10 +93,6 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
                 "Download that pack on Models, or use official Ref2VA / the MiniMax API."
             )
         unet_name = UNET_REF2VA
-        if steps >= 16 and request.speed == "fast":
-            steps = 4
-    elif request.speed == "fast" and steps >= 16:
-        steps = 8
 
     lora_name = None
     lora_strength = 1.0
@@ -104,8 +100,16 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
         from minimax_studio.worker.backends.h3 import _find_turbo_lora
 
         turbo_path = _find_turbo_lora(mode)
-        if turbo_path:
-            lora_name = Path(turbo_path).name
+        if not turbo_path:
+            raise RuntimeError(
+                "Fast needs the MiniMax H3 Turbo LoRA. Download that pack on Models, "
+                "or switch Inspector Speed to Quality."
+            )
+        lora_name = Path(turbo_path).name
+        if mode == "ref2va" and steps >= 16:
+            steps = 4
+        elif steps >= 16:
+            steps = 8
     elif request.loras:
         first = request.loras[0]
         path = first.get("id") or first.get("path")
@@ -455,6 +459,7 @@ def _submit_graph(client: httpx.Client, graph: dict[str, Any], client_id: str) -
 
 def _poll_history(client: httpx.Client, prompt_id: str, job_id: str) -> dict[str, Any]:
     deadline = time.monotonic() + 45 * 60
+    started = time.monotonic()
     while time.monotonic() < deadline:
         if is_cancelled(job_id):
             try:
@@ -479,7 +484,13 @@ def _poll_history(client: httpx.Client, prompt_id: str, job_id: str) -> dict[str
             done = status.get("status_str") == "success" or status.get("completed") is True
             if done:
                 return outputs
-        update_job(job_id, message=_comfy_queue_message(client), progress=0.45)
+        elapsed = time.monotonic() - started
+        progress = 0.25 + min(0.62, elapsed / 480.0)
+        update_job(
+            job_id,
+            message=_comfy_progress_message(client, elapsed),
+            progress=progress,
+        )
         time.sleep(1.5)
     raise RuntimeError("Timed out waiting for ComfyUI.")
 
@@ -496,6 +507,16 @@ def _comfy_error_text(status: dict[str, Any], record: dict[str, Any] | None = No
         msg = (body.get("exception_message") or body.get("exception_type") or "error")
         return f"{node}: {str(msg).strip()}"
     return str(messages or status)
+
+
+def _comfy_progress_message(client: httpx.Client, elapsed: float) -> str:
+    total = max(0, int(elapsed))
+    mins, secs = divmod(total, 60)
+    clock = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+    queue = _comfy_queue_message(client)
+    if queue.startswith("ComfyUI:"):
+        return f"{queue} · {clock}"
+    return f"ComfyUI sampling {clock}"
 
 
 def _comfy_queue_message(client: httpx.Client) -> str:

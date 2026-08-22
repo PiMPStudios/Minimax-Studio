@@ -32,11 +32,17 @@ class WorkerClient:
         return self._post("/comfy/start", {})
 
     def preflight(
-        self, kind: str, backend: str = "auto", mode: str = "t2va"
+        self,
+        kind: str,
+        backend: str = "auto",
+        mode: str = "t2va",
+        speed: str = "quality",
     ) -> dict[str, Any]:
         from urllib.parse import urlencode
 
-        query = urlencode({"kind": kind, "backend": backend, "mode": mode})
+        query = urlencode(
+            {"kind": kind, "backend": backend, "mode": mode, "speed": speed}
+        )
         return self._get(f"/preflight?{query}")
 
     def list_packs(self) -> list[dict[str, Any]]:

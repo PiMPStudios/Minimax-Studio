@@ -190,7 +190,12 @@ class VideoPage(QWidget):
         from minimax_studio.ui.ready import confirm_generate
 
         if not confirm_generate(
-            self, self._client, "h3", self._state.backend, self._mode
+            self,
+            self._client,
+            "h3",
+            self._state.backend,
+            self._mode,
+            self._state.speed,
         ):
             return
         assets = []

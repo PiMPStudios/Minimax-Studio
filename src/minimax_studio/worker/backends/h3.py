@@ -91,7 +91,12 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         )
     if request.speed == "fast":
         turbo = _find_turbo_lora(request.mode)
-        if turbo and not any("turbo" in (item.get("id") or "").lower() for item in loras):
+        if not turbo:
+            raise RuntimeError(
+                "Fast needs the MiniMax H3 Turbo LoRA. Download that pack on Models, "
+                "or switch Inspector Speed to Quality."
+            )
+        if not any("turbo" in (item.get("id") or "").lower() for item in loras):
             loras.append({"id": turbo, "strength": 1.0})
         if steps >= 16:
             steps = 8

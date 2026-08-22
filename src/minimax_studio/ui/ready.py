@@ -21,9 +21,10 @@ def confirm_generate(
     kind: str,
     backend: str,
     mode: str = "t2va",
+    speed: str = "quality",
 ) -> bool:
     try:
-        check = client.preflight(kind, backend, mode)
+        check = client.preflight(kind, backend, mode, speed)
     except Exception as exc:
         QMessageBox.warning(parent, "Worker unreachable", str(exc))
         return False

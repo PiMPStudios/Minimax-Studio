@@ -6,7 +6,9 @@ from minimax_studio.worker.probe import probe
 from minimax_studio.worker.runtime import runtime
 
 
-def preflight(kind: str, backend: str = "auto", mode: str = "t2va") -> dict[str, Any]:
+def preflight(
+    kind: str, backend: str = "auto", mode: str = "t2va", speed: str = "quality"
+) -> dict[str, Any]:
     hw = probe()
     result: dict[str, Any] = {
         "kind": kind,
@@ -74,4 +76,19 @@ def preflight(kind: str, backend: str = "auto", mode: str = "t2va") -> dict[str,
         warning = "ffmpeg is not in PATH. Install it for MP4 mux and media probe."
         result["warnings"].append(warning)
         result["detail"] = f"{result['detail']} {warning}"
+    if kind == "h3" and speed.strip().lower() == "fast":
+        from minimax_studio.worker.backends.h3 import _find_turbo_lora
+
+        turbo = _find_turbo_lora(mode)
+        if not turbo:
+            result["ok"] = False
+            result["turbo"] = False
+            result["detail"] = (
+                "Fast needs the MiniMax H3 Turbo LoRA. Download it on Models "
+                "(MiniMax H3 Turbo LoRA), or switch Inspector Speed to Quality."
+            )
+            return result
+        result["turbo"] = True
+        steps = "4 steps" if mode == "ref2va" else "8 steps"
+        result["detail"] = f"{result['detail']} Fast: Turbo LoRA, {steps}."
     return result

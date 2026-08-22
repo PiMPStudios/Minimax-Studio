@@ -12,6 +12,13 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.21] — 2026-08-20
+
+### Added
+
+- Inspector **Fast** is honest: needs the H3 Turbo LoRA on disk (preflight blocks otherwise) and snaps steps to 8 (4 for Ref2VA)
+- Comfy generate status includes elapsed time and a progress bar that advances while sampling
+
 ## [0.2.20] — 2026-08-20
 
 ### Fixed

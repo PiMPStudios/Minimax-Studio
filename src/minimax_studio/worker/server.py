@@ -97,8 +97,13 @@ def comfy_start() -> dict[str, object]:
 
 
 @app.get("/preflight")
-def preflight(kind: str = "h3", backend: str = "auto", mode: str = "t2va") -> dict[str, object]:
-    return run_preflight(kind, backend, mode)
+def preflight(
+    kind: str = "h3",
+    backend: str = "auto",
+    mode: str = "t2va",
+    speed: str = "quality",
+) -> dict[str, object]:
+    return run_preflight(kind, backend, mode, speed)
 
 
 @app.post("/settings")
