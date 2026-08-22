@@ -94,8 +94,7 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
             )
         unet_name = UNET_REF2VA
 
-    lora_name = None
-    lora_strength = 1.0
+    stack: list[dict[str, Any]] = []
     if request.speed == "fast":
         from minimax_studio.worker.backends.h3 import _find_turbo_lora
 
@@ -105,17 +104,25 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
                 "Fast needs the MiniMax H3 Turbo LoRA. Download that pack on Models, "
                 "or switch Inspector Speed to Quality."
             )
-        lora_name = Path(turbo_path).name
+        stack.append({"id": turbo_path, "strength": 1.0})
         if mode == "ref2va" and steps >= 16:
             steps = 4
         elif steps >= 16:
             steps = 8
-    elif request.loras:
-        first = request.loras[0]
-        path = first.get("id") or first.get("path")
-        if path:
-            lora_name = Path(str(path)).name
-            lora_strength = float(first.get("strength") or 1.0)
+    for item in request.loras or []:
+        path = item.get("id") or item.get("path")
+        if not path:
+            continue
+        name = Path(str(path)).name.lower()
+        if any(Path(str(existing.get("id") or "")).name.lower() == name for existing in stack):
+            continue
+        stack.append({"id": path, "strength": float(item.get("strength") or 1.0)})
+    lora_name = Path(str(stack[0]["id"])).name if stack else None
+    lora_strength = float(stack[0]["strength"]) if stack else 1.0
+    extra_loras = [
+        {"id": Path(str(item["id"])).name, "strength": item["strength"]}
+        for item in stack[1:]
+    ]
 
     use_sage = request.attention.strip().lower() in {"sage", "sageattention"}
     refs = _split_assets(request) if mode == "ref2va" else {"images": [], "videos": [], "audios": []}
@@ -150,6 +157,7 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
         ref_audios=uploaded_audios,
         lora_name=lora_name,
         lora_strength=lora_strength,
+        extra_loras=extra_loras,
         unet_name=unet_name,
         sage=use_sage,
         scheduler="beta" if mode == "ref2va" else "simple",
@@ -218,6 +226,7 @@ def build_h3_comfy_graph(
     ref_audios: list[str] | None = None,
     lora_name: str | None = None,
     lora_strength: float = 1.0,
+    extra_loras: list[dict[str, Any]] | None = None,
     unet_name: str = UNET_FL2VA,
     sage: bool = False,
     scheduler: str = "simple",
@@ -282,16 +291,27 @@ def build_h3_comfy_graph(
             },
         },
     }
-    if use_lora:
-        graph["lora"] = {
+    stack = []
+    if use_lora and lora_name:
+        stack.append((lora_name, float(lora_strength)))
+    for item in extra_loras or []:
+        name = item.get("id") or item.get("path") or item.get("lora_name")
+        if name:
+            stack.append((Path(str(name)).name, float(item.get("strength") or 1.0)))
+    prev = ["unet", 0]
+    for index, (name, strength) in enumerate(stack):
+        key = "lora" if index == 0 else f"lora{index}"
+        graph[key] = {
             "class_type": "LoraLoaderModelOnly",
             "inputs": {
-                "model": ["unet", 0],
-                "lora_name": lora_name,
-                "strength_model": float(lora_strength),
+                "model": prev,
+                "lora_name": name,
+                "strength_model": strength,
             },
         }
-        model_src = ["lora", 0]
+        prev = [key, 0]
+    if stack:
+        model_src = prev
     if sage:
         graph["sage"] = {
             "class_type": "PathchSageAttentionKJ",

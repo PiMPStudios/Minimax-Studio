@@ -17,6 +17,8 @@ class StudioState(QObject):
         self.steps = 30
         self.lora_id = ""
         self.lora_strength = 1.0
+        self.lora2_id = ""
+        self.lora2_strength = 1.0
         self.speed = "quality"
         self.attention = "default"
         self.ref_image_size = "match"
@@ -48,6 +50,19 @@ class StudioState(QObject):
         self.lora_id = lora_id
         self.lora_strength = float(strength)
         self.changed.emit()
+
+    def set_lora2(self, lora_id: str, strength: float) -> None:
+        self.lora2_id = lora_id
+        self.lora2_strength = float(strength)
+        self.changed.emit()
+
+    def lora_payload(self) -> list[dict]:
+        rows = []
+        if self.lora_id:
+            rows.append({"id": self.lora_id, "strength": self.lora_strength})
+        if self.lora2_id and self.lora2_id != self.lora_id:
+            rows.append({"id": self.lora2_id, "strength": self.lora2_strength})
+        return rows
 
     def set_speed(self, value: str) -> None:
         key = value.strip().lower()

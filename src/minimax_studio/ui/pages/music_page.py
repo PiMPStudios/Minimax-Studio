@@ -165,6 +165,12 @@ class MusicPage(QWidget):
             strength = loras[0].get("strength", 1.0)
         if lora_id:
             self._state.set_lora(str(lora_id), float(strength or 1.0))
+        if len(loras) > 1:
+            second = loras[1]
+            self._state.set_lora2(
+                str(second.get("id") or second.get("path") or ""),
+                float(second.get("strength") or 1.0),
+            )
 
     def poll(self) -> None:
         self._refresh_queue()
@@ -233,11 +239,7 @@ class MusicPage(QWidget):
             "duration_s": self._state.duration,
             "seed": self._state.seed,
             "steps": self._state.steps,
-            "loras": (
-                [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
-                if self._state.lora_id
-                else []
-            ),
+            "loras": self._state.lora_payload(),
             "speed": self._state.speed,
             "cfg": self._state.cfg,
         }

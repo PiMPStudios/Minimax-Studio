@@ -49,25 +49,12 @@ def probe() -> dict[str, Any]:
         info["sageattention"] = True
     except Exception:
         pass
-    try:
-        import torch
-
+    torch_info = _torch_probe()
+    if torch_info.get("torch_available"):
         info["torch_available"] = True
-        info["torch_version"] = torch.__version__
-        if torch.cuda.is_available():
-            count = int(torch.cuda.device_count())
-            gpus = []
-            for index in range(count):
-                props = torch.cuda.get_device_properties(index)
-                gpus.append(
-                    {
-                        "name": torch.cuda.get_device_name(index),
-                        "vram_gb": round(props.total_memory / (1024**3), 1),
-                    }
-                )
-            _apply_gpus(info, gpus, source="torch")
-    except Exception:
-        pass
+        info["torch_version"] = torch_info.get("torch_version")
+        if torch_info.get("gpus"):
+            _apply_gpus(info, torch_info["gpus"], source="torch")
     if not info["cuda"]:
         smi = _nvidia_smi_gpus()
         if smi:
@@ -75,6 +62,33 @@ def probe() -> dict[str, Any]:
     _CACHE = info
     _CACHE_AT = now
     return dict(info)
+
+
+def _torch_probe() -> dict[str, Any]:
+    try:
+        import torch
+    except Exception:
+        return {}
+    out: dict[str, Any] = {
+        "torch_available": True,
+        "torch_version": torch.__version__,
+        "gpus": [],
+    }
+    try:
+        if torch.cuda.is_available():
+            gpus = []
+            for index in range(int(torch.cuda.device_count())):
+                props = torch.cuda.get_device_properties(index)
+                gpus.append(
+                    {
+                        "name": torch.cuda.get_device_name(index),
+                        "vram_gb": round(props.total_memory / (1024**3), 1),
+                    }
+                )
+            out["gpus"] = gpus
+    except Exception:
+        pass
+    return out
 
 
 def _apply_gpus(info: dict[str, Any], gpus: list[dict[str, Any]], source: str) -> None:

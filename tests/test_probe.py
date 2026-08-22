@@ -13,6 +13,7 @@ def test_probe_has_os_fields() -> None:
 
 def test_nvidia_smi_fallback_when_no_torch(monkeypatch) -> None:
     reset_probe_cache()
+    monkeypatch.setattr("minimax_studio.worker.probe._torch_probe", lambda: {})
     monkeypatch.setattr(
         "minimax_studio.worker.probe._nvidia_smi_gpus",
         lambda: [{"name": "NVIDIA GeForce RTX 3080", "vram_gb": 10.0}],

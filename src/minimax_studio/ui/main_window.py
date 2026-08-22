@@ -155,6 +155,15 @@ class MainWindow(QMainWindow):
         self._lora_strength.setSingleStep(0.05)
         self._lora_strength.setValue(1.0)
         self._lora_strength.valueChanged.connect(self._lora_changed)
+        self._lora2 = QComboBox()
+        self._lora2.addItem("None", "")
+        self._lora2.setToolTip("Optional second adapter, stacked after LoRA 1 (and after Turbo when Fast).")
+        self._lora2.currentIndexChanged.connect(self._lora_changed)
+        self._lora2_strength = QDoubleSpinBox()
+        self._lora2_strength.setRange(0.0, 2.0)
+        self._lora2_strength.setSingleStep(0.05)
+        self._lora2_strength.setValue(1.0)
+        self._lora2_strength.valueChanged.connect(self._lora_changed)
         import_lora = QPushButton("Import LoRA…")
         import_lora.clicked.connect(self._import_lora)
         self._state.changed.connect(self._sync_inspector)
@@ -181,6 +190,8 @@ class MainWindow(QMainWindow):
         form.addRow("CFG", self._cfg)
         form.addRow("LoRA", self._lora)
         form.addRow("LoRA strength", self._lora_strength)
+        form.addRow("LoRA 2", self._lora2)
+        form.addRow("LoRA 2 strength", self._lora2_strength)
         form.addRow(import_lora)
         form.addRow("CUDA GPU", self._gpu_pick)
         form.addRow("Hardware", self._gpu_label)
@@ -300,15 +311,24 @@ class MainWindow(QMainWindow):
         self._cfg.setValue(self._state.cfg)
         self._lora.blockSignals(True)
         self._lora_strength.blockSignals(True)
-        if self._state.lora_id and self._lora.findData(self._state.lora_id) < 0:
-            from pathlib import Path
+        self._lora2.blockSignals(True)
+        self._lora2_strength.blockSignals(True)
+        from pathlib import Path
 
+        if self._state.lora_id and self._lora.findData(self._state.lora_id) < 0:
             self._lora.addItem(Path(self._state.lora_id).name, self._state.lora_id)
         idx = self._lora.findData(self._state.lora_id)
         self._lora.setCurrentIndex(max(0, idx))
         self._lora_strength.setValue(self._state.lora_strength)
+        if self._state.lora2_id and self._lora2.findData(self._state.lora2_id) < 0:
+            self._lora2.addItem(Path(self._state.lora2_id).name, self._state.lora2_id)
+        idx2 = self._lora2.findData(self._state.lora2_id)
+        self._lora2.setCurrentIndex(max(0, idx2))
+        self._lora2_strength.setValue(self._state.lora2_strength)
         self._lora.blockSignals(False)
         self._lora_strength.blockSignals(False)
+        self._lora2.blockSignals(False)
+        self._lora2_strength.blockSignals(False)
         self._backend.blockSignals(False)
         self._speed.blockSignals(False)
         self._attention.blockSignals(False)
@@ -319,21 +339,28 @@ class MainWindow(QMainWindow):
 
     def refresh_loras(self) -> None:
         current = self._lora.currentData()
+        current2 = self._lora2.currentData()
         self._lora.blockSignals(True)
+        self._lora2.blockSignals(True)
         self._lora.clear()
+        self._lora2.clear()
         self._lora.addItem("None", "")
+        self._lora2.addItem("None", "")
         try:
             for item in self._client.list_loras():
                 self._lora.addItem(item["name"], item["path"])
+                self._lora2.addItem(item["name"], item["path"])
         except Exception:
             pass
-        index = self._lora.findData(current)
-        self._lora.setCurrentIndex(max(0, index))
+        self._lora.setCurrentIndex(max(0, self._lora.findData(current)))
+        self._lora2.setCurrentIndex(max(0, self._lora2.findData(current2)))
         self._lora.blockSignals(False)
+        self._lora2.blockSignals(False)
         self._lora_changed()
 
     def _lora_changed(self) -> None:
         self._state.set_lora(str(self._lora.currentData() or ""), self._lora_strength.value())
+        self._state.set_lora2(str(self._lora2.currentData() or ""), self._lora2_strength.value())
 
     def _import_lora(self) -> None:
         chosen, _ = QFileDialog.getOpenFileName(

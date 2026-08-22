@@ -117,6 +117,23 @@ def test_comfy_graph_fl2va_uploads_and_lora() -> None:
     assert graph["lora"]["inputs"]["strength_model"] == 0.8
 
 
+def test_comfy_graph_stacks_second_lora() -> None:
+    graph = build_h3_comfy_graph(
+        prompt="x",
+        width=960,
+        height=544,
+        length=73,
+        seed=2,
+        steps=8,
+        lora_name="turbo.safetensors",
+        extra_loras=[{"id": "style.safetensors", "strength": 0.6}],
+    )
+    assert graph["lora"]["inputs"]["lora_name"] == "turbo.safetensors"
+    assert graph["lora1"]["inputs"]["lora_name"] == "style.safetensors"
+    assert graph["lora1"]["inputs"]["model"] == ["lora", 0]
+    assert graph["shift"]["inputs"]["model"] == ["lora1", 0]
+
+
 def test_comfy_graph_ref2va_wires_autogrow() -> None:
     graph = build_h3_comfy_graph(
         prompt="Use <Picture 1> as identity",

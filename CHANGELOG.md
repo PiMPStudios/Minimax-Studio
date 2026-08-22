@@ -12,6 +12,12 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.24] — 2026-08-20
+
+### Added
+
+- Inspector **LoRA 2** stacks a second adapter after LoRA 1 (and after Turbo when Fast)
+
 ## [0.2.23] — 2026-08-20
 
 ### Added
