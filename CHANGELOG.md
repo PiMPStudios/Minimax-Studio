@@ -12,6 +12,14 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.20] — 2026-08-20
+
+### Fixed
+
+- Comfy H3 `SaveVideo` now sends `codec` as `"auto"` (DynamicCombo). Nested `{"codec": "auto"}` made Comfy drop the input after a full sample
+- Comfy generate errors show the node and exception, not the raw message dump
+- Switching from Music to Video no longer clamps a 30s song length to a 15s H3 take; duration resets to 8s when it is out of H3’s 5–15s range
+
 ## [0.2.19] — 2026-08-20
 
 ### Changed

@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 
 from minimax_studio.worker.backends.h3 import INT8_NEEDS_COMFY, resolve_h3_backend
-from minimax_studio.worker.backends.h3_comfy import UNET_REF2VA, build_h3_comfy_graph
+from minimax_studio.worker.backends.h3_comfy import (
+    UNET_REF2VA,
+    _comfy_error_text,
+    build_h3_comfy_graph,
+)
 from minimax_studio.worker.backends.music_comfy import DIT_INT8, build_music_comfy_graph
 from minimax_studio.worker.catalog import PACKS
 from minimax_studio.worker.model_paths import pack_status, parse_extra_model_paths
@@ -70,7 +74,28 @@ def test_comfy_graph_t2va_has_core_nodes() -> None:
     assert graph["cond"]["class_type"] == "MiniMaxH3ImageToVideo"
     assert "first" not in graph
     assert graph["sample"]["inputs"]["latent_image"] == ["cond", 1]
+    assert graph["save"]["inputs"]["codec"] == "auto"
+    assert graph["save"]["inputs"]["format"] == "auto"
     assert "lora" not in graph
+
+
+def test_comfy_error_text_uses_exception_message() -> None:
+    status = {
+        "messages": [
+            ["execution_start", {"prompt_id": "x"}],
+            [
+                "execution_error",
+                {
+                    "node_type": "SaveVideo",
+                    "exception_message": "SaveVideo.execute() missing 1 required positional argument: 'codec'\n",
+                },
+            ],
+        ]
+    }
+    text = _comfy_error_text(status)
+    assert "SaveVideo" in text
+    assert "codec" in text
+    assert "execution_start" not in text
 
 
 def test_comfy_graph_fl2va_uploads_and_lora() -> None:

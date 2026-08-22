@@ -345,10 +345,8 @@ class MainWindow(QMainWindow):
         self._duration.blockSignals(True)
         if key == "video":
             self._duration.setRange(5, 15)
-            if self._state.duration < 5:
-                self._state.set_duration(5)
-            elif self._state.duration > 15:
-                self._state.set_duration(15)
+            if self._state.duration < 5 or self._state.duration > 15:
+                self._state.set_duration(8)
         else:
             self._duration.setRange(1, 300)
         self._duration.setValue(self._state.duration)

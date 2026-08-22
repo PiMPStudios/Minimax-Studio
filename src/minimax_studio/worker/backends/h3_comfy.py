@@ -274,7 +274,7 @@ def build_h3_comfy_graph(
                 "video": ["video", 0],
                 "filename_prefix": prefix,
                 "format": "auto",
-                "codec": {"codec": "auto"},
+                "codec": "auto",
             },
         },
     }
@@ -472,8 +472,9 @@ def _poll_history(client: httpx.Client, prompt_id: str, job_id: str) -> dict[str
         if record:
             status = record.get("status") or {}
             if status.get("status_str") == "error":
-                messages = status.get("messages") or record.get("messages") or status
-                raise RuntimeError(f"ComfyUI job failed: {messages}")
+                raise RuntimeError(
+                    "ComfyUI job failed: " + _comfy_error_text(status, record)
+                )
             outputs = record.get("outputs") or {}
             done = status.get("status_str") == "success" or status.get("completed") is True
             if done:
@@ -481,6 +482,20 @@ def _poll_history(client: httpx.Client, prompt_id: str, job_id: str) -> dict[str
         update_job(job_id, message=_comfy_queue_message(client), progress=0.45)
         time.sleep(1.5)
     raise RuntimeError("Timed out waiting for ComfyUI.")
+
+
+def _comfy_error_text(status: dict[str, Any], record: dict[str, Any] | None = None) -> str:
+    messages = status.get("messages") or (record or {}).get("messages") or []
+    for item in messages:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        kind, body = item[0], item[1]
+        if kind != "execution_error" or not isinstance(body, dict):
+            continue
+        node = body.get("node_type") or body.get("node_id") or "node"
+        msg = (body.get("exception_message") or body.get("exception_type") or "error")
+        return f"{node}: {str(msg).strip()}"
+    return str(messages or status)
 
 
 def _comfy_queue_message(client: httpx.Client) -> str:
