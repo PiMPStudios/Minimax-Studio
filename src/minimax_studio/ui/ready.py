@@ -48,11 +48,40 @@ def confirm_generate(
     return False
 
 
-def notify_job_result(parent: QWidget, job: dict[str, Any]) -> None:
+def notify_job_result(parent: QWidget, job: dict[str, Any], on_retry=None) -> None:
     if job.get("status") != "error":
         return
-    QMessageBox.warning(
-        parent,
-        "Generate failed",
-        str(job.get("error") or job.get("message") or "Failed"),
-    )
+    text = str(job.get("error") or job.get("message") or "Failed")
+    if on_retry is None:
+        QMessageBox.warning(parent, "Generate failed", text)
+        return
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Generate failed")
+    box.setText(text)
+    retry = box.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton(QMessageBox.StandardButton.Close)
+    box.exec()
+    if box.clickedButton() is retry:
+        on_retry()
+
+
+def format_queue_line(
+    jobs: list[dict[str, Any]], kind: str, current_id: str | None
+) -> str:
+    queued = [
+        item
+        for item in jobs
+        if item.get("status") == "queued" and item.get("kind") == kind
+    ]
+    running = [
+        item
+        for item in jobs
+        if item.get("status") in {"running", "cancelling"} and item.get("kind") == kind
+    ]
+    bits: list[str] = []
+    if running and running[0].get("id") != current_id:
+        bits.append("another job is running")
+    if queued:
+        bits.append(f"{len(queued)} queued")
+    return " · ".join(bits)

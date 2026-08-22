@@ -111,6 +111,9 @@ class MusicPage(QWidget):
         run_row.addWidget(lyrics_btn)
         run_row.addWidget(self._status, 1)
         layout.addLayout(run_row)
+        self._queue = QLabel("")
+        self._queue.setObjectName("pageSubtitle")
+        layout.addWidget(self._queue)
         self._bar = QProgressBar()
         self._bar.setRange(0, 100)
         self._bar.hide()
@@ -152,6 +155,7 @@ class MusicPage(QWidget):
             self._state.set_lora(str(lora_id), float(strength or 1.0))
 
     def poll(self) -> None:
+        self._refresh_queue()
         if not self._job_id:
             return
         try:
@@ -181,7 +185,16 @@ class MusicPage(QWidget):
             self._status.setText(str(job.get("error") or job.get("message") or "Failed"))
             from minimax_studio.ui.ready import notify_job_result
 
-            notify_job_result(self, job)
+            notify_job_result(self, job, on_retry=self._generate)
+
+    def _refresh_queue(self) -> None:
+        from minimax_studio.ui.ready import format_queue_line
+
+        try:
+            jobs = self._client.list_jobs()
+        except Exception:
+            return
+        self._queue.setText(format_queue_line(jobs, "music", self._job_id))
 
     def _insert_tag(self, tag: str) -> None:
         cursor = self.lyrics.textCursor()

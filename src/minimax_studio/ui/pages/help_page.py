@@ -28,7 +28,9 @@ The MiniMax hosted API remains globally available.</li>
 <h3>Backends</h3>
 <p>Inspector <b>Fast</b> on Generate Video needs the Turbo LoRA pack (Models).
 Without it, Generate tells you to download Turbo or switch back to Quality.
-Fast uses 8 steps (4 in Ref2VA).</p>
+Fast uses 8 steps (4 in Ref2VA). Fast is disabled on Generate Music.
+Video length chips set 5 / 8 / 15 seconds. A failed generate offers Retry.
+History can copy the prompt.</p>
 <p>Inspector: <b>Auto</b> prefers Comfy-Org INT8 via a running ComfyUI when the
 selected GPU has under 24 GB VRAM, or when PyTorch is missing from the Studio
 venv. Official diffusers is used when VRAM is large enough and torch is installed.

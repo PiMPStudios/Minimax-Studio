@@ -12,6 +12,20 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.22] — 2026-08-20
+
+### Added
+
+- Generate Video length chips: **5s / 8s / 15s**
+- Generate failure dialog **Retry**
+- History **Copy prompt** (includes lyrics for music)
+- File → **Open Comfy Log** and **Open ComfyUI in Browser**
+- Generate pages show other queued jobs of the same kind
+
+### Changed
+
+- Inspector **Fast** is disabled on Generate Music (H3 Turbo only)
+
 ## [0.2.21] — 2026-08-20
 
 ### Added

@@ -71,10 +71,13 @@ class HistoryPage(QWidget):
         export.clicked.connect(self._export_current)
         show = QPushButton("Show in folder")
         show.clicked.connect(self._show_in_folder)
+        copy = QPushButton("Copy prompt")
+        copy.clicked.connect(self._copy_prompt)
         row.addWidget(self._play)
         row.addWidget(restore)
         row.addWidget(export)
         row.addWidget(show)
+        row.addWidget(copy)
         row.addWidget(delete)
         row.addStretch(1)
         layout.addLayout(row)
@@ -188,6 +191,22 @@ class HistoryPage(QWidget):
             shutil.copy2(src, dest)
         except OSError as exc:
             QMessageBox.warning(self, "Export failed", str(exc))
+
+    def _copy_prompt(self) -> None:
+        from PySide6.QtGui import QGuiApplication
+
+        entry = self._current()
+        if not entry:
+            return
+        parts = [str(entry.get("prompt") or "").strip()]
+        lyrics = str(entry.get("lyrics") or "").strip()
+        if lyrics:
+            parts.append(lyrics)
+        text = "\n\n".join(part for part in parts if part)
+        if not text:
+            QMessageBox.information(self, "Copy prompt", "This take has no prompt.")
+            return
+        QGuiApplication.clipboard().setText(text)
 
     def _show_in_folder(self) -> None:
         from minimax_studio.ui.reveal import reveal_path

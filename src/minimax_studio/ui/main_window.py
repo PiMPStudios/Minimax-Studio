@@ -204,9 +204,15 @@ class MainWindow(QMainWindow):
         open_out.triggered.connect(lambda: self._open_folder(self._config.output_dir))
         open_models = QAction("Open Models Folder", self)
         open_models.triggered.connect(lambda: self._open_folder(self._config.models_dir))
+        open_log = QAction("Open Comfy Log", self)
+        open_log.triggered.connect(self._open_comfy_log)
+        open_comfy = QAction("Open ComfyUI in Browser", self)
+        open_comfy.triggered.connect(self._open_comfy_browser)
         file_menu = self.menuBar().addMenu("&File")
         file_menu.addAction(open_out)
         file_menu.addAction(open_models)
+        file_menu.addAction(open_log)
+        file_menu.addAction(open_comfy)
         file_menu.addSeparator()
         file_menu.addAction(quit_action)
 
@@ -354,6 +360,13 @@ class MainWindow(QMainWindow):
         self._refresh_duration_hint()
 
     def _apply_duration_mode(self, key: str | None) -> None:
+        self._speed.setEnabled(key == "video")
+        if key == "video":
+            self._speed.setToolTip(
+                "H3 Fast needs the Turbo LoRA on Models (8 steps, 4 for Ref2VA)."
+            )
+        else:
+            self._speed.setToolTip("Fast is H3-only (Turbo LoRA). Music ignores Speed.")
         self._duration.blockSignals(True)
         if key == "video":
             self._duration.setRange(5, 15)
@@ -508,6 +521,34 @@ class MainWindow(QMainWindow):
             reveal_path(path)
         except Exception as exc:
             QMessageBox.warning(self, "Open folder failed", str(exc))
+
+    def _open_comfy_log(self) -> None:
+        from pathlib import Path
+
+        from PySide6.QtWidgets import QMessageBox
+
+        from minimax_studio.ui.reveal import reveal_path
+
+        root = self._config.output_dir
+        path = Path(root) / "comfy-studio.log" if root else None
+        if path is None or not path.is_file():
+            QMessageBox.information(
+                self,
+                "Comfy log",
+                "No comfy-studio.log yet. Start ComfyUI from Studio to create it.",
+            )
+            return
+        try:
+            reveal_path(path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Open log failed", str(exc))
+
+    def _open_comfy_browser(self) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        url = self._config.comfy_url or "http://127.0.0.1:8188"
+        QDesktopServices.openUrl(QUrl(url))
 
     def _add_go_menu(self) -> None:
         go_menu = self.menuBar().addMenu("&Go")

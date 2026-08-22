@@ -109,6 +109,13 @@ class VideoPage(QWidget):
         self.ratio = QComboBox()
         self.ratio.addItems(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"])
         res_row.addWidget(self.ratio)
+        res_row.addWidget(QLabel("Length"))
+        for secs in (5, 8, 15):
+            chip = QPushButton(f"{secs}s")
+            chip.setFixedWidth(40)
+            chip.setToolTip("H3 duration (5–15 s). Inspector still snaps to the frame grid.")
+            chip.clicked.connect(lambda _=False, value=secs: self._state.set_duration(value))
+            res_row.addWidget(chip)
         self._ref_size_label = QLabel("Ref size")
         self.ref_size = QComboBox()
         self.ref_size.addItems(["match", "max"])
@@ -138,6 +145,9 @@ class VideoPage(QWidget):
         self._status.setObjectName("pageSubtitle")
         run_row.addWidget(self._status, 1)
         layout.addLayout(run_row)
+        self._queue = QLabel("")
+        self._queue.setObjectName("pageSubtitle")
+        layout.addWidget(self._queue)
         self._bar = QProgressBar()
         self._bar.hide()
         layout.addWidget(self._bar)
@@ -153,6 +163,7 @@ class VideoPage(QWidget):
         self.prompt.setPlaceholderText(_placeholder(mode))
 
     def poll(self) -> None:
+        self._refresh_queue()
         if not self._job_id:
             return
         try:
@@ -180,7 +191,16 @@ class VideoPage(QWidget):
             self._bar.hide()
             from minimax_studio.ui.ready import notify_job_result
 
-            notify_job_result(self, job)
+            notify_job_result(self, job, on_retry=self._generate)
+
+    def _refresh_queue(self) -> None:
+        from minimax_studio.ui.ready import format_queue_line
+
+        try:
+            jobs = self._client.list_jobs()
+        except Exception:
+            return
+        self._queue.setText(format_queue_line(jobs, "h3", self._job_id))
 
     def _generate(self) -> None:
         prompt = self.prompt.toPlainText().strip()

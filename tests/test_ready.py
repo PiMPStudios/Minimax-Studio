@@ -1,4 +1,4 @@
-from minimax_studio.ui.ready import classify_preflight, notify_job_result
+from minimax_studio.ui.ready import classify_preflight, format_queue_line, notify_job_result
 
 
 def test_classify_preflight_ok() -> None:
@@ -24,3 +24,15 @@ def test_notify_job_result_ignores_success(monkeypatch) -> None:
     assert called == []
     notify_job_result(None, {"status": "error", "error": "boom"})  # type: ignore[arg-type]
     assert called
+
+
+def test_format_queue_line() -> None:
+    jobs = [
+        {"id": "a", "kind": "h3", "status": "running"},
+        {"id": "b", "kind": "h3", "status": "queued"},
+        {"id": "c", "kind": "music", "status": "queued"},
+    ]
+    assert "1 queued" in format_queue_line(jobs, "h3", "a")
+    assert "another job" not in format_queue_line(jobs, "h3", "a")
+    assert "another job" in format_queue_line(jobs, "h3", "b")
+    assert format_queue_line(jobs, "music", None) == "1 queued"
