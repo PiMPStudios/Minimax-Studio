@@ -73,12 +73,14 @@ pip install -e ".[train]"      # resolves on 3.12 only; CI asserts this
 ```
 
 Then download the **Music 3 Training Encoder** pack on Models. **Datasets**
-(Ctrl+5) takes a folder of `track.wav` + `track.txt` (+ optional
+(Ctrl+Shift+D) takes a folder of `track.wav` + `track.txt` (+ optional
 `track.lyrics`) or pulls good generations out of History; **Train LoRA**
-(Ctrl+6) checks VRAM, packs, active jobs and cache disk by name, then launches
-the trainer as **its own process** — closing Studio does not stop a run, and
-the page reattaches to it. Music 3 + CUDA only, 24 GB VRAM floor. See
-[`docs/PLAN-V2.md`](docs/PLAN-V2.md).
+(Ctrl+Shift+T) checks VRAM, packs, active jobs and cache disk by name, then
+launches the trainer as **its own process** — closing Studio does not stop a
+run, and the page reattaches to it. **Adapters** (Ctrl+Shift+A) records where
+every LoRA came from and **auditions** it: one 30-second render at 0.8 strength
+with the caption it trained on, badged in History. Music 3 + CUDA only, 24 GB
+VRAM floor. See [`docs/PLAN-V2.md`](docs/PLAN-V2.md).
 
 ## License (models)
 

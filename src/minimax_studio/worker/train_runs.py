@@ -222,9 +222,10 @@ def progress(run_id: str) -> dict[str, Any]:
 
 def install_adapter(run_id: str, path: str | None = None) -> dict[str, Any]:
     """Copy the newest (or chosen) trained .safetensors into the LoRA picker."""
+    from minimax_studio.worker import adapters
     from minimax_studio.worker.loras import import_lora
 
-    run_dir, _state = get_run(run_id)
+    run_dir, state = get_run(run_id)
     if path:
         source = Path(path)
         if not source.is_absolute():
@@ -240,7 +241,11 @@ def install_adapter(run_id: str, path: str | None = None) -> dict[str, Any]:
             )
         source = candidates[-1]
     row = import_lora(str(source))
+    # import_lora filed it as "imported"; this run is the real provenance, and
+    # the upsert keys on the file name, so the row is upgraded, not duplicated.
+    adapter = adapters.record_trained(state, row, source)
     row["trained_run"] = run_id
+    row["adapter"] = adapter
     return row
 
 

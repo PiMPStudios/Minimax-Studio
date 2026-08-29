@@ -107,6 +107,9 @@ class FakeWorker:
     def list_train_runs(self) -> list:
         return []
 
+    def list_adapters(self) -> list:
+        return []
+
     def get_train_run(self, run_id: str, tail: int = 60) -> dict:
         return {"id": run_id, "status": "completed", "progress": {}, "log_tail": []}
 
@@ -128,10 +131,10 @@ def test_main_window_builds(tmp_path) -> None:
     from minimax_studio import __version__
 
     assert window.windowTitle() == f"MiniMax Studio {__version__}"
-    assert window._stack.count() == 9
+    assert window._stack.count() == 10
     assert [
-        key for key in window._nav_keys if key in {"datasets", "train"}
-    ] == ["datasets", "train"], "Build pages belong in the sidebar"
+        key for key in window._nav_keys if key in {"datasets", "train", "adapters"}
+    ] == ["datasets", "train", "adapters"], "Build pages belong in the sidebar"
     assert window._train.isEnabled()
     menus = [action.text() for action in window.menuBar().actions()]
     assert "&File" in menus
@@ -343,7 +346,7 @@ def test_status_bar_names_a_live_training_run(tmp_path) -> None:
     window = MainWindow(Training(), config)  # type: ignore[arg-type]
     window._refresh_train_status()
     assert "Training: Overnight" in window._status_train.text()
-    assert "Ctrl+6" in window._status_train.text(), "say where to look"
+    assert "Ctrl+Shift+T" in window._status_train.text(), "say where to look"
 
     window._client = FakeWorker()  # run finished / worker unreachable
     window._refresh_train_status()
@@ -371,7 +374,28 @@ def test_dataset_page_hands_its_dataset_to_the_train_page(tmp_path) -> None:
     config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
     window = MainWindow(WithDataset(), config)  # type: ignore[arg-type]
     window.show_page("datasets")
-    window._datasets._train.click()
+    window._datasets._train_btn.click()
     assert window._stack.currentWidget() is window._train
     assert window._train._dataset.currentData()["id"] == "summer"
+    _drain_window(app, window)
+
+
+def test_installing_an_adapter_updates_the_registry_and_the_picker(tmp_path, monkeypatch) -> None:
+    """Install adapter is the handoff point: the LoRA dropdown and the
+    Adapters page must both know about the file without a restart."""
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+    config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
+    window = MainWindow(FakeWorker(), config)  # type: ignore[arg-type]
+    refreshes = {"pickers": 0, "registry": 0}
+    monkeypatch.setattr(
+        window, "refresh_loras", lambda: refreshes.__setitem__("pickers", refreshes["pickers"] + 1)
+    )
+    monkeypatch.setattr(
+        window._adapters,
+        "refresh",
+        lambda: refreshes.__setitem__("registry", refreshes["registry"] + 1),
+    )
+    window._train.adapter_installed.emit()
+    assert refreshes == {"pickers": 1, "registry": 1}
     _drain_window(app, window)

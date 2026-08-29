@@ -162,9 +162,9 @@ class TrainPage(QWidget):
         left_row.addWidget(form_box)
 
         check_row = QHBoxLayout()
-        self._check = QPushButton("Check again")
-        self._check.clicked.connect(self.preflight)
-        check_row.addWidget(self._check)
+        self._check_btn = QPushButton("Check again")
+        self._check_btn.clicked.connect(self.preflight)
+        check_row.addWidget(self._check_btn)
         check_row.addStretch(1)
         left_row.addLayout(check_row)
 
@@ -176,10 +176,10 @@ class TrainPage(QWidget):
         )
         left_row.addWidget(self._preflight_label)
 
-        self._start = QPushButton("Start training")
-        self._start.setObjectName("primary")
-        self._start.clicked.connect(self._start_run)
-        left_row.addWidget(self._start)
+        self._start_btn = QPushButton("Start training")
+        self._start_btn.setObjectName("primary")
+        self._start_btn.clicked.connect(self._start_run)
+        left_row.addWidget(self._start_btn)
         self._form_status = QLabel("")
         self._form_status.setObjectName("pageSubtitle")
         self._form_status.setWordWrap(True)
@@ -216,19 +216,19 @@ class TrainPage(QWidget):
         self._log.setStyleSheet("font-family: monospace; font-size: 11px;")
         runs_layout.addWidget(self._log, 3)
         row = QHBoxLayout()
-        self._cancel = QPushButton("Cancel run")
-        self._cancel.clicked.connect(self._cancel_run)
-        self._install = QPushButton("Install adapter")
-        self._install.setToolTip(
+        self._cancel_btn = QPushButton("Cancel run")
+        self._cancel_btn.clicked.connect(self._cancel_run)
+        self._install_btn = QPushButton("Install adapter")
+        self._install_btn.setToolTip(
             "Copy the newest checkpoint into the LoRA folder so the Generate "
             "Music picker can load it."
         )
-        self._install.clicked.connect(self._install_adapter)
-        self._folder = QPushButton("Open folder")
-        self._folder.clicked.connect(self._open_folder)
-        row.addWidget(self._install)
-        row.addWidget(self._cancel)
-        row.addWidget(self._folder)
+        self._install_btn.clicked.connect(self._install_adapter)
+        self._folder_btn = QPushButton("Open folder")
+        self._folder_btn.clicked.connect(self._open_folder)
+        row.addWidget(self._install_btn)
+        row.addWidget(self._cancel_btn)
+        row.addWidget(self._folder_btn)
         row.addStretch(1)
         runs_layout.addLayout(row)
         right_row.addWidget(runs_box, 1)
@@ -308,7 +308,7 @@ class TrainPage(QWidget):
             self._dataset.setCurrentIndex(max(0, self._dataset.findData(current)))
         self._dataset.blockSignals(False)
         self._dataset.setEnabled(bool(trainable))
-        self._start.setEnabled(bool(trainable))
+        self._start_btn.setEnabled(bool(trainable))
         if not trainable:
             self._form_status.setText(
                 "No Music dataset yet — make one on the Datasets page: import "
@@ -392,7 +392,7 @@ class TrainPage(QWidget):
             self._log.setPlainText("")
             self._progress.setValue(0)
             self._run_status.setText("Select a run to see its log.")
-            for button in (self._cancel, self._install, self._folder):
+            for button in (self._cancel_btn, self._install_btn, self._folder_btn):
                 button.setEnabled(False)
             return
         try:
@@ -424,9 +424,9 @@ class TrainPage(QWidget):
             + " · ".join(bits)
         )
         self._run_status.setTextFormat(Qt.TextFormat.RichText)
-        self._cancel.setEnabled(status in _LIVE and not detail.get("cancel_requested"))
-        self._install.setEnabled(bool(checkpoints))
-        self._folder.setEnabled(bool(detail.get("path")))
+        self._cancel_btn.setEnabled(status in _LIVE and not detail.get("cancel_requested"))
+        self._install_btn.setEnabled(bool(checkpoints))
+        self._folder_btn.setEnabled(bool(detail.get("path")))
 
     # --- actions ------------------------------------------------------------
 

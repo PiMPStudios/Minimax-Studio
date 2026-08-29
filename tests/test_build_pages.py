@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
+from minimax_studio.ui.pages import adapters_page as adapters_module
 from minimax_studio.ui.pages import datasets_page as datasets_module
 from minimax_studio.ui.pages import train_page as train_module
 from minimax_studio.ui.pages.datasets_page import DatasetsPage
@@ -288,15 +289,15 @@ def test_train_button_waits_for_the_h3_trainer(app) -> None:
     clips = {"movies": {**DATASET, "id": "movies", "kind": "video"}}
     page = DatasetsPage(FakeBuildWorker(datasets=clips))
     page.select("movies")
-    assert not page._train.isEnabled()
-    assert "S4" in page._train.toolTip()
+    assert not page._train_btn.isEnabled()
+    assert "S4" in page._train_btn.toolTip()
 
 
 def test_train_button_hands_the_dataset_to_the_train_page(app) -> None:
     page = DatasetsPage(FakeBuildWorker())
     got: list[str] = []
     page.train_requested.connect(got.append)
-    page._train.click()
+    page._train_btn.click()
     assert got == ["summer"]
 
 
@@ -308,7 +309,7 @@ def test_import_copies_then_validates_without_being_asked(app, monkeypatch) -> N
         staticmethod(lambda *args, **kwargs: "/home/me/tapes"),
     )
     page = DatasetsPage(worker)
-    page._import.click()
+    page._import_btn.click()
     assert worker.imported == [("summer", "/home/me/tapes")]
     assert worker.validated == ["summer"]
     assert "Copied 2 clips" in page._status.text()
@@ -337,7 +338,7 @@ def test_history_picker_offers_only_media_this_dataset_takes(app, monkeypatch) -
 
     monkeypatch.setattr(datasets_module, "_HistoryPicker", Picker)
     page = DatasetsPage(worker)
-    page._from_history.click()
+    page._from_history_btn.click()
     assert captured == {"entries": ["h1"], "kind": "music"}
     assert "Added h1.wav from History" in page._status.text()
 
@@ -379,7 +380,7 @@ def test_new_dataset_dialog_passes_kind_and_notes(app, monkeypatch) -> None:
             return "b-sides"
 
     monkeypatch.setattr(datasets_module, "_NewDatasetDialog", Dialog)
-    page._new.click()
+    page._new_btn.click()
     assert worker.created == [("Outtakes", "music", "b-sides")]
 
 
@@ -431,7 +432,7 @@ def test_the_picker_tells_2_problems_apart_from_never_checked(app) -> None:
 def test_no_dataset_explains_what_to_do_instead(app) -> None:
     page = TrainPage(FakeBuildWorker(datasets={}))
     assert not page._dataset.isEnabled()
-    assert not page._start.isEnabled()
+    assert not page._start_btn.isEnabled()
     assert "Datasets page" in page._form_status.text()
 
 
@@ -439,7 +440,7 @@ def test_start_refuses_while_preflight_is_failing(app, monkeypatch) -> None:
     dialogs = _Dialogs(monkeypatch, {}, train_module)
     worker = FakeBuildWorker(preflight_ok=False)
     page = TrainPage(worker)
-    page._start.click()
+    page._start_btn.click()
     assert worker.started == []
     assert dialogs.kinds()[-1] == "warning"
     assert "nothing was started" in dialogs.last()[1]
@@ -451,7 +452,7 @@ def test_start_refuses_a_dataset_that_does_not_validate(app, monkeypatch) -> Non
     worker.reports["scraps"] = dict(CLIP_REPORT)
     page = TrainPage(worker)
     assert page._dataset.count() == 1
-    page._start.click()
+    page._start_btn.click()
     assert worker.started == []
     assert "not ready" in dialogs.last()[1].lower()
     assert "one.wav" in dialogs.last()[2]
@@ -469,7 +470,7 @@ def test_start_sends_the_contract_the_worker_reads(app, monkeypatch) -> None:
     page._name.setText("Summer LoRA")
     page._steps.setValue(400)
     page._validation_prompt.setText("jangly indie")
-    page._start.click()
+    page._start_btn.click()
     assert worker.started == [
         {
             "name": "Summer LoRA",
@@ -492,7 +493,7 @@ def test_cancel_is_asked_for_before_signalling_the_process_group(app, monkeypatc
     )
     worker = FakeBuildWorker(runs=[{"id": "r1", "name": "Summer LoRA", "status": "running", "steps": 1000, "path": "/runs/r1"}])
     page = TrainPage(worker)
-    page._cancel.click()
+    page._cancel_btn.click()
     assert worker.cancelled == ["r1"]
 
 
@@ -503,8 +504,8 @@ def test_installed_adapter_goes_straight_to_the_lora_picker(app, no_modals) -> N
     page = TrainPage(worker)
     fired: list[bool] = []
     page.adapter_installed.connect(lambda: fired.append(True))
-    assert page._install.isEnabled(), "the fake run reports a checkpoint"
-    page._install.click()
+    assert page._install_btn.isEnabled(), "the fake run reports a checkpoint"
+    page._install_btn.click()
     assert worker.installed == ["r1"]
     assert fired == [True]
     kind, title, body = no_modals.last()
@@ -537,7 +538,7 @@ def test_a_run_we_did_not_start_is_still_lively(app) -> None:
     assert "loss 0.4123" in status
     assert "1 checkpoint" in status
     assert "\n".join(page._log.toPlainText().splitlines()[-1:]) == "saving checkpoint"
-    assert page._cancel.isEnabled()
+    assert page._cancel_btn.isEnabled()
 
 
 def test_a_finished_run_offers_install_not_cancel(app) -> None:
@@ -556,6 +557,22 @@ def test_a_finished_run_offers_install_not_cancel(app) -> None:
             }
 
     page = TrainPage(Done(runs=[{"id": "r1", "name": "Overnight", "status": "completed", "steps": 10, "path": "/runs/r1"}]))
-    assert not page._cancel.isEnabled()
-    assert not page._install.isEnabled(), "no checkpoint, nothing to install"
+    assert not page._cancel_btn.isEnabled()
+    assert not page._install_btn.isEnabled(), "no checkpoint, nothing to install"
     assert "completed" in page._run_status.text()
+
+
+def test_build_pages_name_their_buttons_consistently() -> None:
+    """`self._audition = QPushButton(...)` silently *replaces* the method of the
+    same name, and the next line — ``.clicked.connect(self._audition)`` — hands
+    a widget to a signal: TypeError at construction, or worse, a dead button.
+    This bit three pages, so buttons now wear ``_btn`` and the rule is checked
+    rather than remembered.
+    """
+    import inspect
+    import re
+
+    for module in (datasets_module, train_module, adapters_module):
+        for match in re.finditer(r"self\.(_[a-z0-9_]+)\s*=\s*QPushButton", inspect.getsource(module)):
+            name = match.group(1)
+            assert name.endswith("_btn"), f"{module.__name__}: button attribute {name} needs the _btn suffix"

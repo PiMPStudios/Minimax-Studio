@@ -26,6 +26,9 @@ def _history_detail(entry: dict) -> str:
         f"{entry.get('kind')} / {entry.get('backend') or '?'}",
         str(entry.get("output_path") or ""),
     ]
+    if entry.get("audition"):
+        # An audition is a check-up, not a take — say so before the prompt.
+        bits.append(f"audition of {str(entry['audition']).split(':', 1)[-1]}")
     meta = []
     if entry.get("mode"):
         meta.append(str(entry["mode"]))
@@ -152,6 +155,8 @@ class HistoryPage(QWidget):
             self._visible.append(entry)
             prompt = (entry.get("prompt") or "")[:80]
             bits = [str(kind)]
+            if entry.get("audition"):
+                bits.append("audition")
             if entry.get("backend"):
                 bits.append(str(entry["backend"]))
             if entry.get("duration_s"):

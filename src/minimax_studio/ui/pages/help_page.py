@@ -62,7 +62,8 @@ packs already on disk. H3 duration in the inspector snaps to the model’s
 <b>Show in folder</b> opens the take in the file manager. File menu opens the
 output and models folders. H3 local generate wants <code>ffmpeg</code> on PATH
 for MP4 mux.</p>
-<p>Go menu: Ctrl+1…9 switches pages, Ctrl+Enter generates on Video/Music.
+<p>Go menu: Ctrl+1…7 switches pages (Build pages: Ctrl+Shift+D / T / A),
+Ctrl+Enter generates on Video/Music.
 <b>Start ComfyUI</b> (Welcome, Settings, or Go) launches a detected
 <code>main.py</code> install as a separate process and waits until it answers
 — extra args in Settings (for example
@@ -79,13 +80,13 @@ bar stops the running job. Presets can be filtered like History.</p>
 installed.</p>
 
 <h3>Build — datasets and LoRA training (experimental)</h3>
-<p><b>Datasets</b> (Ctrl+5) keeps Music clips in SimpleTuner’s own layout —
+<p><b>Datasets</b> (Ctrl+Shift+D) keeps Music clips in SimpleTuner’s own layout —
 <code>track.wav</code> plus a <code>track.txt</code> caption, optionally
 <code>track.lyrics</code>. Imports <b>copy</b> files, so cleaning up your
 originals never guts a dataset; <b>Add from History</b> brings a good take’s
 caption and lyrics with it. <b>Validate</b> names the problem on every clip
 that can’t train, and starting a run refuses a dataset that doesn’t validate.</p>
-<p><b>Train LoRA</b> (Ctrl+6) writes SimpleTuner’s two config files and launches
+<p><b>Train LoRA</b> (Ctrl+Shift+T) writes SimpleTuner’s two config files and launches
 the pinned <code>simpletuner</code> as <b>its own process</b>: closing Studio
 does not stop a run, and the page reattaches to it from the run folder.
 Cancel signals the process group; checkpoints already written stay, and a run
@@ -99,6 +100,24 @@ Video (H3) training is the next slice; a Video dataset is a place to collect
 clips until then.</p>
 <p>A live training run warns you on Generate (and shows in the status bar) —
 one GPU, two hungry things.</p>
+
+<h3>Adapters — provenance and auditioning</h3>
+<p><b>Adapters</b> (Ctrl+Shift+A) lists every LoRA the picker can load and says
+where each came from: <b>trained here</b> (dataset name, clip count, a hash of
+those clip names and sizes, run id, preset, rank, steps, the pinned
+SimpleTuner version), <b>imported</b> (you brought the file), or <b>found on
+disk</b> — files Studio never registered but the picker loads anyway, which is
+worth saying out loud rather than hiding.</p>
+<p><b>Audition</b> queues one 30-second render at 0.8 strength with the caption
+that clip set used most, so the answer to “was that worth three hours?” arrives
+in the History list badged as an audition — and <b>Restore to Generate</b>
+works on it like any other take. It refuses honestly when there is nothing to
+sing with: a hand-imported adapter or a deleted dataset has no caption, so type
+a prompt.</p>
+<p><b>Forget</b> drops Studio’s provenance row and leaves the
+<code>.safetensors</code> on disk and in the picker. Deleting a file leaves the
+row behind, flagged “file is gone”, because the story of an adapter is still
+worth reading after the file is not.</p>
 """
 
 

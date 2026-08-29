@@ -12,6 +12,55 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.32] — 2026-08-29
+
+### Added
+
+- **Adapters: provenance, and the loop closes (PLAN-V2 S3).** New page
+  (**Ctrl+Shift+A**) lists every `.safetensors` the picker can load and says
+  where each came from — **trained here**, **imported**, or **found on disk**
+  (files Studio never registered but loads anyway; saying so beats a lie by
+  omission). A trained row carries what a filename can't: dataset name, clip
+  count, a **manifest hash** of those clip names and sizes, run id and name,
+  preset, rank, steps, base pack, and the pinned
+  `simpletuner 4.8.0` that made it. Registry lives in `<models>/adapters.json`,
+  is keyed by file name (the picker's own id), survives being hand-edited or
+  corrupted — and is **description, never a gate**: delete it and every LoRA
+  still loads.
+- **Audition** — one click, one ordinary generate job: 30 s at **0.8** strength
+  with the caption the dataset used *most*, badged `audition:<adapter>` on the
+  job and in History, where **Restore to Generate** works on it like any take.
+  That is the answer to “were those 3 hours worth it?” without setting up
+  anything. It refuses with a reason when there is nothing to sing with — a
+  hand-imported adapter or a deleted dataset has no caption — and a typed
+  prompt is accepted as the honest substitute. H3 adapters wait for S4.
+- **Forget** removes the provenance row and leaves the file on disk and in the
+  picker; deleting the *file* keeps the row, flagged “file is gone”, because
+  the story of an adapter outlives it. Filters: *only what Studio trained*,
+  *only missing files*.
+- History badges auditions in the list and names the adapter in the detail.
+- Endpoints `GET /adapters`, `POST /adapters/{id}/audition`,
+  `DELETE /adapters/{id}`; jobs carry `audition` at the top level of `GET
+  /jobs/{id}`, `/jobs` and SSE instead of buried in `request`.
+- Build shortcuts move to **Ctrl+Shift+D / T / A**; Models, Settings and Help
+  keep Ctrl+5/6/7 exactly as before (there is no Ctrl+10 key, and renaming
+  users' muscle memory is not a feature).
+
+### Fixed
+
+- **Buttons no longer shadow their own handlers.** `self._audition =
+  QPushButton(...)` silently *replaced* the method `def _audition(self)`, so
+  the next line handed a widget to `.clicked.connect` — a TypeError during page
+  construction. It bit the Datasets, Train **and** Adapters pages (twice:
+  once in review, once in CI). Buttons now carry a `_btn` suffix on the Build
+  pages and `test_build_pages_name_their_buttons_consistently` enforces it.
+
+### Tests
+
+- 25 new (193 total, still GPU-free). The audition test runs the real loop
+  against the stub backend: queue → job → History row → and checks the LoRA
+  rode along at 0.8 with the caption the adapter actually saw most.
+
 ## [0.2.31] — 2026-08-29
 
 ### Added

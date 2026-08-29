@@ -36,6 +36,10 @@ def public_job(record: dict[str, Any]) -> dict[str, Any]:
         "output_path": record.get("output_path"),
         "created_at": record.get("created_at"),
         "seq": record.get("seq", 0),
+        # An audition is a job the user should be able to tell apart from work.
+        "audition": record.get("audition")
+        or (record.get("request") or {}).get("audition")
+        or None,
     }
 
 
@@ -64,6 +68,9 @@ class JobRequest(BaseModel):
     ref_image_size: str = "match"
     quality: str = "native"
     cfg: float = 1.7
+    #: set only by an adapter audition (``audition:<adapter id>``) — it rides
+    #: into History so the take can be badged and told apart from real work.
+    audition: str = ""
 
 
 def start_job(request: JobRequest) -> dict[str, Any]:
@@ -90,6 +97,9 @@ def start_job(request: JobRequest) -> dict[str, Any]:
         "output_path": None,
         "created_at": time.time(),
         "seq": 0,
+        # Hoisted out of `request` so every job view (list, get, SSE) shows it
+        # without the UI having to dig through the payload it queued with.
+        "audition": request.audition or None,
         "request": request.model_dump(),
     }
     with runtime.lock:
@@ -278,6 +288,7 @@ def _run_job(job_id: str, request: JobRequest) -> None:
                 "attention": request.attention,
                 "resolution": request.resolution,
                 "loras": request.loras,
+                "audition": request.audition or None,
                 "output_path": result["output_path"],
                 "media_type": result.get("media_type", "audio"),
             }

@@ -170,6 +170,23 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 
 ### S3 — Adapter registry + the PiMP loop
 
+> **Status (0.2.32): landed, off-GPU.** `worker/adapters.py` +
+> `<models root>/adapters.json` (versioned, keyed by file name, survives being
+> hand-edited or corrupted, and is **description not a gate** — delete it and
+> every LoRA still loads). `Adapters` page shows trained / imported / found on
+> disk, with dataset name + clip count + manifest hash (sorted `name|size`,
+> deliberately no mtimes: a copy is not new training data), run id, preset,
+> rank, steps, base pack, pinned SimpleTuner. **Audition** queues an ordinary
+> 30 s job at 0.8 strength with the dataset's most-used caption, badged
+> `audition:<adapter>` on the job and in History, where Restore-to-Generate
+> works unchanged; it refuses with a reason when there is no caption (imported
+> adapter, deleted dataset) and takes a typed prompt instead. `install_adapter`
+> writes the trained row, `import_lora` writes `source: imported`, and
+> unregistered files still appear — as `found on disk`, which is the honest
+> part. **Still to prove on metal:** an audition of a *real* trained adapter —
+> same `load_lora_weights` path the Music picker has used since 0.2.2x, but the
+> first one carrying a Studio-trained checkpoint.
+
 - `adapters.json` registry: id, name, kind (music/h3), base pack, trainer
   (SimpleTuner vX), dataset + its manifest hash, created_at, source
   (`trained` | `imported`) — supersedes the filename-only LoRA list, and
@@ -263,8 +280,11 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 
 ## Next step
 
-S0 spike branch off `main`: `[train]` extra + catalog pack + config writer +
-TrainRunner against a stub, all CI-green off-GPU ✅ (0.2.28, pin contract
-verified 0.2.30) — then one 24 GB Metal-free evening on your RTX to run steps
-3–5 and film the picker audition. **That evening starts in a 3.12 venv**
-(`scripts/run.sh` builds it); on any other Python the trainer cannot install.
+**S0 steps 3–5 on a 24 GB card** is the only thing still blocking real
+training: `simpletuner train env=<id>`, `STEP_RE`/`LOSS_RE` and a real
+`.safetensors` in the picker have been written against SimpleTuner's docs, not
+its stdout. Everything around them has a screen and a test now (S1 datasets,
+S2 Build pages, S3 adapters + audition), so that evening is calibration, not
+construction — run `scripts/run.sh` (Python 3.12), download the Music 3
+Training Encoder pack, train ~200 steps on 5 clips, install, audition.
+After that: **S4 (H3 LoRA, stills first)** and **S5 (long-run hardening)**.

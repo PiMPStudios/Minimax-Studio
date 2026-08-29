@@ -206,6 +206,27 @@ class WorkerClient:
         query = f"?path={_seg(path)}" if path else ""
         return self._post(f"/train/runs/{_seg(run_id)}/install{query}", {})
 
+    # --- Adapters (PLAN-V2 S3) ----------------------------------------------
+
+    def list_adapters(self) -> list[dict[str, Any]]:
+        return self._get_list("/adapters")
+
+    def audition_adapter(
+        self,
+        adapter_id: str,
+        prompt: str = "",
+        duration_s: float | None = None,
+        backend: str = "auto",
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"prompt": prompt, "backend": backend}
+        if duration_s:
+            payload["duration_s"] = float(duration_s)
+        # A real generate job: the worker resolves the backend and validates.
+        return self._post(f"/adapters/{_seg(adapter_id)}/audition", payload, timeout=60.0)
+
+    def forget_adapter(self, adapter_id: str) -> dict[str, Any]:
+        return self._delete(f"/adapters/{_seg(adapter_id)}")
+
     def _get(self, path: str, timeout: float | None = None) -> dict[str, Any]:
         with httpx.Client(timeout=timeout or self._timeout, headers=self._headers) as client:
             response = client.get(f"{self._base}{path}")

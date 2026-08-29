@@ -64,4 +64,10 @@ def import_lora(src: str) -> dict[str, Any]:
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / source.name
     shutil.copy2(source, dest)
-    return {"id": dest.name, "name": dest.stem, "path": str(dest)}
+    row = {"id": dest.name, "name": dest.stem, "path": str(dest)}
+    # PLAN-V2 S3: an import is provenance too — "we did not train this" is a
+    # fact the picker should say out loud instead of leaving to memory.
+    from minimax_studio.worker import adapters
+
+    adapters.record_imported(row)
+    return row

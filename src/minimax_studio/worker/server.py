@@ -603,3 +603,45 @@ def dataset_validate(dataset_id: str) -> dict[str, object]:
         return datasets.validate_dataset(dataset_id)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# --- Adapters (PLAN-V2 S3: provenance + the audition loop) -------------------
+
+
+class AuditionIn(BaseModel):
+    prompt: str = ""
+    duration_s: float | None = None
+    backend: str = "auto"
+
+
+@app.get("/adapters")
+def adapter_list() -> list[dict[str, object]]:
+    from minimax_studio.worker import adapters
+
+    return adapters.list_adapters()
+
+
+@app.post("/adapters/{adapter_id}/audition")
+def adapter_audition(adapter_id: str, body: AuditionIn) -> dict[str, object]:
+    """Queue the 30 s / 0.8-strength render that answers 'was that worth the
+    GPU hours?' — a normal job, badged in History as an audition."""
+    from minimax_studio.worker import adapters
+
+    try:
+        return adapters.audition(
+            adapter_id, body.prompt, body.duration_s, body.backend
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/adapters/{adapter_id}")
+def adapter_forget(adapter_id: str) -> dict[str, object]:
+    """Forget the provenance row. The .safetensors file stays on disk."""
+    from minimax_studio.worker import adapters
+
+    try:
+        adapters.forget(adapter_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True, "id": adapter_id}

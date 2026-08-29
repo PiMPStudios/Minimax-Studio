@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from minimax_studio import __version__
 from minimax_studio.config import AppConfig
 from minimax_studio.ui.pages import (
+    AdaptersPage,
     DatasetsPage,
     HelpPage,
     HistoryPage,
@@ -48,6 +49,7 @@ NAV_ITEMS = [
     ("Build", None),
     ("datasets", "Datasets"),
     ("train", "Train LoRA"),
+    ("adapters", "Adapters"),
     ("Setup", None),
     ("models", "Models"),
     ("settings", "Settings"),
@@ -76,6 +78,7 @@ class MainWindow(QMainWindow):
         self._presets = PresetsPage(client, self._state)
         self._datasets = DatasetsPage(client)
         self._train = TrainPage(client)
+        self._adapters = AdaptersPage(client)
         self._help = HelpPage()
 
         self._stack = QStackedWidget()
@@ -86,6 +89,7 @@ class MainWindow(QMainWindow):
             "presets": self._presets,
             "datasets": self._datasets,
             "train": self._train,
+            "adapters": self._adapters,
             "models": self._models,
             "settings": self._settings,
             "help": self._help,
@@ -113,6 +117,8 @@ class MainWindow(QMainWindow):
         # an installed adapter should show up in the LoRA picker immediately.
         self._datasets.train_requested.connect(self._open_train_page)
         self._train.adapter_installed.connect(self.refresh_loras)
+        # An installed adapter should appear in the registry list right away.
+        self._train.adapter_installed.connect(self._adapters.refresh)
 
         splitter = QWidget()
         row = QHBoxLayout(splitter)
@@ -309,6 +315,8 @@ class MainWindow(QMainWindow):
             self._datasets.refresh()
         if key == "train":
             self._train.refresh()
+        if key == "adapters":
+            self._adapters.refresh()
 
     def _open_train_page(self, dataset_id: str) -> None:
         self.show_page("train")
@@ -337,6 +345,8 @@ class MainWindow(QMainWindow):
         if key == "train":
             self._train.refresh()
             self._train.preflight()
+        if key == "adapters":
+            self._adapters.refresh()
         self._refresh_train_status()
         self._apply_duration_mode(key)
         self._refresh_route()
@@ -525,11 +535,11 @@ class MainWindow(QMainWindow):
             self._models_ticks = 0
         # Build pages poll the run dirs (a detached trainer has no in-process
         # truth), but the log tail is a file read — 2 s is plenty.
-        if key_now in {"datasets", "train"}:
+        if key_now in {"datasets", "train", "adapters"}:
             self._build_ticks += 1
             if self._build_ticks >= 4:
                 self._build_ticks = 0
-                (self._datasets if key_now == "datasets" else self._train).refresh()
+                self._pages[key_now].refresh()
         else:
             self._build_ticks = 0
         self._route_ticks += 1
@@ -607,7 +617,7 @@ class MainWindow(QMainWindow):
         more = f" (+{len(live) - 1} more)" if len(live) > 1 else ""
         self._status_train.setText(
             f"Training: {run.get('name')} · {run.get('status')} · "
-            f"{run.get('steps')} steps{more} — Ctrl+6"
+            f"{run.get('steps')} steps{more} — Ctrl+Shift+T"
         )
 
     def _refresh_download_status(self) -> None:
@@ -691,11 +701,12 @@ class MainWindow(QMainWindow):
             ("music", "Generate Music", "Ctrl+2"),
             ("history", "History", "Ctrl+3"),
             ("presets", "Presets", "Ctrl+4"),
-            ("datasets", "Datasets", "Ctrl+5"),
-            ("train", "Train LoRA", "Ctrl+6"),
-            ("models", "Models", "Ctrl+7"),
-            ("settings", "Settings", "Ctrl+8"),
-            ("help", "Help", "Ctrl+9"),
+            ("datasets", "Datasets", "Ctrl+Shift+D"),
+            ("train", "Train LoRA", "Ctrl+Shift+T"),
+            ("adapters", "Adapters", "Ctrl+Shift+A"),
+            ("models", "Models", "Ctrl+5"),
+            ("settings", "Settings", "Ctrl+6"),
+            ("help", "Help", "Ctrl+7"),
         ]
         for key, label, shortcut in pages:
             action = QAction(label, self)

@@ -114,30 +114,30 @@ class DatasetsPage(QWidget):
         root.addWidget(subtitle)
 
         tools = QHBoxLayout()
-        self._new = QPushButton("New dataset…")
-        self._new.setObjectName("primary")
-        self._new.clicked.connect(self._create)
-        self._import = QPushButton("Import folder…")
-        self._import.clicked.connect(self._import_folder)
-        self._from_history = QPushButton("Add from History…")
-        self._from_history.clicked.connect(self._add_from_history)
+        self._new_btn = QPushButton("New dataset…")
+        self._new_btn.setObjectName("primary")
+        self._new_btn.clicked.connect(self._create)
+        self._import_btn = QPushButton("Import folder…")
+        self._import_btn.clicked.connect(self._import_folder)
+        self._from_history_btn = QPushButton("Add from History…")
+        self._from_history_btn.clicked.connect(self._add_from_history)
         self._validate_btn = QPushButton("Validate")
         self._validate_btn.clicked.connect(self._validate)
-        self._reveal = QPushButton("Show in folder")
-        self._reveal.clicked.connect(self._reveal_folder)
-        self._train = QPushButton("Train with this →")
-        self._train.clicked.connect(
+        self._reveal_btn = QPushButton("Show in folder")
+        self._reveal_btn.clicked.connect(self._reveal_folder)
+        self._train_btn = QPushButton("Train with this →")
+        self._train_btn.clicked.connect(
             lambda: self._selected and self.train_requested.emit(self._selected)
         )
         self._delete_btn = QPushButton("Delete")
         self._delete_btn.clicked.connect(self._delete)
         for button in (
-            self._new,
-            self._import,
-            self._from_history,
+            self._new_btn,
+            self._import_btn,
+            self._from_history_btn,
             self._validate_btn,
-            self._train,
-            self._reveal,
+            self._train_btn,
+            self._reveal_btn,
             self._delete_btn,
         ):
             tools.addWidget(button)
@@ -218,24 +218,24 @@ class DatasetsPage(QWidget):
 
     def _set_buttons_enabled(self, have_selection: bool) -> None:
         for button in (
-            self._import,
-            self._from_history,
+            self._import_btn,
+            self._from_history_btn,
             self._validate_btn,
-            self._train,
-            self._reveal,
+            self._train_btn,
+            self._reveal_btn,
             self._delete_btn,
         ):
             button.setEnabled(have_selection)
         row = self._current_row()
         # The H3 trainer lands in S4; a video dataset is a place to put clips
         # today, but "Train with this" would only ever fail.
-        self._train.setEnabled(bool(row) and row.get("kind") == "music")
+        self._train_btn.setEnabled(bool(row) and row.get("kind") == "music")
         if row and row.get("kind") != "music":
-            self._train.setToolTip(
+            self._train_btn.setToolTip(
                 "H3 training arrives in PLAN-V2 S4 — Music LoRAs only for now."
             )
         else:
-            self._train.setToolTip("")
+            self._train_btn.setToolTip("")
 
     def _current_row(self) -> dict[str, Any] | None:
         if not self._selected:

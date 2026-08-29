@@ -1,3 +1,4 @@
+from minimax_studio.ui.pages.adapters_page import AdaptersPage
 from minimax_studio.ui.pages.datasets_page import DatasetsPage
 from minimax_studio.ui.pages.help_page import HelpPage
 from minimax_studio.ui.pages.history_page import HistoryPage
@@ -9,6 +10,7 @@ from minimax_studio.ui.pages.train_page import TrainPage
 from minimax_studio.ui.pages.video_page import VideoPage
 
 __all__ = [
+    "AdaptersPage",
     "DatasetsPage",
     "HelpPage",
     "HistoryPage",
