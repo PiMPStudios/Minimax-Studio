@@ -11,7 +11,9 @@ def test_download_uses_injected_snapshot(studio_home: Path) -> None:
         (dest / "modular_model_index.json").write_text("{}", encoding="utf-8")
         return str(dest)
 
-    record = start_download("music3-cuda", snapshot=snapshot)
+    # force=True: CI runners have less free disk than the 63 GB this pack
+    # claims; these tests exercise the snapshot flow, not the disk guard.
+    record = start_download("music3-cuda", snapshot=snapshot, force=True)
     deadline = time.time() + 5
     while time.time() < deadline:
         current = get_download(record["id"])
@@ -34,7 +36,9 @@ def test_cancel_download_marks_cancelling(studio_home: Path) -> None:
         (dest / "modular_model_index.json").write_text("{}", encoding="utf-8")
         return str(dest)
 
-    record = start_download("music3-cuda", snapshot=snapshot)
+    # force=True: CI runners have less free disk than the 63 GB this pack
+    # claims; these tests exercise the snapshot flow, not the disk guard.
+    record = start_download("music3-cuda", snapshot=snapshot, force=True)
     rec = cancel_download(record["id"])
     assert rec["status"] in {"cancelling", "cancelled", "done"}
 

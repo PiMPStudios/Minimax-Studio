@@ -361,9 +361,25 @@ def test_comfy_resolve_file_exact_subfolder_and_unknown() -> None:
     )
 
 
+def _pretend_not_apple(monkeypatch) -> None:
+    # macOS CI runners are Apple Silicon; the Apple gate fires before the
+    # Comfy visibility check, so these tests must probe as a neutral box.
+    monkeypatch.setattr(
+        "minimax_studio.worker.probe.probe",
+        lambda: {
+            "apple_silicon": False,
+            "cuda": False,
+            "torch_available": False,
+            "gpus": [],
+            "ram_gb": 32.0,
+        },
+    )
+
+
 def test_resolve_h3_backend_comfy_blocks_when_comfy_cannot_see_files(
     studio_home: Path, monkeypatch
 ) -> None:
+    _pretend_not_apple(monkeypatch)
     _touch_int8(runtime.config.models_root() / "h3-comfy")
     monkeypatch.setattr(h3_comfy, "comfy_reachable", lambda: True)
     _patch_objects(monkeypatch, {"CLIPLoader": {UNET_FL2VA, VIDEO_VAE, AUDIO_VAE}})
@@ -378,6 +394,7 @@ def test_resolve_h3_backend_comfy_blocks_when_comfy_cannot_see_files(
 def test_resolve_h3_backend_comfy_ok_when_visible(
     studio_home: Path, monkeypatch
 ) -> None:
+    _pretend_not_apple(monkeypatch)
     _touch_int8(runtime.config.models_root() / "h3-comfy")
     monkeypatch.setattr(h3_comfy, "comfy_reachable", lambda: True)
     _patch_objects(monkeypatch, {})  # "all"
