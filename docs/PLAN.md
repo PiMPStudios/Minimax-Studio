@@ -1,6 +1,7 @@
 # MiniMax Studio — Build Plan
 
-Working name: **MiniMax Studio**. Repo: `minimax-gui`. Local git only for now.
+Working name: **MiniMax Studio**. Repo: `Minimax-Studio`
+(github.com/PiMPStudios/Minimax-Studio, public).
 
 ## Status amendments (as built, v0.2.26)
 
