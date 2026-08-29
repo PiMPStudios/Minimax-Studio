@@ -12,6 +12,37 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.30] — 2026-08-29
+
+### Changed
+
+- **One Python: 3.12, pinned everywhere (install-contract change).** Nothing
+  ever pinned it — `requires-python` said `>=3.11` with no ceiling, `run.sh`
+  called bare `python3`, and CI installed `.[dev]` on 3.11/3.12/3.13 but never
+  `.[train]`. This box's `python3` is 3.14, so the venv 0.2.28 was written in
+  could not install the `[train]` extra it released: `simpletuner==4.8.0`
+  declares `Requires-Python >=3.12,<3.14`, and no test looked. Now
+  [`.python-version`](../.python-version) is the single source of truth and
+  `requires-python`, the CI matrix, `scripts/run.sh` / `run.bat` and a startup
+  check in `app.py` all read it. **If your `.venv` is not 3.12, run
+  `scripts/run.sh`: it moves the old one to `.venv.pre-<ver>` and rebuilds**
+  (a wrong-version venv looks ready and cannot train, which is worse than
+  missing). Verified resolution on 3.12: SimpleTuner 4.8.0 + torch 2.13.0 +
+  torchvision 0.28.0, no conflicts with our generate pins — S0 step 1's
+  "resolvable lockstep" is now actually met, and CI asserts it on every push
+  with `pip install --dry-run ".[train]"`.
+
+### Added
+
+- **Startup refuses an off-pin interpreter with the fix in the message**
+  ("this interpreter is 3.14 … delete .venv and re-run scripts/run.sh"),
+  instead of failing later as an ImportError or a silently untrainable install.
+- `tests/test_python_pin.py` keeps the five places that name a Python
+  version agreeing: `.python-version` ↔ the startup guard ↔ `requires-python`
+  ↔ the CI matrix ↔ both launchers, plus a red test if you run the suite on
+  any other interpreter.
+- README documents the pin, the reasoning, and the `[train]` extra.
+
 ## [0.2.29] — 2026-08-29
 
 ### Added

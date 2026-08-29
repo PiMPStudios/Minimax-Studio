@@ -12,7 +12,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.11", "3.12", "3.13"]
+        # One Python, pinned (see .python-version / pyproject requires-python).
+        # A second version here would be an untested promise: simpletuner==4.8.0
+        # has no wheels for 3.11, and 3.14 is outside its declared window.
+        python: ["3.12"]
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
@@ -34,3 +37,9 @@ jobs:
         run: ruff check src tests
       - name: Tests (stub backends only — no model runs)
         run: python -m pytest -q
+      - name: Train extra resolves (PLAN-V2 S0 pin contract)
+        if: runner.os == 'Linux'
+        # Metadata-only resolution, no torch download. Proves the [train] pin
+        # is installable next to our own deps on the pinned interpreter — the
+        # half of S0 step 1 that a dev venv on the wrong Python silently hid.
+        run: python -m pip install --dry-run ".[train]"

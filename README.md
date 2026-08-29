@@ -4,7 +4,7 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.26** generate studio. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
+Status: **0.2.30** generate studio, training slices landing. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Locked for v1
 
@@ -16,9 +16,25 @@ Status: **0.2.26** generate studio. Changelog: [`CHANGELOG.md`](CHANGELOG.md). P
 ## Run (dev)
 
 ```bash
-python -m venv .venv
+scripts/run.sh          # Windows: scripts\run.bat
+```
+
+That finds Python 3.12, builds `.venv` with it, installs the app, and starts.
+If `.venv` was built with any other Python it is moved aside
+(`.venv.pre-3.14/`) and rebuilt — never quietly reused.
+
+**Python 3.12 only, everywhere.** `.python-version` is the source of truth;
+`requires-python`, the CI matrix, both launchers, and a startup check in
+`app.py` all read the same pin. The reason is the v2 trainer:
+`simpletuner==4.8.0` ships no wheels outside `>=3.12,<3.14`, and a newer
+interpreter gives you a `.venv` that installs happily and then cannot train.
+
+By hand, if you prefer:
+
+```bash
+python3.12 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
+pip install -e ".[dev]"
 python -m minimax_studio
 ```
 
@@ -47,6 +63,13 @@ pip install 'minimax-studio[secrets]'
 ```
 
 Then enable **Store tokens in the OS keychain** in Settings.
+
+LoRA training (v2, in progress — no UI yet, see `docs/PLAN-V2.md`) adds the
+pinned SimpleTuner engine and its torch stack:
+
+```bash
+pip install -e ".[train]"      # resolves on 3.12 only; CI asserts this
+```
 
 ## License (models)
 

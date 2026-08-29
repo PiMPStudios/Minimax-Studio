@@ -16,6 +16,29 @@ from minimax_studio.config import (
 )
 from minimax_studio.worker_client import WorkerClient
 
+# One Python for the whole product. The pinned trainer (simpletuner==4.8.0)
+# only ships for >=3.12,<3.14, PySide6's wheel matrix is thinnest on brand-new
+# interpreters, and "works on my venv" is exactly how 0.2.28 landed a [train]
+# extra that could not be installed on the venv it was written in. So: 3.12,
+# enforced here at the door with the fix in the message, not three pages deep
+# as an ImportError.
+SUPPORTED_PYTHON = (3, 12)
+
+
+def python_problem(version: tuple[int, int] | None = None) -> str | None:
+    """None on the pinned interpreter, else the sentence to show the user."""
+    major, minor = version or sys.version_info[:2]
+    wanted = ".".join(str(part) for part in SUPPORTED_PYTHON)
+    if (major, minor) == SUPPORTED_PYTHON:
+        return None
+    return (
+        f"MiniMax Studio runs on Python {wanted} only — this interpreter is "
+        f"{major}.{minor} ({sys.executable}). We pin one version because the "
+        f"training extra (SimpleTuner) ships no wheels for anything else. "
+        f"Fix: delete .venv and re-run scripts/run.sh (run.bat on Windows), "
+        f"which builds it on Python {wanted} and refuses any other."
+    )
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="minimax-studio")
@@ -27,6 +50,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0, help="0 = pick a free port")
     args = parser.parse_args(argv)
+
+    problem = python_problem()
+    if problem:
+        # Both paths (GUI and --worker-only) land on stderr: run.sh/run.bat
+        # keep a console, and the worker's own interpreter is checked the same
+        # way when the GUI spawns it.
+        print(problem, file=sys.stderr)
+        return 2
 
     port = args.port or _free_port(args.host)
     if args.worker_only:

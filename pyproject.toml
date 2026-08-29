@@ -4,7 +4,11 @@ dynamic = ["version"]
 description = "Point-and-click desktop studio for MiniMax H3 and MiniMax Music 3"
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.11"
+# Exactly one Python, everywhere: 3.12. The trainer's pinned SimpleTuner build
+# only exists for >=3.12,<3.14, brand-new interpreters have the thinnest PySide6
+# wheel matrix, and CI/dev/ship must never disagree (PLAN-V2 S0). Enforced here,
+# in .python-version, in CI, in scripts/run.*, and at startup in app.py.
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "pyside6>=6.6",
     "fastapi>=0.110",
@@ -22,6 +26,8 @@ secrets = ["keyring>=25"]
 # SimpleTuner pulls torch — that is fine: the trainer runs as its own
 # detached process (worker/train_runs.py); the GUI never imports it.
 # Version pinned: our configs are generated to this contract (PLAN-V2 S0).
+# simpletuner==4.8.0 declares Requires-Python >=3.12,<3.14 — one reason the
+# whole project is pinned to 3.12. Resolving this extra is a CI step.
 train = ["simpletuner==4.8.0"]
 
 [project.scripts]

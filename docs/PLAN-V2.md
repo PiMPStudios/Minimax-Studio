@@ -80,12 +80,24 @@ What the v1 plan hedged on, resolved:
 > (recalibrate the log regexes and the `train env=` arg shape against real
 > SimpleTuner output the first time it runs — they were written from its docs,
 > not its stdout).
+>
+> **Step 1 is now genuinely closed (0.2.30) — and it had not been before.**
+> `simpletuner==4.8.0` declares `Requires-Python >=3.12,<3.14`; the dev venv was
+> 3.14 (the machine's `python3` default), so the extra resolved **nowhere** and
+> CI — which tested 3.11/3.12/3.13 but only ever installed `.[dev]` — could not
+> see it. Fix: one pinned Python (3.12) across `.python-version`,
+> `requires-python`, the CI matrix, both launchers, and a startup check; CI now
+> also runs `pip install --dry-run ".[train]"` so the torch/SimpleTuner lockstep
+> is asserted on every push. Resolution verified on 3.12: `simpletuner 4.8.0 +
+> torch 2.13.0 + torchvision 0.28.0`, no conflicts. **The metal run in steps
+> 3–5 must therefore happen in a 3.12 venv** — `scripts/run.sh` rebuilds `.venv`
+> on 3.12 (and moves a wrong-version one aside) if you are not already there.
 
 Nothing ships until this passes on real metal:
 
 1. Pin a SimpleTuner version; add `[train]` extra; resolve torch/torchvision
    pin conflicts with our generate pins (**exit criterion: one resolvable
-   lockstep**).
+   lockstep** — ✅ done in 0.2.30, on Python 3.12 only, asserted in CI).
 2. Add the Music 3 encoder pack (`dav.pth` / `MiniMax-Music-3-Encoder`) to
    the catalog with license file + disk-space guard like every pack.
 3. Smallest possible Music LoRA run: ~5 clips × 15 s, ~200 steps, 24 GB
@@ -238,5 +250,7 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 ## Next step
 
 S0 spike branch off `main`: `[train]` extra + catalog pack + config writer +
-TrainRunner against a stub, all CI-green off-GPU, then one 24 GB Metal-free
-evening on your RTX to run steps 3–5 and film the picker audition.
+TrainRunner against a stub, all CI-green off-GPU ✅ (0.2.28, pin contract
+verified 0.2.30) — then one 24 GB Metal-free evening on your RTX to run steps
+3–5 and film the picker audition. **That evening starts in a 3.12 venv**
+(`scripts/run.sh` builds it); on any other Python the trainer cannot install.

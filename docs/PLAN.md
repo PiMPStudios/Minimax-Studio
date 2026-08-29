@@ -371,7 +371,12 @@ Music CUDA generate is the first “it works” milestone. H3 is larger and mean
 
 ## Stack versions (starting point)
 
-- Python 3.11 or 3.12, uv for the worker venv
+- Python **3.12, pinned** (`.python-version` is the source of truth; CI,
+  `requires-python`, `scripts/run.*` and a startup check all read it). Not
+  "3.11 or 3.12": the v2 trainer's `simpletuner==4.8.0` ships nothing outside
+  `>=3.12,<3.14`, so one version is tested and shipped rather than three
+  promised
+- uv for the worker venv
 - PyTorch CUDA wheels on Win/Linux; MLX on Mac
 - diffusers (Music 3 + H3 ModularPipeline)
 - huggingface_hub for downloads
