@@ -425,3 +425,84 @@ def enhance(body: EnhanceIn) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Local LLM failed: {exc}") from exc
+
+
+# --- Training (PLAN-V2 S0 scaffolding; the Build page arrives in S2) ---------
+
+
+class TrainRunIn(BaseModel):
+    name: str = "training run"
+    dataset_dir: str
+    preset: str = "24g"
+    steps: int = 1000
+    rank: int | None = None
+    validation: dict[str, Any] = {}
+
+
+@app.get("/train/preflight")
+def train_preflight(preset: str = "24g") -> dict[str, object]:
+    from minimax_studio.worker.train_config import train_preflight as check
+
+    try:
+        return check(preset)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/train/runs")
+def create_train_run(body: TrainRunIn) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.start_run(
+            body.name,
+            body.dataset_dir,
+            preset=body.preset,
+            steps=body.steps,
+            rank=body.rank,
+            validation=body.validation,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/train/runs")
+def train_run_list() -> list[dict[str, object]]:
+    from minimax_studio.worker import train_runs
+
+    return train_runs.list_runs()
+
+
+@app.get("/train/runs/{run_id}")
+def train_run_detail(run_id: str, tail: int = 40) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        _run_dir, state = train_runs.get_run(run_id)
+        return {
+            **state,
+            "progress": train_runs.progress(run_id),
+            "log_tail": train_runs.log_tail(run_id, max(1, min(tail, 400))),
+        }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/train/runs/{run_id}/cancel")
+def cancel_train_run(run_id: str) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.cancel_run(run_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/train/runs/{run_id}/install")
+def install_train_adapter(run_id: str, path: str | None = None) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.install_adapter(run_id, path)
+    except (RuntimeError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

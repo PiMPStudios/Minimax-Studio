@@ -55,10 +55,20 @@ def probe() -> dict[str, Any]:
         info["torch_version"] = torch_info.get("torch_version")
         if torch_info.get("gpus"):
             _apply_gpus(info, torch_info["gpus"], source="torch")
+    smi = _nvidia_smi_gpus()
     if not info["cuda"]:
-        smi = _nvidia_smi_gpus()
         if smi:
             _apply_gpus(info, smi, source="nvidia-smi")
+    elif smi:
+        # torch never reports free VRAM without creating a CUDA context
+        # (~300 MB per GPU, on every probe) — borrow the number from
+        # nvidia-smi instead, which trains on a shared desktop anyway.
+        for index, gpu in enumerate(info["gpus"]):
+            if index < len(smi) and smi[index].get("free_vram_gb") is not None:
+                gpu["free_vram_gb"] = smi[index]["free_vram_gb"]
+    info["free_vram_gb"] = max(
+        (gpu.get("free_vram_gb") or 0.0 for gpu in info["gpus"]), default=None
+    ) or None
     _CACHE = info
     _CACHE_AT = now
     return dict(info)
@@ -108,7 +118,7 @@ def _nvidia_smi_gpus() -> list[dict[str, Any]]:
         raw = subprocess.check_output(
             [
                 binary,
-                "--query-gpu=name,memory.total",
+                "--query-gpu=name,memory.total,memory.free",
                 "--format=csv,noheader,nounits",
             ],
             timeout=3,
@@ -121,14 +131,16 @@ def _nvidia_smi_gpus() -> list[dict[str, Any]]:
     for line in raw.splitlines():
         if "," not in line:
             continue
-        name, _, mem = line.partition(",")
+        name, _, rest = line.partition(",")
+        total, _, free = rest.partition(",")
         name = name.strip()
         try:
-            vram_gb = round(float(mem.strip()) / 1024.0, 1)
+            vram_gb = round(float(total.strip()) / 1024.0, 1)
+            free_gb = round(float(free.strip()) / 1024.0, 1)
         except ValueError:
             continue
         if name:
-            gpus.append({"name": name, "vram_gb": vram_gb})
+            gpus.append({"name": name, "vram_gb": vram_gb, "free_vram_gb": free_gb})
     return gpus
 
 

@@ -68,6 +68,19 @@ What the v1 plan hedged on, resolved:
 
 ### S0 — Engine spike (the gate for everything)
 
+> **Status (0.2.28): off-GPU half landed.** `pip install "minimax-studio[train]"`
+> (pins SimpleTuner 4.8.0), the DAV encoder pack on the Models page, the
+> two-config writer (`worker/train_config.py` — `minimaxmusic`/`music3`, rank +
+> precision presets, `lora_format: comfyui`, all writes confined to the run
+> dir), train preflight with named numbers (packs, free VRAM via nvidia-smi,
+> GPU-sharing block, cache-disk guard), the detached runner
+> (`worker/train_runs.py` — survives worker restarts, group-cancel, log→progress,
+> `install` → LoRA picker), and `/train/*` endpoints — 18 tests against a stub
+> trainer, CI-green on all three OSes. **Remaining: steps 3–5 on real metal**
+> (recalibrate the log regexes and the `train env=` arg shape against real
+> SimpleTuner output the first time it runs — they were written from its docs,
+> not its stdout).
+
 Nothing ships until this passes on real metal:
 
 1. Pin a SimpleTuner version; add `[train]` extra; resolve torch/torchvision

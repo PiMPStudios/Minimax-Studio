@@ -19,6 +19,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
 secrets = ["keyring>=25"]
+# SimpleTuner pulls torch — that is fine: the trainer runs as its own
+# detached process (worker/train_runs.py); the GUI never imports it.
+# Version pinned: our configs are generated to this contract (PLAN-V2 S0).
+train = ["simpletuner==4.8.0"]
 
 [project.scripts]
 minimax-studio = "minimax_studio.app:main"

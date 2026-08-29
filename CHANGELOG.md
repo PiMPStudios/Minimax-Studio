@@ -12,6 +12,24 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.28] — 2026-08-29
+
+### Added
+
+- **v2-S0 training scaffolding (no UI yet).** `pip install
+  "minimax-studio[train]"` pins SimpleTuner 4.8.0; the Music 3 Training
+  Encoder (DAV VAE, ~0.3 GB) is a new Models-page pack; `/train/preflight`
+  gates on packs, real free VRAM, active generations, and cache disk with
+  named numbers; `/train/runs` launches **detached** SimpleTuner runs that
+  survive the app closing — reconnect by pid, cancel the whole process
+  group, parse `train.log` for step/loss, and `POST /train/runs/{id}/install`
+  drops the trained `.safetensors` straight into the LoRA picker. The GUI
+  never imports torch: SimpleTuner is a pinned subprocess, its contract is
+  the two JSON files our config writer emits. See docs/PLAN-V2.md.
+- The worker probe now reports **free** VRAM (`free_vram_gb`) via
+  nvidia-smi — deliberately not `torch.cuda.mem_get_info`, which would
+  silently tax ~300 MB of CUDA context per GPU on every probe.
+
 ## [0.2.27] — 2026-08-29
 
 ### Added

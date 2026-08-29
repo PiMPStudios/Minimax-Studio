@@ -76,6 +76,23 @@ PACKS: dict[str, Pack] = {
         kind="mlx",
         marker_files=("config.json", "model.safetensors.index.json"),
     ),
+    "music3-train-encoder": Pack(
+        id="music3-train-encoder",
+        title="Music 3 Training Encoder (DAV VAE)",
+        summary="SimpleTuner's converted DAV audio autoencoder. Only needed to train Music 3 LoRAs, not to generate.",
+        repo_id="SimpleTuner/MiniMax-Music-3-Encoder",
+        local_dir="music3-train-encoder",
+        approx_gb=0.3,
+        license_name="MiniMax-Music3 Community License (SimpleTuner conversion)",
+        family="music",
+        kind="cuda",
+        allow_patterns=("audio_vae/*",),
+        ignore_patterns=(".gitattributes",),
+        marker_files=(
+            "audio_vae/config.json",
+            "audio_vae/diffusion_pytorch_model.safetensors",
+        ),
+    ),
     "h3-diffusers-fl2va": Pack(
         id="h3-diffusers-fl2va",
         title="MiniMax H3 FL2VA (official diffusers)",
