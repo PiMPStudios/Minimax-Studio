@@ -102,6 +102,14 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 
 ### S1 — Datasets foundation (fully off-GPU; CI-coverable)
 
+> **Status (0.2.29): landed (backend).** `worker/datasets.py` + `/datasets*`
+> endpoints: manifest + native folder layout, import-from-folder (copies),
+> import-from-History (caption/lyrics carried), stdlib-`wave` validator with
+> named per-clip problems, and `train_runs` refusing to launch on a managed
+> dataset that doesn't validate clean. **Deferred with S2's Build page: the
+> Dataset page UI itself** (list/validate/fix affordances) — the API surface
+> it needs is final.
+
 - `datasets.py`: `dataset.json` manifest (kind music/video, created_at,
   clip list, validation report), import from folder **and from History**
   (select generations → "add to dataset" copies wavs/clips + writes caption

@@ -66,6 +66,10 @@ def start_run(
     errors = validate_music_dataset_dir(dataset_dir)
     if errors:
         raise RuntimeError("Dataset is not ready to train: " + " ".join(errors[:3]))
+    # If it's an app-managed dataset (has a manifest), it must validate clean.
+    from minimax_studio.worker.datasets import assert_trainable
+
+    assert_trainable(Path(dataset_dir).resolve())
     if not os.environ.get("MINIMAX_STUDIO_TRAIN_FORCE"):
         check = train_preflight(preset)
         if not check["ok"]:

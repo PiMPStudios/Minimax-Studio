@@ -12,6 +12,22 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.29] — 2026-08-29
+
+### Added
+
+- **Datasets foundation (PLAN-V2 S1 — no UI yet).** `worker/datasets.py` +
+  `/datasets*` endpoints: create datasets as plain folders in SimpleTuner's
+  native layout (`track.wav` + `track.txt` caption + optional
+  `track.lyrics`) plus a thin `dataset.json` manifest; import from any
+  folder (**copies, never references** — cleaning the source can't gut the
+  dataset) and **from History** (the good generations carry their caption +
+  lyrics over for free). The validator probes WAV duration with the stdlib
+  `wave` module (real numbers, no ffmpeg, CI-honest), flags missing
+  captions, orphaned captions, un-readable audio, and clips outside the
+  3–300 s window — and `POST /train/runs` now refuses to start training on
+  a managed dataset that doesn't validate, naming the first problem.
+
 ## [0.2.28] — 2026-08-29
 
 ### Added

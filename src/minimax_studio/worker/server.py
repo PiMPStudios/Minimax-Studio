@@ -506,3 +506,93 @@ def install_train_adapter(run_id: str, path: str | None = None) -> dict[str, obj
         return train_runs.install_adapter(run_id, path)
     except (RuntimeError, FileNotFoundError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# --- Datasets (PLAN-V2 S1) ----------------------------------------------------
+
+
+class DatasetIn(BaseModel):
+    name: str
+    kind: str = "music"
+    notes: str = ""
+
+
+class DatasetImportIn(BaseModel):
+    folder: str
+
+
+class DatasetHistoryIn(BaseModel):
+    history_id: str
+
+
+@app.get("/datasets")
+def dataset_list() -> list[dict[str, object]]:
+    from minimax_studio.worker import datasets
+
+    return datasets.list_datasets()
+
+
+@app.post("/datasets")
+def dataset_create(body: DatasetIn) -> dict[str, object]:
+    from minimax_studio.worker import datasets
+
+    try:
+        return datasets.create_dataset(body.name, body.kind, body.notes)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/datasets/{dataset_id}")
+def dataset_delete(dataset_id: str) -> dict[str, object]:
+    from minimax_studio.worker import datasets
+
+    try:
+        datasets.delete_dataset(dataset_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True, "id": dataset_id}
+
+
+@app.get("/datasets/{dataset_id}")
+def dataset_detail(dataset_id: str) -> dict[str, object]:
+    from minimax_studio.worker import datasets
+
+    try:
+        folder, manifest = datasets.get_dataset(dataset_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    report = None
+    report_path = folder / "validation.json"
+    if report_path.is_file():
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    return {**manifest, "entries": datasets.list_entries(folder), "validation": report}
+
+
+@app.post("/datasets/{dataset_id}/import")
+def dataset_import(dataset_id: str, body: DatasetImportIn) -> dict[str, object]:
+    from minimax_studio.worker import datasets
+
+    try:
+        return datasets.import_folder(dataset_id, body.folder)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/datasets/{dataset_id}/from_history")
+def dataset_from_history(dataset_id: str, body: DatasetHistoryIn) -> dict[str, object]:
+    from minimax_studio.worker import datasets
+
+    try:
+        return datasets.add_from_history(dataset_id, body.history_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/datasets/{dataset_id}/validate")
+def dataset_validate(dataset_id: str) -> dict[str, object]:
+    from minimax_studio.worker import datasets
+
+    try:
+        return datasets.validate_dataset(dataset_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
