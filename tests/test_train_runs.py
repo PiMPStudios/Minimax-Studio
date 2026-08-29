@@ -204,7 +204,7 @@ def test_live_run_warns_generate_preflight(
     """GPU etiquette cuts both ways. Training refuses to join a generation;
     and while a run holds the card — ours or one from a previous launch of the
     app — Generate has to say so before you press it."""
-    monkeypatch.setenv("STUB_TRAINER_MODE", "keepalive")
+    monkeypatch.setenv("STUB_TRAINER_MODE", "sleep")
     monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
     clips = _dataset(trainer_stub)
     state = train_runs.start_run("overnight", clips, "24g", steps=100)
@@ -219,4 +219,8 @@ def test_live_run_warns_generate_preflight(
             for warning in check["warnings"]
         ), check["warnings"]
     finally:
+        # Wait for the death, don't just ask for it: a stub still sleeping 120 s
+        # after the test ends is a stray process on the runner, and on Windows
+        # that is how a test job turns into a hung one.
         train_runs.cancel_run(state["id"])
+        _wait_status(state["id"], "cancelled")

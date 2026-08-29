@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    # A hung test used to sit at 41% for 20+ minutes with nothing in the log.
+    # Fail loudly and keep the log instead.
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +39,9 @@ jobs:
       - name: Lint
         run: ruff check src tests
       - name: Tests (stub backends only — no model runs)
-        run: python -m pytest -q
+        # -v, not -q: pytest prints each test's name when it *starts*, so the
+        # last line of a hung run names the suspect. -q hides all of that.
+        run: python -m pytest -v --tb=short -rf
       - name: Train extra resolves (PLAN-V2 S0 pin contract)
         if: runner.os == 'Linux'
         # Metadata-only resolution, no torch download. Proves the [train] pin
