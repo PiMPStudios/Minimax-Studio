@@ -62,7 +62,7 @@ packs already on disk. H3 duration in the inspector snaps to the model’s
 <b>Show in folder</b> opens the take in the file manager. File menu opens the
 output and models folders. H3 local generate wants <code>ffmpeg</code> on PATH
 for MP4 mux.</p>
-<p>Go menu: Ctrl+1…7 switches pages, Ctrl+Enter generates on Video/Music.
+<p>Go menu: Ctrl+1…9 switches pages, Ctrl+Enter generates on Video/Music.
 <b>Start ComfyUI</b> (Welcome, Settings, or Go) launches a detected
 <code>main.py</code> install as a separate process and waits until it answers
 — extra args in Settings (for example
@@ -77,6 +77,28 @@ bar stops the running job. Presets can be filtered like History.</p>
 <p>Settings can store API tokens in the OS keychain instead of
 <code>config.json</code> when the optional <code>keyring</code> package is
 installed.</p>
+
+<h3>Build — datasets and LoRA training (experimental)</h3>
+<p><b>Datasets</b> (Ctrl+5) keeps Music clips in SimpleTuner’s own layout —
+<code>track.wav</code> plus a <code>track.txt</code> caption, optionally
+<code>track.lyrics</code>. Imports <b>copy</b> files, so cleaning up your
+originals never guts a dataset; <b>Add from History</b> brings a good take’s
+caption and lyrics with it. <b>Validate</b> names the problem on every clip
+that can’t train, and starting a run refuses a dataset that doesn’t validate.</p>
+<p><b>Train LoRA</b> (Ctrl+6) writes SimpleTuner’s two config files and launches
+the pinned <code>simpletuner</code> as <b>its own process</b>: closing Studio
+does not stop a run, and the page reattaches to it from the run folder.
+Cancel signals the process group; checkpoints already written stay, and a run
+resumes from the last one. <b>Install adapter</b> copies the newest checkpoint
+into the LoRA folder, ready in the Generate Music picker (try ~0.8 strength).</p>
+<p>Training is <b>experimental</b>: Music 3 only, CUDA only, Python 3.12 with
+<code>pip install -e ".[train]"</code> and the <b>Music 3 Training Encoder</b>
+pack on Models. A 24 GB card is the floor, and preflight names the VRAM, packs,
+active jobs and free cache disk before anything starts — no mystery OOM.
+Video (H3) training is the next slice; a Video dataset is a place to collect
+clips until then.</p>
+<p>A live training run warns you on Generate (and shows in the status bar) —
+one GPU, two hungry things.</p>
 """
 
 

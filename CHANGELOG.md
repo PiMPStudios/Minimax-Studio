@@ -12,6 +12,46 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.31] — 2026-08-29
+
+### Added
+
+- **Build pages (PLAN-V2 S2) — the last two releases finally have a screen.**
+  Everything S0/S1 built was reachable by HTTP only.
+  **Datasets** (Ctrl+5): create a dataset, **import a folder** (it *copies*,
+  and the result names how many clips brought a caption), **Add from
+  History** (a good generation comes with its caption and lyrics already
+  written), Validate, Show in folder, Delete — whose confirmation says what
+  survives (your originals and History). The report is one row per clip,
+  broken ones on top, with the exact reason:
+  `✗ missing caption one.txt; 4.0s is under the 3s floor`.
+  **Train LoRA** (Ctrl+6): dataset picker that tells “2 problems” apart from
+  “not checked”, VRAM presets read *from the worker* rather than a second copy
+  of the table, steps/rank/validation-prompt (so SimpleTuner renders clips you
+  can hear), then run rows with step/total, loss, checkpoints and an ETA from
+  measured step time, a log tail, **Cancel** (process group; checkpoints
+  stay), **Open folder**, and **Install adapter** → the LoRA picker.
+  Both pages carry the Experimental badge; Music and CUDA only, as planned.
+- **Training and generating now know about each other.** Pressing Start
+  re-runs preflight and a full dataset validation and refuses both, with
+  numbers, *before* anything is written. While a run is live, generate
+  preflight warns (“1 training run is live (Overnight) and wants the whole
+  GPU — a generation now can OOM one or stall the other”) instead of letting
+  you discover it as a CUDA failure, and the status bar names the live run
+  from any page — a detached trainer has no job in the queue to be visible
+  through. Warn, not block: cancelling someone’s three-hour run is not a
+  side effect of pressing Generate.
+- Dataset rows and train runs now carry their on-disk `path`: the Train page
+  hands it straight back as `dataset_dir`, and “Open folder” needs it — the
+  layout is ours, the path never was.
+
+### Tests
+
+- 25 new (167 total, still no GPU, no SimpleTuner): the Build pages are tested
+  mostly as refusals — a modal in a test is a hung CI runner, so every box is
+  answered by a stand-in. Plus the live-run warning against a stub trainer
+  that actually sleeps.
+
 ## [0.2.30] — 2026-08-29
 
 ### Changed

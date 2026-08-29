@@ -118,9 +118,10 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 > endpoints: manifest + native folder layout, import-from-folder (copies),
 > import-from-History (caption/lyrics carried), stdlib-`wave` validator with
 > named per-clip problems, and `train_runs` refusing to launch on a managed
-> dataset that doesn't validate clean. **Deferred with S2's Build page: the
-> Dataset page UI itself** (list/validate/fix affordances) — the API surface
-> it needs is final.
+> dataset that doesn't validate clean. **Dataset UI landed in 0.2.31** — the
+> `Datasets` page (list/create/import/from-History/validate/report), built on
+> the API surface that has not needed a change since (one addition: rows carry
+> `path`, because the Train page must hand `dataset_dir` back to the worker).
 
 - `datasets.py`: `dataset.json` manifest (kind music/video, created_at,
   clip list, validation report), import from folder **and from History**
@@ -136,6 +137,19 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
   no GPU, no models, CI-safe
 
 ### S2 — Music LoRA slice (v2's "Music CUDA generate" moment)
+
+> **Status (0.2.31): UI landed; the metal is still the gate.** `Datasets` and
+> `Train LoRA` pages exist: dataset picker that distinguishes "2 problems"
+> from "never checked", VRAM presets read from `/train/preflight` (no second
+> copy of the table to drift), steps/rank/validation prompt, run rows with
+> step/loss/checkpoints/step-time ETA, log tail, Cancel, Open folder,
+> **Install adapter** → LoRA picker, Experimental badge on both. Start
+> re-checks preflight *and* validates the dataset before writing anything, and
+> generate preflight now warns when a detached run holds the GPU (plus a
+> status-bar line, since training has no job in the queue). 25 off-GPU tests.
+> **What S2 still cannot prove:** that `STEP_RE`/`LOSS_RE` and
+> `simpletuner train env=<id>` match real output — that is S0 steps 3–5 on a
+> 24 GB card; the run rows here run against a stub and a fake worker.
 
 - `TrainRunner`: writes `config.json` + `multidatabackend.json` into
   `runs/<id>/`, launches `simpletuner train` detached (own process group,

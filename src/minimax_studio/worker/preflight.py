@@ -100,6 +100,23 @@ def preflight(
         warning = "ffmpeg is not in PATH. Install it for MP4 mux and media probe."
         result["warnings"].append(warning)
         result["detail"] = f"{result['detail']} {warning}"
+    # A detached trainer holds the GPU for hours and does not know about us.
+    # Say so here, where pressing Generate is still free.
+    try:
+        from minimax_studio.worker.train_runs import live_runs
+
+        live = live_runs()
+    except Exception:
+        live = []
+    if live:
+        names = ", ".join(str(row.get("name") or row.get("id")) for row in live[:3])
+        warning = (
+            f"{len(live)} training run{' is' if len(live) == 1 else 's are'} "
+            f"live ({names}) and want the whole GPU — a generation now can OOM "
+            "one or stall the other. Stop it on Train LoRA for a clean shot."
+        )
+        result["warnings"].append(warning)
+        result["detail"] = f"{result['detail']} {warning}"
     if kind == "h3" and speed.strip().lower() == "fast":
         from minimax_studio.worker.backends.h3 import _find_turbo_lora
 

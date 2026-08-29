@@ -85,6 +85,31 @@ class FakeWorker:
     def comfy_status(self) -> dict:
         return {"root": None, "running": False}
 
+    # Build pages (S2). Empty by default; the tests that care subclass these.
+    def list_datasets(self) -> list:
+        return []
+
+    def get_dataset(self, dataset_id: str) -> dict:
+        return {"id": dataset_id, "name": dataset_id, "kind": "music", "path": ""}
+
+    def validate_dataset(self, dataset_id: str) -> dict:
+        return {"ok": True, "checked": 0, "rows": []}
+
+    def train_preflight(self, preset: str = "24g") -> dict:
+        return {
+            "ok": False,
+            "detail": "stub: SimpleTuner is not installed",
+            "problems": ["stub: SimpleTuner is not installed"],
+            "warnings": [],
+            "presets": {},
+        }
+
+    def list_train_runs(self) -> list:
+        return []
+
+    def get_train_run(self, run_id: str, tail: int = 60) -> dict:
+        return {"id": run_id, "status": "completed", "progress": {}, "log_tail": []}
+
 
 def test_welcome_dialog_builds(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])
@@ -103,7 +128,11 @@ def test_main_window_builds(tmp_path) -> None:
     from minimax_studio import __version__
 
     assert window.windowTitle() == f"MiniMax Studio {__version__}"
-    assert window._stack.count() == 7
+    assert window._stack.count() == 9
+    assert [
+        key for key in window._nav_keys if key in {"datasets", "train"}
+    ] == ["datasets", "train"], "Build pages belong in the sidebar"
+    assert window._train.isEnabled()
     menus = [action.text() for action in window.menuBar().actions()]
     assert "&File" in menus
     assert "&Go" in menus
@@ -295,3 +324,54 @@ def test_inspector_now_line_and_music_api_hints(tmp_path) -> None:
     window._apply_api_param_hints({"kind": "h3", "backend": "cuda"})
     assert window._seed.toolTip() == ""
     assert window._cfg.toolTip() == window._default_param_tips[window._cfg]
+
+
+def test_status_bar_names_a_live_training_run(tmp_path) -> None:
+    """Training is detached: it has no job in the queue, so the status bar is
+    where it stays visible while you are on another page."""
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+
+    class Training(FakeWorker):
+        def list_train_runs(self) -> list:
+            return [
+                {"id": "r1", "name": "Overnight", "status": "running", "steps": 1000},
+                {"id": "r2", "name": "Retake", "status": "completed", "steps": 500},
+            ]
+
+    config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
+    window = MainWindow(Training(), config)  # type: ignore[arg-type]
+    window._refresh_train_status()
+    assert "Training: Overnight" in window._status_train.text()
+    assert "Ctrl+6" in window._status_train.text(), "say where to look"
+
+    window._client = FakeWorker()  # run finished / worker unreachable
+    window._refresh_train_status()
+    assert window._status_train.text() == ""
+    _drain_window(app, window)
+
+
+def test_dataset_page_hands_its_dataset_to_the_train_page(tmp_path) -> None:
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+
+    class WithDataset(FakeWorker):
+        def list_datasets(self) -> list:
+            return [
+                {
+                    "id": "summer",
+                    "name": "Summer",
+                    "kind": "music",
+                    "clip_count": 3,
+                    "path": "/data/datasets/summer",
+                    "last_validation": {"ok": True, "checked": 3},
+                }
+            ]
+
+    config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
+    window = MainWindow(WithDataset(), config)  # type: ignore[arg-type]
+    window.show_page("datasets")
+    window._datasets._train.click()
+    assert window._stack.currentWidget() is window._train
+    assert window._train._dataset.currentData()["id"] == "summer"
+    _drain_window(app, window)

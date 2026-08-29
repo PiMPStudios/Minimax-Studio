@@ -25,12 +25,14 @@ from PySide6.QtWidgets import (
 from minimax_studio import __version__
 from minimax_studio.config import AppConfig
 from minimax_studio.ui.pages import (
+    DatasetsPage,
     HelpPage,
     HistoryPage,
     ModelsPage,
     MusicPage,
     PresetsPage,
     SettingsPage,
+    TrainPage,
     VideoPage,
 )
 from minimax_studio.ui.state import StudioState
@@ -43,6 +45,9 @@ NAV_ITEMS = [
     ("Library", None),
     ("history", "History"),
     ("presets", "Presets"),
+    ("Build", None),
+    ("datasets", "Datasets"),
+    ("train", "Train LoRA"),
     ("Setup", None),
     ("models", "Models"),
     ("settings", "Settings"),
@@ -59,6 +64,7 @@ class MainWindow(QMainWindow):
         self._route_thread: QThread | None = None
         self._route_ticks = 0
         self._models_ticks = 0
+        self._build_ticks = 0
         self.setWindowTitle(f"MiniMax Studio {__version__}")
         self.resize(1320, 840)
 
@@ -68,6 +74,8 @@ class MainWindow(QMainWindow):
         self._models = ModelsPage(client)
         self._settings = SettingsPage(client, config)
         self._presets = PresetsPage(client, self._state)
+        self._datasets = DatasetsPage(client)
+        self._train = TrainPage(client)
         self._help = HelpPage()
 
         self._stack = QStackedWidget()
@@ -76,6 +84,8 @@ class MainWindow(QMainWindow):
             "music": self._music,
             "history": self._history,
             "presets": self._presets,
+            "datasets": self._datasets,
+            "train": self._train,
             "models": self._models,
             "settings": self._settings,
             "help": self._help,
@@ -99,6 +109,10 @@ class MainWindow(QMainWindow):
                 self._nav.addItem(QListWidgetItem(label))
                 self._nav_keys.append(key)
         self._nav.currentRowChanged.connect(self._on_nav)
+        # A dataset's "Train with this →" hands the page over with it selected;
+        # an installed adapter should show up in the LoRA picker immediately.
+        self._datasets.train_requested.connect(self._open_train_page)
+        self._train.adapter_installed.connect(self.refresh_loras)
 
         splitter = QWidget()
         row = QHBoxLayout(splitter)
@@ -260,9 +274,14 @@ class MainWindow(QMainWindow):
         self._status_cancel.setFlat(True)
         self._status_cancel.clicked.connect(self._cancel_active_job)
         self._status_dl = QLabel("")
+        # Training is detached and can outlive every page — the status bar is
+        # where it stays visible while you are generating somewhere else.
+        self._status_train = QLabel("")
+        self._train_ticks = 0
         self._active_job_id: str | None = None
         status.addWidget(self._status_worker)
         status.addPermanentWidget(self._status_dl)
+        status.addPermanentWidget(self._status_train)
         status.addPermanentWidget(self._status_job)
         status.addPermanentWidget(self._status_cancel)
         self.setStatusBar(status)
@@ -286,6 +305,15 @@ class MainWindow(QMainWindow):
         self._nav.setCurrentRow(row)
         if key == "history":
             self._history.refresh()
+        if key == "datasets":
+            self._datasets.refresh()
+        if key == "train":
+            self._train.refresh()
+
+    def _open_train_page(self, dataset_id: str) -> None:
+        self.show_page("train")
+        self._train.select_dataset(dataset_id)
+        self._train.preflight()
 
     def _on_nav(self, row: int) -> None:
         if row < 0 or row >= len(self._nav_keys):
@@ -304,6 +332,12 @@ class MainWindow(QMainWindow):
             self._models.refresh()
         if key == "presets":
             self._presets.refresh()
+        if key == "datasets":
+            self._datasets.refresh()
+        if key == "train":
+            self._train.refresh()
+            self._train.preflight()
+        self._refresh_train_status()
         self._apply_duration_mode(key)
         self._refresh_route()
 
@@ -481,17 +515,34 @@ class MainWindow(QMainWindow):
         self._refresh_job_status(jobs)
         self._refresh_download_status()
         row = self._nav.currentRow()
-        if 0 <= row < len(self._nav_keys) and self._nav_keys[row] == "models":
+        key_now = self._nav_keys[row] if 0 <= row < len(self._nav_keys) else None
+        if key_now == "models":
             self._models_ticks += 1
             if self._models_ticks >= 4:  # /packs walks model trees — 2 s is enough
                 self._models_ticks = 0
                 self._models.refresh()
         else:
             self._models_ticks = 0
+        # Build pages poll the run dirs (a detached trainer has no in-process
+        # truth), but the log tail is a file read — 2 s is plenty.
+        if key_now in {"datasets", "train"}:
+            self._build_ticks += 1
+            if self._build_ticks >= 4:
+                self._build_ticks = 0
+                (self._datasets if key_now == "datasets" else self._train).refresh()
+        else:
+            self._build_ticks = 0
         self._route_ticks += 1
         if self._route_ticks >= 8:
             self._route_ticks = 0
             self._refresh_route()
+        # 4 s: the train page already lists runs itself, so only ask when it
+        # cannot see them for itself.
+        self._train_ticks += 1
+        if self._train_ticks >= 8:
+            self._train_ticks = 0
+            if key_now != "train":
+                self._refresh_train_status()
 
     def _refresh_job_status(self, jobs: list[dict] | None = None) -> None:
         if jobs is None:
@@ -542,6 +593,22 @@ class MainWindow(QMainWindow):
                 status != "cancelling" and bool(self._active_job_id)
             )
         self._refresh_download_status()
+
+    def _refresh_train_status(self) -> None:
+        try:
+            runs = self._client.list_train_runs()
+        except Exception:
+            runs = []
+        live = [row for row in runs if row.get("status") in {"running", "queued"}]
+        if not live:
+            self._status_train.setText("")
+            return
+        run = live[0]
+        more = f" (+{len(live) - 1} more)" if len(live) > 1 else ""
+        self._status_train.setText(
+            f"Training: {run.get('name')} · {run.get('status')} · "
+            f"{run.get('steps')} steps{more} — Ctrl+6"
+        )
 
     def _refresh_download_status(self) -> None:
         try:
@@ -624,9 +691,11 @@ class MainWindow(QMainWindow):
             ("music", "Generate Music", "Ctrl+2"),
             ("history", "History", "Ctrl+3"),
             ("presets", "Presets", "Ctrl+4"),
-            ("models", "Models", "Ctrl+5"),
-            ("settings", "Settings", "Ctrl+6"),
-            ("help", "Help", "Ctrl+7"),
+            ("datasets", "Datasets", "Ctrl+5"),
+            ("train", "Train LoRA", "Ctrl+6"),
+            ("models", "Models", "Ctrl+7"),
+            ("settings", "Settings", "Ctrl+8"),
+            ("help", "Help", "Ctrl+9"),
         ]
         for key, label, shortcut in pages:
             action = QAction(label, self)

@@ -4,7 +4,8 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.30** generate studio, training slices landing. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
+Status: **0.2.31** generate studio + Build pages (datasets, LoRA training —
+experimental). Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Locked for v1
 
@@ -64,12 +65,20 @@ pip install 'minimax-studio[secrets]'
 
 Then enable **Store tokens in the OS keychain** in Settings.
 
-LoRA training (v2, in progress — no UI yet, see `docs/PLAN-V2.md`) adds the
-pinned SimpleTuner engine and its torch stack:
+LoRA training (v2, in progress — **Experimental**) adds the pinned SimpleTuner
+engine and its torch stack:
 
 ```bash
 pip install -e ".[train]"      # resolves on 3.12 only; CI asserts this
 ```
+
+Then download the **Music 3 Training Encoder** pack on Models. **Datasets**
+(Ctrl+5) takes a folder of `track.wav` + `track.txt` (+ optional
+`track.lyrics`) or pulls good generations out of History; **Train LoRA**
+(Ctrl+6) checks VRAM, packs, active jobs and cache disk by name, then launches
+the trainer as **its own process** — closing Studio does not stop a run, and
+the page reattaches to it. Music 3 + CUDA only, 24 GB VRAM floor. See
+[`docs/PLAN-V2.md`](docs/PLAN-V2.md).
 
 ## License (models)
 

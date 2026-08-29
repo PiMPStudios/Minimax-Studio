@@ -255,6 +255,10 @@ def test_dataset_api_roundtrip(datasets_env: Path, tmp_path: Path) -> None:
     assert detail["entries"][0]["file"] == "a.wav"
     assert detail["validation"]["ok"] is True
     assert detail["last_validation"]["ok"] is True
+    # The Train page hands this straight back as dataset_dir, and "Show in
+    # folder" opens it — so the worker, not the UI, has to say where it lives.
+    assert Path(detail["path"]) == datasets.datasets_root() / dataset_id
+    assert Path(detail["path"]).is_dir()
 
     assert client.delete(f"/datasets/{dataset_id}").json()["ok"] is True
     assert client.get(f"/datasets/{dataset_id}").status_code == 404

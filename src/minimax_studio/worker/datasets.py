@@ -61,6 +61,9 @@ def create_dataset(name: str, kind: str = "music", notes: str = "") -> dict[str,
         "created_at": time.time(),
         "notes": notes,
         "last_validation": None,
+        # The Build pages hand this straight to /train/runs as dataset_dir, and
+        # "Show in folder" needs it too — the layout is ours, the path is not.
+        "path": str(folder),
     }
     _write_manifest(folder, manifest)
     return manifest
@@ -77,6 +80,7 @@ def list_datasets() -> list[dict[str, Any]]:
             continue
         manifest = dict(manifest)
         manifest["clip_count"] = len(list_entries(child))
+        manifest["path"] = str(child)
         rows.append(manifest)
     rows.sort(key=lambda item: item.get("created_at") or 0, reverse=True)
     return rows

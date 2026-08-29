@@ -565,7 +565,14 @@ def dataset_detail(dataset_id: str) -> dict[str, object]:
     report_path = folder / "validation.json"
     if report_path.is_file():
         report = json.loads(report_path.read_text(encoding="utf-8"))
-    return {**manifest, "entries": datasets.list_entries(folder), "validation": report}
+    return {
+        **manifest,
+        # Always derive the path from where it was found, so datasets created
+        # before the manifest carried one still work.
+        "path": str(folder),
+        "entries": datasets.list_entries(folder),
+        "validation": report,
+    }
 
 
 @app.post("/datasets/{dataset_id}/import")

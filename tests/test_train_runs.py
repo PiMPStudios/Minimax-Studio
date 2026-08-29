@@ -185,3 +185,38 @@ def test_train_api_endpoints(trainer_stub: Path, studio_home: Path) -> None:
         json={"name": "x", "dataset_dir": str(trainer_stub / "gone"), "preset": "24g"},
     )
     assert bad.status_code == 409
+
+
+def test_run_rows_carry_the_folder_the_ui_opens(trainer_stub: Path) -> None:
+    """"Open folder" is the only way to reach a detached run's logs and
+    checkpoints once Studio was closed while it ran."""
+    clips = _dataset(trainer_stub)
+    state = train_runs.start_run("folder please", clips, "24g", steps=42)
+    assert state["path"] == str(train_runs.runs_root() / state["id"])
+    rows = train_runs.list_runs()
+    assert rows and rows[0]["path"] == state["path"]
+    train_runs.cancel_run(state["id"])
+
+
+def test_live_run_warns_generate_preflight(
+    trainer_stub: Path, studio_home: Path, monkeypatch
+) -> None:
+    """GPU etiquette cuts both ways. Training refuses to join a generation;
+    and while a run holds the card — ours or one from a previous launch of the
+    app — Generate has to say so before you press it."""
+    monkeypatch.setenv("STUB_TRAINER_MODE", "keepalive")
+    monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
+    clips = _dataset(trainer_stub)
+    state = train_runs.start_run("overnight", clips, "24g", steps=100)
+    try:
+        assert [row["id"] for row in train_runs.live_runs()] == [state["id"]]
+        from minimax_studio.worker.preflight import preflight
+
+        check = preflight("music", "stub")
+        assert check["ok"] is True  # a warning, not a wall
+        assert any(
+            "overnight" in warning and "training run" in warning
+            for warning in check["warnings"]
+        ), check["warnings"]
+    finally:
+        train_runs.cancel_run(state["id"])

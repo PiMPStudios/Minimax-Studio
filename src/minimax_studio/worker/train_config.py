@@ -227,6 +227,17 @@ def train_preflight(preset_name: str = DEFAULT_PRESET) -> dict[str, Any]:
         "preset": preset_name,
         "vram_floor_gb": preset.vram_floor_gb,
         "simpletuner": None,
+        # The Train page builds its VRAM picker from this instead of keeping a
+        # second copy of the preset table that could disagree with the worker.
+        "presets": {
+            name: {
+                "title": row.title,
+                "vram_floor_gb": row.vram_floor_gb,
+                "lora_rank": row.lora_rank,
+                "note": row.note,
+            }
+            for name, row in PRESETS.items()
+        },
         "problems": [],
         "warnings": [],
         "detail": "",
@@ -284,6 +295,7 @@ def train_preflight(preset_name: str = DEFAULT_PRESET) -> dict[str, Any]:
         )
 
     hw = probe()
+    result["free_vram_gb"] = hw.get("free_vram_gb")
     if not hw.get("cuda"):
         problems.append(
             "Training is CUDA-only (Windows/Linux) — Mac generates with "

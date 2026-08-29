@@ -123,7 +123,8 @@ def start_run(
     }
     _write_state(run_dir, state)
     _PROCS[run_id] = proc
-    return state
+    # `path` is for the UI (Open folder, Open log); state.json stays portable.
+    return {**state, "path": str(run_dir)}
 
 
 def list_runs() -> list[dict[str, Any]]:
@@ -134,8 +135,19 @@ def list_runs() -> list[dict[str, Any]]:
     for child in sorted(root.iterdir(), reverse=True):
         state = _read_state(child)
         if state:
-            rows.append(_refresh(child, state))
+            rows.append({**_refresh(child, state), "path": str(child)})
     return rows
+
+
+def live_runs() -> list[dict[str, Any]]:
+    """Runs whose process is still up.
+
+    GPU etiquette cuts both ways: ``start_run`` refuses to join an active
+    generation, and generate preflight warns when a run is already holding the
+    card. Warn rather than block — cancelling someone's three-hour run should
+    stay their decision, not a side effect of pressing Generate.
+    """
+    return [row for row in list_runs() if row.get("status") in {"running", "queued"}]
 
 
 def get_run(run_id: str) -> tuple[Path, dict[str, Any]]:
@@ -143,7 +155,7 @@ def get_run(run_id: str) -> tuple[Path, dict[str, Any]]:
     state = _read_state(run_dir)
     if not state:
         raise RuntimeError(f"No training run '{run_id}'.")
-    return run_dir, _refresh(run_dir, state)
+    return run_dir, {**_refresh(run_dir, state), "path": str(run_dir)}
 
 
 def cancel_run(run_id: str) -> dict[str, Any]:
