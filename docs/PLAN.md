@@ -120,6 +120,9 @@ This **is** real, unlike Music 3:
 
 v2 Training should wrap a Python trainer (Fizgig-style or SimpleTuner if H3 lands there), not send people to Comfy.
 
+> **Update (2026-08-29):** SimpleTuner already lands H3 — and Music 3 — as
+> first-class training targets. See [PLAN-V2.md](PLAN-V2.md).
+
 ---
 
 ## Capability catalog — MiniMax Music 3
@@ -328,6 +331,8 @@ One JSON job the UI always submits:
 Out of v1: training, datasets, editor, MCP, RunPod, prompt LLM, 2K local.
 
 ### v2 — Training (PiMP “Build”)
+
+**Plan written: [PLAN-V2.md](PLAN-V2.md)** — engine research done, slices S0–S5 ordered. Summary bullets kept below for the history book.
 
 - Datasets from local files (music: wav + `.txt` caption + `.lyrics`; video: Fizgig/Gizmo-style clip spec)
 - Music LoRA via SimpleTuner wrapper, experimental badge
