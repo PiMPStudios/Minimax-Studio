@@ -7,7 +7,11 @@ from minimax_studio.worker.runtime import runtime
 
 
 def preflight(
-    kind: str, backend: str = "auto", mode: str = "t2va", speed: str = "quality"
+    kind: str,
+    backend: str = "auto",
+    mode: str = "t2va",
+    speed: str = "quality",
+    resolution: str = "768P",
 ) -> dict[str, Any]:
     hw = probe()
     result: dict[str, Any] = {
@@ -44,6 +48,19 @@ def preflight(
         return result
 
     result["backend"] = resolved
+    # 2K is a MiniMax API feature; local diffusers and ComfyUI render at 768P.
+    # Say so here instead of silently downgrading at generate time.
+    if (
+        kind == "h3"
+        and str(resolution or "").strip().upper() in {"2K", "1440P", "2048"}
+        and resolved != "api"
+    ):
+        result["detail"] = (
+            "2K is a MiniMax API feature — local H3 (diffusers and ComfyUI "
+            "INT8) renders at 768P. Switch Inspector Backend to API "
+            "(key in Settings) or pick 768P."
+        )
+        return result
     if resolved == "comfy":
         result["comfy"] = {"ok": True, "detail": runtime.config.comfy_url}
     if resolved == "cuda" and not hw.get("torch_available"):
@@ -64,6 +81,11 @@ def preflight(
         result["detail"] = f"Will generate in-process on CUDA device {device}."
     elif resolved == "api":
         result["detail"] = "Will generate via the MiniMax API."
+        if kind == "music":
+            result["detail"] += (
+                " The Music 3 endpoint takes prompt + lyrics only — Duration, "
+                "Seed, Steps and CFG shape local generation, not this call."
+            )
     elif resolved == "mlx":
         result["detail"] = "Will generate via mlx-audio on Apple Silicon."
     elif resolved == "stub":

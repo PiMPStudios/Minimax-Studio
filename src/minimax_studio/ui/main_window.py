@@ -147,6 +147,13 @@ class MainWindow(QMainWindow):
         self._gpu_pick.currentIndexChanged.connect(self._gpu_changed)
         self._gpu_label = QLabel("Probing…")
         self._gpu_label.setWordWrap(True)
+        self._now_label = QLabel("Nothing running")
+        self._now_label.setObjectName("pageSubtitle")
+        self._now_label.setWordWrap(True)
+        # Backend the last preflight resolved to — the Hardware line below is
+        # the machine spec, which stays true even when an API job is running.
+        self._route_backend = ""
+        self._route_kind = ""
         self._lora = QComboBox()
         self._lora.addItem("None", "")
         self._lora.setToolTip(
@@ -198,6 +205,11 @@ class MainWindow(QMainWindow):
         form.addRow(import_lora)
         form.addRow("CUDA GPU", self._gpu_pick)
         form.addRow("Hardware", self._gpu_label)
+        form.addRow("Now", self._now_label)
+        self._default_param_tips = {
+            widget: widget.toolTip()
+            for widget in (self._duration, self._seed, self._steps, self._cfg)
+        }
         brand = QLabel("MiniMax H3  ·  MiniMax-Music3")
         brand.setObjectName("brand")
         form.addRow(brand)
@@ -503,6 +515,7 @@ class MainWindow(QMainWindow):
             self._active_job_id = None
             self._status_job.setText("Job: idle")
             self._status_cancel.setEnabled(False)
+            self._now_label.setText("Nothing running — nothing is using the GPU.")
         else:
             self._active_job_id = str(active.get("id") or "")
             pct = int(float(active.get("progress") or 0) * 100)
@@ -512,6 +525,18 @@ class MainWindow(QMainWindow):
             extra = f"  ·  {n_queued} queued" if n_queued else ""
             self._status_job.setText(
                 f"Job: {kind} {status} {pct}% — {message}{extra}"
+            )
+            backend = str(active.get("backend") or "auto")
+            # Queued/running jobs only carry the *requested* backend; the
+            # resolved route (from the preflight for the same page kind)
+            # names what actually runs.
+            if backend == "auto" and self._route_kind == str(kind):
+                route = self._route_backend or "?"
+                backend = f"auto → {route}"
+            label = {"h3": "Video", "music": "Music"}.get(str(kind), str(kind))
+            where = "  ·  the GPU stays idle" if backend.endswith("api") else ""
+            self._now_label.setText(
+                f"{label} {status}, {pct}% via {backend}{where}."
             )
             self._status_cancel.setEnabled(
                 status != "cancelling" and bool(self._active_job_id)
@@ -650,6 +675,17 @@ class MainWindow(QMainWindow):
 
         WelcomeDialog(self._client).exec()
 
+    def _apply_api_param_hints(self, check: dict) -> None:
+        """The Music 3 API takes prompt + lyrics only; say so on the controls
+        it silently ignores instead of letting people tune dead knobs."""
+        music_api = check.get("kind") == "music" and check.get("backend") == "api"
+        tip = (
+            "The MiniMax Music 3 API ignores this — it only shapes local "
+            "generation (the API sizes the song from the lyrics)."
+        )
+        for widget, default in self._default_param_tips.items():
+            widget.setToolTip(tip if music_api else default)
+
     def _refresh_route(self) -> None:
         """Preflight off the UI thread — it can hit Comfy/packs and take
         seconds; the window must not freeze while it thinks."""
@@ -657,6 +693,9 @@ class MainWindow(QMainWindow):
         key = self._nav_keys[row] if 0 <= row < len(self._nav_keys) else None
         kind = "h3" if key == "video" else "music"
         mode = getattr(self._video, "_mode", "t2va") if kind == "h3" else "ttm"
+        resolution = (
+            self._video.resolution.currentText() if kind == "h3" else "768P"
+        )
         if self._route_thread is not None:
             try:
                 if self._route_thread.isRunning():
@@ -676,7 +715,11 @@ class MainWindow(QMainWindow):
                 try:
                     inner_self.finished.emit(
                         self._client.preflight(
-                            kind, self._state.backend, mode, self._state.speed
+                            kind,
+                            self._state.backend,
+                            mode,
+                            self._state.speed,
+                            resolution=resolution,
                         )
                     )
                 except Exception as exc:
@@ -688,6 +731,9 @@ class MainWindow(QMainWindow):
         thread.started.connect(worker.run)
 
         def done(check: dict) -> None:
+            self._route_backend = str(check.get("backend") or "")
+            self._route_kind = str(check.get("kind") or "")
+            self._apply_api_param_hints(check)
             if check.get("ok"):
                 self._route.setText(
                     str(check.get("detail") or f"Will use {check.get('backend')}")
@@ -699,6 +745,9 @@ class MainWindow(QMainWindow):
             thread.quit()
 
         def fail(_err: str) -> None:
+            self._route_backend = ""
+            self._route_kind = ""
+            self._apply_api_param_hints({})
             self._route.setText("Will use: worker unreachable")
             thread.quit()
 

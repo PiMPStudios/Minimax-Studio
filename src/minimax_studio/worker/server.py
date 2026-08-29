@@ -123,8 +123,9 @@ def preflight(
     backend: str = "auto",
     mode: str = "t2va",
     speed: str = "quality",
+    resolution: str = "768P",
 ) -> dict[str, object]:
-    return run_preflight(kind, backend, mode, speed)
+    return run_preflight(kind, backend, mode, speed, resolution)
 
 
 @app.post("/settings")

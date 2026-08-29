@@ -12,6 +12,30 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.27] — 2026-08-29
+
+### Added
+
+- **2K is honest about needing the API.** The Video page greys out the 2K
+  resolution option while an explicitly local backend (Local/Comfy) is
+  selected, preflight blocks 2K jobs that resolve to a local backend with a
+  recipe to fix it, and the local generate path now refuses outright instead
+  of silently rendering 768P under a “2K” label.
+- **Inspector “Now” row.** The dock’s Hardware line is your machine spec —
+  which stayed true even while an API job was running. The new Now row names
+  the active job and the backend actually running it, flags when your GPU is
+  idle, and shows where “auto” resolved to.
+- **`[Post-Chorus]` and `[Solo]`** structure tags on the Music page (and in
+  the Write-lyrics prompt), so song forms can use the sections people
+  actually write.
+
+### Changed
+
+- **Music API no longer pretends.** When Music resolves to the MiniMax API,
+  the route line says the endpoint takes prompt + lyrics only, and the
+  Duration, Seed, Steps and CFG controls say in their tooltips that the API
+  ignores them — they only shape local generation.
+
 ## [0.2.26] — 2026-08-21
 
 ### Fixed

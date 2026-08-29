@@ -20,7 +20,9 @@ TAGS = [
     "[Verse]",
     "[Pre-Chorus]",
     "[Chorus]",
+    "[Post-Chorus]",
     "[Bridge]",
+    "[Solo]",
     "[Instrumental]",
     "[Outro]",
 ]

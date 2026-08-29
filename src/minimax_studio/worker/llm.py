@@ -12,7 +12,7 @@ Include: genre, BPM, key if obvious, vocal description, and arrangement that dev
 Keep it under 120 words. Do not write lyrics."""
 
 LYRICS_SYSTEM = """You write song lyrics for MiniMax-Music3.
-Return ONLY lyrics. Put structure tags on their own lines: [Intro], [Verse], [Pre-Chorus], [Chorus], [Bridge], [Outro].
+Return ONLY lyrics. Put structure tags on their own lines: [Intro], [Verse], [Pre-Chorus], [Chorus], [Post-Chorus], [Bridge], [Solo], [Outro].
 Keep it singable, under 80 lines. No commentary."""
 
 VIDEO_SYSTEM = """You expand a short video idea into a MiniMax H3 prompt.

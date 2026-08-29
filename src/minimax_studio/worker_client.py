@@ -44,11 +44,18 @@ class WorkerClient:
         backend: str = "auto",
         mode: str = "t2va",
         speed: str = "quality",
+        resolution: str = "768P",
     ) -> dict[str, Any]:
         from urllib.parse import urlencode
 
         query = urlencode(
-            {"kind": kind, "backend": backend, "mode": mode, "speed": speed}
+            {
+                "kind": kind,
+                "backend": backend,
+                "mode": mode,
+                "speed": speed,
+                "resolution": resolution,
+            }
         )
         return self._get(f"/preflight?{query}")
 

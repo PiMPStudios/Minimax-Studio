@@ -17,10 +17,25 @@ INT8_NEEDS_COMFY = (
 )
 
 
+def guard_resolution(request: JobRequest, backend: str) -> None:
+    """Local H3 has no 2K — fail loudly instead of silently rendering 768P."""
+    if backend != "api" and str(request.resolution or "").strip().upper() in {
+        "2K",
+        "1440P",
+        "2048",
+    }:
+        raise RuntimeError(
+            "2K is a MiniMax API-only resolution — this job resolved to a "
+            "local backend (768P). Switch Inspector Backend to API "
+            "(key in Settings) or pick 768P."
+        )
+
+
 def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
     backend = resolve_h3_backend(
         request.backend, "ref2va" if request.mode == "ref2va" else "fl2va"
     )
+    guard_resolution(request, backend)
     if backend == "api":
         from minimax_studio.worker.backends.h3_api import generate_h3_api
 

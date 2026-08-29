@@ -105,6 +105,8 @@ class VideoPage(QWidget):
         self.resolution = QComboBox()
         self.resolution.addItems(["768P", "2K"])
         res_row.addWidget(self.resolution)
+        self._state.changed.connect(self._apply_backend_gate)
+        self._apply_backend_gate()
         res_row.addWidget(QLabel("Ratio"))
         self.ratio = QComboBox()
         self.ratio.addItems(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"])
@@ -161,6 +163,23 @@ class VideoPage(QWidget):
         self._ref_size_label.setVisible(mode == "ref2va")
         self.ref_size.setVisible(mode == "ref2va")
         self.prompt.setPlaceholderText(_placeholder(mode))
+
+    def _apply_backend_gate(self) -> None:
+        """2K exists only on the MiniMax API — grey it out when an explicitly
+        local backend is selected, so the combo cannot lie about the render."""
+        localish = self._state.backend in {"local", "comfy"}
+        model = self.resolution.model()
+        for index in range(self.resolution.count()):
+            if self.resolution.itemText(index) == "2K":
+                model.item(index).setEnabled(not localish)
+        if localish and self.resolution.currentText() == "2K":
+            self.resolution.setCurrentText("768P")
+        self.resolution.setToolTip(
+            "2K is MiniMax API-only; local H3 renders at 768P. "
+            "Set Inspector Backend to API to unlock it."
+            if localish
+            else "768P renders locally too; 2K always goes through the MiniMax API."
+        )
 
     def poll(self, jobs_snapshot: list[dict] | None = None) -> None:
         """Update queue line + live job from the window's per-tick snapshot."""

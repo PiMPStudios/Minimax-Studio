@@ -55,7 +55,12 @@ class FakeWorker:
         return []
 
     def preflight(
-        self, kind: str, backend: str = "auto", mode: str = "t2va", speed: str = "quality"
+        self,
+        kind: str,
+        backend: str = "auto",
+        mode: str = "t2va",
+        speed: str = "quality",
+        resolution: str = "768P",
     ) -> dict:
         return {
             "ok": False,
@@ -257,3 +262,36 @@ def test_tick_throttles_models_refresh(tmp_path, monkeypatch) -> None:
     # Ticks fire refresh only every 4th tick (Models walks model trees).
     assert refreshes["n"] == 1
     _drain_window(app, window)
+
+
+def test_inspector_now_line_and_music_api_hints(tmp_path) -> None:
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+    config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
+    window = MainWindow(FakeWorker(), config)  # type: ignore[arg-type]
+
+    assert "Nothing running" in window._now_label.text()
+    window._refresh_job_status(
+        [
+            {
+                "id": "1",
+                "kind": "music",
+                "status": "running",
+                "progress": 0.4,
+                "backend": "api",
+                "message": "Calling API",
+            }
+        ]
+    )
+    text = window._now_label.text()
+    assert "Music" in text and "api" in text and "GPU stays idle" in text
+    window._refresh_job_status([])
+    assert "Nothing running" in window._now_label.text()
+
+    # Music via API: the controls it ignores must say so; other backends restore.
+    window._apply_api_param_hints({"kind": "music", "backend": "api"})
+    assert "ignores" in window._seed.toolTip()
+    assert "ignores" in window._cfg.toolTip()
+    window._apply_api_param_hints({"kind": "h3", "backend": "cuda"})
+    assert window._seed.toolTip() == ""
+    assert window._cfg.toolTip() == window._default_param_tips[window._cfg]
