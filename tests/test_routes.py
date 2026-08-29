@@ -69,3 +69,38 @@ def test_comfy_detect_route(studio_home) -> None:
     body = response.json()
     assert "root" in body
     assert "running" in body
+
+
+def test_worker_token_gate(studio_home, monkeypatch) -> None:
+    from minimax_studio.worker.server import TOKEN_HEADER
+
+    client = TestClient(app)
+    assert client.get("/health").status_code == 200  # open dev mode
+
+    monkeypatch.setenv("MINIMAX_STUDIO_WORKER_TOKEN", "s3cret")
+    assert client.get("/health").status_code == 401
+    assert client.post("/jobs", json={"kind": "music"}).status_code == 401
+    ok = client.get("/health", headers={TOKEN_HEADER: "s3cret"})
+    assert ok.status_code == 200
+    assert client.get("/health", headers={TOKEN_HEADER: "wrong"}).status_code == 401
+
+
+def test_lora_import_rejects_non_safetensors(studio_home, tmp_path) -> None:
+    evil = tmp_path /"payload.bin"
+    evil.write_bytes(b"not a lora")
+    client = TestClient(app)
+    response = client.post("/loras/import", json={"path": str(evil)})
+    assert response.status_code == 400
+    assert "safetensors" in response.json()["detail"]
+
+
+def test_file_data_url_rejects_unknown_type(tmp_path) -> None:
+    from minimax_studio.worker.backends.h3_api import _file_data_url
+
+    secret = tmp_path / "id_rsa"
+    secret.write_text("private")
+    try:
+        _file_data_url(str(secret))
+        raise AssertionError("expected rejection of unknown extension")
+    except RuntimeError as exc:
+        assert "Unsupported asset type" in str(exc)

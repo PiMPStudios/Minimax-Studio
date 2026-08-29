@@ -26,3 +26,54 @@ def test_context_ir_payload_drops_resolution_rules() -> None:
     )
     assert i2v["ratio"] == "adaptive"
     assert i2v["resolution"] == "768P"
+
+
+def test_preset_keeps_cfg_and_lora_stack(studio_home) -> None:
+    saved = save_preset(
+        {
+            "name": "Stacked",
+            "kind": "music",
+            "cfg": 3.2,
+            "loras": [
+                {"id": "/models/loras/a.safetensors", "strength": 0.8},
+                {"id": "/models/loras/b.safetensors", "strength": 0.5},
+            ],
+            "lora_id": "/models/loras/a.safetensors",
+            "lora_strength": 0.8,
+            "lora2_id": "/models/loras/b.safetensors",
+            "lora2_strength": 0.5,
+        }
+    )
+    reloaded = [item for item in list_presets() if item["id"] == saved["id"]][0]
+    assert reloaded["cfg"] == 3.2
+    assert len(reloaded["loras"]) == 2
+    assert reloaded["lora2_id"] == "/models/loras/b.safetensors"
+    assert reloaded["lora2_strength"] == 0.5
+    delete_preset(saved["id"])
+
+
+def test_preset_route_validates_payload(studio_home) -> None:
+    from fastapi.testclient import TestClient
+
+    from minimax_studio.worker.server import app
+
+    client = TestClient(app)
+    created = client.post(
+        "/presets",
+        json={
+            "name": "Via route",
+            "kind": "h3",
+            "mode": "t2va",
+            "cfg": 2.5,
+            "loras": [{"id": "/x/turbo.safetensors", "strength": 1.0}],
+        },
+    )
+    assert created.status_code == 200
+    preset_id = created.json()["id"]
+    rows = client.get("/presets").json()
+    row = [item for item in rows if item["id"] == preset_id][0]
+    assert row["cfg"] == 2.5
+    assert row["loras"][0]["id"] == "/x/turbo.safetensors"
+
+    bad = client.post("/presets", json={"name": "Nope", "cfg": "not-a-number"})
+    assert bad.status_code == 422

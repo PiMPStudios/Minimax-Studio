@@ -12,6 +12,24 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.25] — 2026-08-21
+
+### Fixed
+
+- **Cancel is quiet**: cancelling mid-sample now lands the job in `cancelled` instead of `error`, so no “Generate failed — Cancelled” dialog with a Retry button. Backends raise a typed `jobs.CancelledError`.
+- **Comfy file visibility**: if INT8/Ref2VA/Turbo files exist on disk but the running ComfyUI does not load the folder they live in, generate and preflight now fail fast and name the missing files, instead of failing inside Comfy after uploading. Files Comfy lists under a subfolder are resolved to their listed names.
+- Presets keep everything the Inspector shows: Music **CFG**, **Attention**, and **both LoRA slots** now survive save → apply. The Video preset payload no longer sets `backend` twice.
+- Preset save/delete no longer read-modify-write `presets.json` without the runtime lock.
+
+### Added
+
+- **Worker shared secret**: the GUI generates a per-launch token, passes it to the worker via `MINIMAX_STUDIO_WORKER_TOKEN`, and sends it as `X-Minimax-Studio-Token` on every request. Other local users/processes can no longer read API tokens from `GET /settings` or queue jobs. `python -m minimax_studio --worker-only` (no env var) stays open for development.
+
+### Changed
+
+- Asset inputs are validated by type: the H3 API only base64-encodes known image/video/audio extensions, Comfy uploads accept the same, and LoRA import accepts `.safetensors` only. Arbitrary paths are no longer read and encoded.
+- Inspector “Will use: …” runs the same Comfy file check, so “comfy” is only offered when ComfyUI can actually load the graph’s files.
+
 ## [0.2.24] — 2026-08-20
 
 ### Added

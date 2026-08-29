@@ -6,9 +6,16 @@ import httpx
 
 
 class WorkerClient:
-    def __init__(self, base_url: str, timeout: float = 30.0) -> None:
+    TOKEN_HEADER = "X-Minimax-Studio-Token"
+
+    def __init__(
+        self, base_url: str, timeout: float = 30.0, token: str | None = None
+    ) -> None:
         self._base = base_url.rstrip("/")
         self._timeout = timeout
+        self._headers = {}
+        if token:
+            self._headers[self.TOKEN_HEADER] = token
 
     def health(self) -> dict[str, Any]:
         return self._get("/health")
@@ -52,7 +59,7 @@ class WorkerClient:
         return self._post("/downloads", {"pack_id": pack_id})
 
     def delete_pack(self, pack_id: str) -> dict[str, Any]:
-        with httpx.Client(timeout=self._timeout) as client:
+        with httpx.Client(timeout=self._timeout, headers=self._headers) as client:
             response = client.delete(f"{self._base}/packs/{pack_id}")
             self._raise(response)
             data = response.json()
@@ -78,7 +85,7 @@ class WorkerClient:
     def iter_job_events(self, job_id: str, timeout: float = 600.0):
         import json
 
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=timeout, headers=self._headers) as client:
             with client.stream("GET", f"{self._base}/jobs/{job_id}/events") as response:
                 self._raise(response)
                 for line in response.iter_lines():
@@ -98,7 +105,7 @@ class WorkerClient:
         return self._post(f"/jobs/{job_id}/cancel", {})
 
     def delete_history(self, entry_id: str) -> dict[str, Any]:
-        with httpx.Client(timeout=self._timeout) as client:
+        with httpx.Client(timeout=self._timeout, headers=self._headers) as client:
             response = client.delete(f"{self._base}/history/{entry_id}")
             self._raise(response)
             data = response.json()
@@ -155,7 +162,7 @@ class WorkerClient:
         )
 
     def delete_preset(self, preset_id: str) -> dict[str, Any]:
-        with httpx.Client(timeout=self._timeout) as client:
+        with httpx.Client(timeout=self._timeout, headers=self._headers) as client:
             response = client.delete(f"{self._base}/presets/{preset_id}")
             self._raise(response)
             data = response.json()
@@ -164,7 +171,7 @@ class WorkerClient:
             return data
 
     def _get(self, path: str) -> dict[str, Any]:
-        with httpx.Client(timeout=self._timeout) as client:
+        with httpx.Client(timeout=self._timeout, headers=self._headers) as client:
             response = client.get(f"{self._base}{path}")
             self._raise(response)
             data = response.json()
@@ -173,7 +180,7 @@ class WorkerClient:
             return data
 
     def _get_list(self, path: str) -> list[dict[str, Any]]:
-        with httpx.Client(timeout=self._timeout) as client:
+        with httpx.Client(timeout=self._timeout, headers=self._headers) as client:
             response = client.get(f"{self._base}{path}")
             self._raise(response)
             data = response.json()
@@ -184,7 +191,7 @@ class WorkerClient:
     def _post(
         self, path: str, payload: dict[str, Any], timeout: float | None = None
     ) -> dict[str, Any]:
-        with httpx.Client(timeout=timeout or self._timeout) as client:
+        with httpx.Client(timeout=timeout or self._timeout, headers=self._headers) as client:
             response = client.post(f"{self._base}{path}", json=payload)
             self._raise(response)
             data = response.json()

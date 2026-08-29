@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from minimax_studio.worker.jobs import JobRequest, is_cancelled, update_job
+from minimax_studio.worker.jobs import CancelledError, JobRequest, is_cancelled, update_job
 from minimax_studio.worker.runtime import runtime
 
 UNET_FL2VA = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
@@ -56,6 +56,105 @@ def comfy_reachable() -> bool:
     _REACH_AT = now
     _REACH_OK = ok
     return ok
+
+
+_OBJ_TTL_S = 10.0
+_OBJ_CACHE: dict[str, tuple[float, set[str] | None]] = {}
+
+
+def reset_comfy_object_cache() -> None:
+    _OBJ_CACHE.clear()
+
+
+def _object_names(cls: str, field: str) -> set[str] | None:
+    """File names this ComfyUI server can see for ``cls.inputs[field]``.
+
+    Returns None when unknown (server too old, unreachable, unexpected
+    schema) — callers must not block generation on a guess.
+    """
+    key = f"{cls}.{field}"
+    now = time.monotonic()
+    hit = _OBJ_CACHE.get(key)
+    if hit and now - hit[0] < _OBJ_TTL_S:
+        return hit[1]
+    names: set[str] | None = None
+    try:
+        response = httpx.get(f"{comfy_base()}/object_info/{cls}", timeout=6.0)
+        if response.status_code < 400:
+            spec = (response.json() or {}).get(cls) or {}
+            inputs = spec.get("input") or {}
+            field_spec = (inputs.get("required") or {}).get(field)
+            if field_spec is None:
+                field_spec = (inputs.get("optional") or {}).get(field)
+            if isinstance(field_spec, list) and field_spec and isinstance(field_spec[0], list):
+                names = {str(item) for item in field_spec[0]}
+    except (httpx.HTTPError, ValueError):
+        names = None
+    _OBJ_CACHE[key] = (now, names)
+    return names
+
+
+def comfy_resolve_file(cls: str, field: str, wanted: str) -> str | None:
+    """Resolve a wanted file to the exact name Comfy lists (subfolders kept).
+
+    Returns the listed name, the ``wanted`` basename when the server can't
+    tell us, or None when the server answered and the file is definitely
+    missing from its model roots.
+    """
+    names = _object_names(cls, field)
+    if names is None:
+        return wanted
+    lowered = {name.lower(): name for name in names}
+    if wanted.lower() in lowered:
+        return lowered[wanted.lower()]
+    base = wanted.rsplit("/", 1)[-1].lower()
+    for name in names:
+        if name.rsplit("/", 1)[-1].lower() == base:
+            return name
+    return None
+
+
+def comfy_resolve_many(
+    checks: list[tuple[str, str, list[str]]]
+) -> tuple[dict[str, str], list[str]]:
+    """Resolve ``[(class, field, [wanted...])]`` → (resolved, definitely missing)."""
+    resolved: dict[str, str] = {}
+    missing: list[str] = []
+    for cls, field, wanted_list in checks:
+        for wanted in wanted_list:
+            name = comfy_resolve_file(cls, field, wanted)
+            if name is None:
+                missing.append(wanted)
+            else:
+                resolved[wanted] = name
+    return resolved, missing
+
+
+def comfy_missing_message(missing: list[str]) -> str:
+    try:
+        root = str(runtime.config.models_root())
+    except RuntimeError:
+        root = "the Studio models folder"
+    return (
+        f"ComfyUI at {comfy_base()} cannot see: {', '.join(missing)}. "
+        "Those files are in a folder ComfyUI does not load. Copy them into "
+        "ComfyUI's models folders (diffusion_models, text_encoders, vae, "
+        f"loras), or add Studio's models folder ({root}) to ComfyUI's "
+        "extra_model_paths.yaml and restart ComfyUI."
+    )
+
+
+def comfy_core_files_missing(mode: str = "fl2va") -> list[str]:
+    """H3 core model files (plus the mode's UNET) missing from Comfy's roots."""
+    unet = UNET_REF2VA if mode == "ref2va" else UNET_FL2VA
+    _, missing = comfy_resolve_many(
+        [
+            ("UNETLoader", "unet_name", [unet]),
+            ("CLIPLoader", "clip_name", [CLIP_NAME]),
+            ("VAELoader", "vae_name", [VIDEO_VAE, AUDIO_VAE]),
+        ]
+    )
+    return missing
 
 
 def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
@@ -129,6 +228,28 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
     if mode == "ref2va" and not (refs["images"] or refs["videos"] or refs["audios"]):
         raise RuntimeError("Reference mode needs at least one image, video, or audio file.")
 
+    update_job(job_id, message="Checking ComfyUI model roots", progress=0.1)
+    wanted_loras = [lora_name] if lora_name else []
+    wanted_loras += [item["id"] for item in extra_loras]
+    checks: list[tuple[str, str, list[str]]] = [
+        ("UNETLoader", "unet_name", [unet_name]),
+        ("CLIPLoader", "clip_name", [CLIP_NAME]),
+        ("VAELoader", "vae_name", [VIDEO_VAE, AUDIO_VAE]),
+    ]
+    if wanted_loras:
+        checks.append(("LoraLoaderModelOnly", "lora_name", wanted_loras))
+    resolved, missing = comfy_resolve_many(checks)
+    if missing:
+        raise RuntimeError(comfy_missing_message(missing))
+    unet_name = resolved.get(unet_name, unet_name)
+    clip_name = resolved.get(CLIP_NAME, CLIP_NAME)
+    video_vae = resolved.get(VIDEO_VAE, VIDEO_VAE)
+    audio_vae = resolved.get(AUDIO_VAE, AUDIO_VAE)
+    if lora_name:
+        lora_name = resolved.get(lora_name, lora_name)
+    for item in extra_loras:
+        item["id"] = resolved.get(item["id"], item["id"])
+
     update_job(job_id, message="Uploading to ComfyUI", progress=0.12)
     first_name = last_name = None
     uploaded_images: list[str] = []
@@ -159,6 +280,9 @@ def generate_h3_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
         lora_strength=lora_strength,
         extra_loras=extra_loras,
         unet_name=unet_name,
+        clip_name=clip_name,
+        video_vae=video_vae,
+        audio_vae=audio_vae,
         sage=use_sage,
         scheduler="beta" if mode == "ref2va" else "simple",
         ref_image_size=request.ref_image_size or "match",
@@ -228,6 +352,9 @@ def build_h3_comfy_graph(
     lora_strength: float = 1.0,
     extra_loras: list[dict[str, Any]] | None = None,
     unet_name: str = UNET_FL2VA,
+    clip_name: str = CLIP_NAME,
+    video_vae: str = VIDEO_VAE,
+    audio_vae: str = AUDIO_VAE,
     sage: bool = False,
     scheduler: str = "simple",
     ref_image_size: str = "match",
@@ -243,18 +370,18 @@ def build_h3_comfy_graph(
         "clip": {
             "class_type": "CLIPLoader",
             "inputs": {
-                "clip_name": CLIP_NAME,
+                "clip_name": clip_name,
                 "type": "minimax",
                 "device": "default",
             },
         },
         "vae": {
             "class_type": "VAELoader",
-            "inputs": {"vae_name": VIDEO_VAE},
+            "inputs": {"vae_name": video_vae},
         },
         "avae": {
             "class_type": "VAELoader",
-            "inputs": {"vae_name": AUDIO_VAE},
+            "inputs": {"vae_name": audio_vae},
         },
         "noise": {
             "class_type": "RandomNoise",
@@ -456,6 +583,8 @@ def _upload_file(path: str) -> str:
     source = Path(path)
     if not source.is_file():
         raise RuntimeError(f"Missing file: {path}")
+    if source.suffix.lower() not in IMAGE_EXT | VIDEO_EXT | AUDIO_EXT:
+        raise RuntimeError(f"Unsupported reference type: {source.suffix or 'no extension'}")
     with source.open("rb") as handle:
         response = httpx.post(
             f"{comfy_base()}/upload/image",
@@ -486,7 +615,7 @@ def _poll_history(client: httpx.Client, prompt_id: str, job_id: str) -> dict[str
                 client.post(f"{comfy_base()}/interrupt")
             except httpx.HTTPError:
                 pass
-            raise RuntimeError("Cancelled")
+            raise CancelledError("Cancelled")
         history = client.get(f"{comfy_base()}/history/{prompt_id}", timeout=15.0)
         if history.status_code == 404:
             time.sleep(1.5)

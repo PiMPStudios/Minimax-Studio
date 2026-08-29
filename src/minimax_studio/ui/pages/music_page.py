@@ -299,14 +299,13 @@ class MusicPage(QWidget):
                     "seed": self._state.seed,
                     "steps": self._state.steps,
                     "speed": self._state.speed,
-                    "backend": self._state.backend,
+                    "attention": self._state.attention,
+                    "cfg": self._state.cfg,
                     "lora_id": self._state.lora_id,
                     "lora_strength": self._state.lora_strength,
-                    "loras": (
-                        [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
-                        if self._state.lora_id
-                        else []
-                    ),
+                    "lora2_id": self._state.lora2_id,
+                    "lora2_strength": self._state.lora2_strength,
+                    "loras": self._state.lora_payload(),
                 }
             )
         except Exception as exc:

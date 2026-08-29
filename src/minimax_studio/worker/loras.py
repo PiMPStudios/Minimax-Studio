@@ -58,6 +58,8 @@ def import_lora(src: str) -> dict[str, Any]:
     source = Path(src)
     if not source.is_file():
         raise FileNotFoundError(src)
+    if source.suffix.lower() != ".safetensors":
+        raise RuntimeError("Only .safetensors files can be imported as a LoRA.")
     dest_dir = runtime.config.models_root() / "loras"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / source.name

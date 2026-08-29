@@ -2,7 +2,13 @@ from pathlib import Path
 import threading
 import time
 
-from minimax_studio.worker.jobs import JobRequest, get_job, iter_job_snapshots, start_job
+from minimax_studio.worker.jobs import (
+    JobRequest,
+    cancel_job,
+    get_job,
+    iter_job_snapshots,
+    start_job,
+)
 
 
 def test_stub_music_job_writes_history(studio_home: Path, monkeypatch) -> None:
@@ -86,3 +92,86 @@ def test_iter_job_snapshots_reaches_done(studio_home: Path, monkeypatch) -> None
     assert snaps
     assert snaps[-1]["status"] == "done"
     assert "seq" in snaps[-1]
+
+
+def _wait_terminal(job_id: str, timeout: float = 5.0) -> dict:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        current = get_job(job_id)
+        if current["status"] in {"done", "error", "cancelled"}:
+            return current
+        time.sleep(0.05)
+    return get_job(job_id)
+
+
+def test_cancel_midrun_marks_cancelled_not_error(
+    studio_home: Path, monkeypatch
+) -> None:
+    """A cancel that interrupts sampling must land in `cancelled`."""
+    monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
+    import minimax_studio.worker.backends.music as music_mod
+    from minimax_studio.worker import jobs
+
+    def slow_but_cancellable(job_id, request):
+        for _ in range(200):
+            if jobs.is_cancelled(job_id):
+                raise jobs.CancelledError("Cancelled")
+            time.sleep(0.02)
+        return {"output_path": "x.wav", "media_type": "audio"}
+
+    monkeypatch.setattr(music_mod, "generate_music", slow_but_cancellable)
+    job = start_job(JobRequest(kind="music", backend="stub", prompt="slow"))
+    deadline = time.time() + 2
+    while time.time() < deadline and get_job(job["id"])["status"] != "running":
+        time.sleep(0.02)
+    cancel_job(job["id"])
+    final = _wait_terminal(job["id"])
+    assert final["status"] == "cancelled", final
+    assert not final.get("error")
+
+
+def test_legacy_plain_cancelled_error_also_lands_cancelled(
+    studio_home: Path, monkeypatch
+) -> None:
+    """Backends raising plain RuntimeError('Cancelled') stay quiet too."""
+    monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
+    import minimax_studio.worker.backends.music as music_mod
+    from minimax_studio.worker import jobs
+
+    def legacy_cancel(job_id, request):
+        for _ in range(200):
+            if jobs.is_cancelled(job_id):
+                raise RuntimeError("Cancelled")
+            time.sleep(0.02)
+        return {"output_path": "x.wav", "media_type": "audio"}
+
+    monkeypatch.setattr(music_mod, "generate_music", legacy_cancel)
+    job = start_job(JobRequest(kind="music", backend="stub", prompt="legacy"))
+    deadline = time.time() + 2
+    while time.time() < deadline and get_job(job["id"])["status"] != "running":
+        time.sleep(0.02)
+    cancel_job(job["id"])
+    final = _wait_terminal(job["id"])
+    assert final["status"] == "cancelled", final
+    assert not final.get("error")
+
+
+def test_real_error_during_cancel_stays_error(
+    studio_home: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
+    import minimax_studio.worker.backends.music as music_mod
+
+    def boom(job_id, request):
+        time.sleep(0.1)
+        raise RuntimeError("CUDA out of memory")
+
+    monkeypatch.setattr(music_mod, "generate_music", boom)
+    job = start_job(JobRequest(kind="music", backend="stub", prompt="doomed"))
+    deadline = time.time() + 2
+    while time.time() < deadline and get_job(job["id"])["status"] != "running":
+        time.sleep(0.02)
+    cancel_job(job["id"])
+    final = _wait_terminal(job["id"])
+    assert final["status"] == "error"
+    assert "out of memory" in (final.get("error") or "")

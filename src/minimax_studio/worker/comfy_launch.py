@@ -203,9 +203,13 @@ def start_comfy() -> dict[str, Any]:
     proc = subprocess.Popen(argv, **kwargs)
     runtime.comfy_proc = proc
     runtime.comfy_log = log_handle
-    from minimax_studio.worker.backends.h3_comfy import reset_comfy_reach_cache
+    from minimax_studio.worker.backends.h3_comfy import (
+        reset_comfy_object_cache,
+        reset_comfy_reach_cache,
+    )
 
     reset_comfy_reach_cache()
+    reset_comfy_object_cache()
     log_path = str(getattr(log_handle, "name", "") or "")
     return {
         "ok": True,

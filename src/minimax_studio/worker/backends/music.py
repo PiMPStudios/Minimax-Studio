@@ -48,6 +48,14 @@ def resolve_music_backend(requested: str) -> str:
     from minimax_studio.worker.probe import probe
 
     hw = probe()
+
+    def _comfy_missing_files() -> list[str]:
+        if not (comfy_pack["ready"] and comfy_reachable()):
+            return []
+        from minimax_studio.worker.backends.music_comfy import comfy_music_files_missing
+
+        return comfy_music_files_missing()
+
     if name == "comfy":
         if not comfy_pack["ready"]:
             raise RuntimeError(
@@ -59,6 +67,11 @@ def resolve_music_backend(requested: str) -> str:
                 "Music 3 INT8 is on disk, but those files use Comfy convrot kernels. "
                 f"Start ComfyUI at Settings → ComfyUI URL. Found at {comfy_pack['path']}."
             )
+        missing = _comfy_missing_files()
+        if missing:
+            from minimax_studio.worker.backends.h3_comfy import comfy_missing_message
+
+            raise RuntimeError(comfy_missing_message(missing))
         return "comfy"
     if name in {"auto", "local"}:
         torch_ok = bool(hw.get("torch_available"))
@@ -66,7 +79,8 @@ def resolve_music_backend(requested: str) -> str:
             return "cuda"
         if hw.get("apple_silicon") and mlx:
             return "mlx"
-        if comfy_pack["ready"] and comfy_reachable():
+        comfy_missing = _comfy_missing_files()
+        if comfy_pack["ready"] and comfy_reachable() and not comfy_missing:
             return "comfy"
         if cuda and torch_ok:
             return "cuda"
@@ -79,6 +93,10 @@ def resolve_music_backend(requested: str) -> str:
                 "Official Music 3 CUDA pack is on disk but PyTorch is not in the Studio venv. "
                 "pip install torch, or start ComfyUI to use INT8 packs."
             )
+        if comfy_missing:
+            from minimax_studio.worker.backends.h3_comfy import comfy_missing_message
+
+            raise RuntimeError(comfy_missing_message(comfy_missing))
         if comfy_pack["ready"]:
             raise RuntimeError(
                 "Music 3 INT8 is on disk, but those files use Comfy convrot kernels. "
@@ -141,10 +159,10 @@ def _generate_cuda(job_id: str, request: JobRequest, wav_path: Path) -> dict[str
 
     update_job(job_id, message="Sampling", progress=0.35)
     _apply_loras(pipe, request.loras)
-    from minimax_studio.worker.jobs import is_cancelled, step_cancel_callback
+    from minimax_studio.worker.jobs import CancelledError, is_cancelled, step_cancel_callback
 
     if is_cancelled(job_id):
-        raise RuntimeError("Cancelled")
+        raise CancelledError("Cancelled")
     steps = int(request.steps)
     call = dict(
         prompt=request.prompt,

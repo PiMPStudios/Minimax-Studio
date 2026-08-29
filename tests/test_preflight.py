@@ -32,7 +32,7 @@ def test_preflight_h3_cuda_warns_without_ffmpeg(studio_home: Path, monkeypatch) 
     )
     monkeypatch.setattr(
         "minimax_studio.worker.backends.h3.resolve_h3_backend",
-        lambda _backend: "cuda",
+        lambda _backend, _mode="fl2va": "cuda",
     )
     result = preflight("h3", "cuda")
     assert result["ok"] is True
@@ -53,7 +53,7 @@ def test_preflight_fast_blocks_without_turbo(studio_home: Path, monkeypatch) -> 
     )
     monkeypatch.setattr(
         "minimax_studio.worker.backends.h3.resolve_h3_backend",
-        lambda _backend: "comfy",
+        lambda _backend, _mode="fl2va": "comfy",
     )
     monkeypatch.setattr(
         "minimax_studio.worker.backends.h3._find_turbo_lora",
@@ -76,7 +76,7 @@ def test_preflight_fast_ok_with_turbo(studio_home: Path, monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "minimax_studio.worker.backends.h3.resolve_h3_backend",
-        lambda _backend: "comfy",
+        lambda _backend, _mode="fl2va": "comfy",
     )
     monkeypatch.setattr(
         "minimax_studio.worker.backends.h3._find_turbo_lora",

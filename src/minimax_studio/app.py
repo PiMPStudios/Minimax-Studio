@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from secrets import token_hex  # stdlib secrets, not minimax_studio.secrets
 
 from minimax_studio.config import (
     AppConfig,
@@ -68,8 +69,11 @@ def _run_ui(host: str, port: int) -> int:
         save_config(config)
     config.ensure_dirs()
 
-    worker = _start_worker(host, port)
-    client = WorkerClient(f"http://{host}:{port}")
+    # One shared secret per launch: every worker route requires it, so other
+    # local users/processes cannot read tokens from /settings or queue jobs.
+    token = token_hex(32)
+    worker = _start_worker(host, port, token)
+    client = WorkerClient(f"http://{host}:{port}", token=token)
     try:
         _wait_for_health(client)
         window = MainWindow(client, config)
@@ -83,9 +87,11 @@ def _run_ui(host: str, port: int) -> int:
         _stop_worker(worker)
 
 
-def _start_worker(host: str, port: int) -> subprocess.Popen[bytes]:
+def _start_worker(host: str, port: int, token: str = "") -> subprocess.Popen[bytes]:
     env = os.environ.copy()
     env["MINIMAX_STUDIO_CONFIG"] = str(default_config_path())
+    if token:
+        env["MINIMAX_STUDIO_WORKER_TOKEN"] = token
     return subprocess.Popen(
         [
             sys.executable,

@@ -30,7 +30,9 @@ def preflight(
         if kind == "h3":
             from minimax_studio.worker.backends.h3 import resolve_h3_backend
 
-            resolved = resolve_h3_backend(backend)
+            resolved = resolve_h3_backend(
+                backend, "ref2va" if mode == "ref2va" else "fl2va"
+            )
         elif kind == "music":
             from minimax_studio.worker.backends.music import resolve_music_backend
 

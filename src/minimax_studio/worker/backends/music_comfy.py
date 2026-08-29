@@ -12,15 +12,45 @@ from minimax_studio.worker.backends.h3_comfy import (
     _poll_history,
     _submit_graph,
     comfy_base,
+    comfy_missing_message,
     comfy_reachable,
+    comfy_resolve_file,
 )
-from minimax_studio.worker.jobs import JobRequest, update_job
+from minimax_studio.worker.jobs import CancelledError, JobRequest, update_job
 from minimax_studio.worker.runtime import runtime
 
 DIT_INT8 = "minimax_music3_dit_int8_convrot.safetensors"
 DIT_FP16 = "minimax_music3_dit_fp16.safetensors"
 CLIP_INT8 = "minimax_music3_text_encoder_pruned_int8_convrot.safetensors"
 VAE_NAME = "minimax_music3_dav.safetensors"
+
+
+def comfy_music_files_missing() -> list[str]:
+    """Music 3 model files missing from Comfy's model roots ([] = OK/unknown).
+
+    The fp16 DiT counts as a substitute for the INT8 one.
+    """
+    dit = comfy_resolve_file("UNETLoader", "unet_name", DIT_INT8) or comfy_resolve_file(
+        "UNETLoader", "unet_name", DIT_FP16
+    )
+    clip = comfy_resolve_file("CLIPLoader", "clip_name", CLIP_INT8)
+    vae = comfy_resolve_file("VAELoader", "vae_name", VAE_NAME)
+    missing: list[str] = []
+    if dit is None:
+        missing.append(f"{DIT_INT8} (or {DIT_FP16})")
+    if clip is None:
+        missing.append(CLIP_INT8)
+    if vae is None:
+        missing.append(VAE_NAME)
+    return missing
+
+
+def _pick_music_model_names() -> tuple[str, str, str]:
+    """Resolve (dit, clip, vae) names exactly as Comfy lists them."""
+    dit = comfy_resolve_file("UNETLoader", "unet_name", DIT_INT8) or DIT_FP16
+    clip = comfy_resolve_file("CLIPLoader", "clip_name", CLIP_INT8) or CLIP_INT8
+    vae = comfy_resolve_file("VAELoader", "vae_name", VAE_NAME) or VAE_NAME
+    return dit, clip, vae
 
 
 def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
@@ -38,8 +68,12 @@ def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
     duration = max(1.0, min(300.0, float(request.duration_s)))
     caption = request.prompt or ""
     lyrics = request.lyrics or ""
-    dit = DIT_INT8
     cfg = float(request.cfg or 1.7)
+    update_job(job_id, message="Checking ComfyUI model roots", progress=0.1)
+    missing = comfy_music_files_missing()
+    if missing:
+        raise RuntimeError(comfy_missing_message(missing))
+    dit, clip_name, vae_name = _pick_music_model_names()
     graph = build_music_comfy_graph(
         caption=caption,
         lyrics=lyrics,
@@ -48,6 +82,8 @@ def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
         steps=steps,
         cfg=cfg,
         dit_name=dit,
+        clip_name=clip_name,
+        vae_name=vae_name,
         prefix=f"minimax_studio/{job_id}",
     )
     update_job(job_id, message="Queued Music 3 on ComfyUI", progress=0.2)
@@ -62,6 +98,8 @@ def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
                 steps=steps,
                 cfg=cfg,
                 dit_name=DIT_FP16,
+                clip_name=clip_name,
+                vae_name=vae_name,
                 prefix=f"minimax_studio/{job_id}",
             )
             submitted = _submit_graph(client, graph, client_id=job_id)

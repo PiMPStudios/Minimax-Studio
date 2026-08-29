@@ -15,6 +15,14 @@ ACTIVE_STATUSES = frozenset({"queued", "running", "cancelling"})
 MAX_QUEUE = 8
 
 
+class CancelledError(RuntimeError):
+    """Raised inside a running job when the user asked to cancel it.
+
+    Caught by :func:`_run_job` so the job lands in ``cancelled``, not
+    ``error`` — the UI keeps cancels quiet (no failure dialog).
+    """
+
+
 def public_job(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": record.get("id"),
@@ -212,7 +220,7 @@ def _kick_queue() -> None:
 def step_cancel_callback(job_id: str, total_steps: int):
     def _callback(pipe, step_index, timestep, callback_kwargs):  # noqa: ANN001
         if is_cancelled(job_id):
-            raise RuntimeError("Cancelled")
+            raise CancelledError("Cancelled")
         try:
             total = max(int(total_steps), 1)
             update_job(
@@ -282,7 +290,20 @@ def _run_job(job_id: str, request: JobRequest) -> None:
             output_path=result["output_path"],
             history=entry,
         )
+    except CancelledError:
+        update_job(job_id, status="cancelled", message="Cancelled")
     except Exception as exc:
-        update_job(job_id, status="error", message="Failed", error=str(exc), progress=0.0)
+        if is_cancelled(job_id) and str(exc).strip().lower() == "cancelled":
+            # A backend that still raises a plain RuntimeError("Cancelled")
+            # after a cancel request must not surface as a failure either.
+            update_job(job_id, status="cancelled", message="Cancelled")
+        else:
+            update_job(
+                job_id,
+                status="error",
+                message="Failed",
+                error=str(exc),
+                progress=0.0,
+            )
     finally:
         _kick_queue()

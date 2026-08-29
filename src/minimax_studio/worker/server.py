@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.requests import Request
 
 from minimax_studio import __version__
 from minimax_studio.config import AppConfig, save_config
@@ -29,6 +32,24 @@ from minimax_studio.worker.probe import probe
 from minimax_studio.worker.runtime import runtime
 
 app = FastAPI(title="MiniMax Studio Worker", version=__version__)
+
+AUTH_ENV = "MINIMAX_STUDIO_WORKER_TOKEN"
+TOKEN_HEADER = "X-Minimax-Studio-Token"
+
+
+@app.middleware("http")
+async def require_token(request: Request, call_next):
+    """Shared-secret gate. The GUI generates a token per launch and passes it
+    via env; without it any local process could read tokens from /settings
+    or queue jobs. Unset env (``--worker-only`` dev mode) keeps the worker
+    open on purpose.
+    """
+    token = os.environ.get(AUTH_ENV, "")
+    if token and request.headers.get(TOKEN_HEADER) != token:
+        return JSONResponse(
+            {"detail": "missing or wrong worker token"}, status_code=401
+        )
+    return await call_next(request)
 
 
 class SettingsIn(BaseModel):
@@ -119,6 +140,13 @@ def post_settings(body: SettingsIn) -> dict[str, object]:
     runtime.h3_pipe_path = None
     runtime.music_pipe = None
     runtime.music_pipe_path = None
+    from minimax_studio.worker.backends.h3_comfy import (
+        reset_comfy_object_cache,
+        reset_comfy_reach_cache,
+    )
+
+    reset_comfy_reach_cache()
+    reset_comfy_object_cache()
     config = AppConfig.model_validate(data)
     save_config(config)
     runtime.config = config
@@ -266,14 +294,42 @@ def remove_history(entry_id: str) -> dict[str, object]:
     return {"ok": True, "id": entry_id}
 
 
+class PresetIn(BaseModel):
+    id: str | None = None
+    name: str = "Untitled"
+    kind: str = "music"
+    backend: str = "auto"
+    mode: str | None = None
+    prompt: str = ""
+    lyrics: str = ""
+    duration_s: float = 30
+    seed: int = -1
+    steps: int = 30
+    width: int = 960
+    height: int = 544
+    resolution: str = "768P"
+    ratio: str = "16:9"
+    speed: str = "quality"
+    attention: str = "default"
+    ref_image_size: str = "match"
+    quality: str = "native"
+    cfg: float = 1.7
+    assets: list[dict[str, str]] = []
+    loras: list[dict[str, Any]] = []
+    lora_id: str = ""
+    lora_strength: float = 1.0
+    lora2_id: str = ""
+    lora2_strength: float = 1.0
+
+
 @app.get("/presets")
 def presets() -> list[dict[str, object]]:
     return list_presets()
 
 
 @app.post("/presets")
-def create_preset(body: dict) -> dict[str, object]:
-    return save_preset(body)
+def create_preset(body: PresetIn) -> dict[str, object]:
+    return save_preset(body.model_dump())
 
 
 @app.delete("/presets/{preset_id}")
@@ -300,6 +356,8 @@ def lora_import(body: LoraImportIn) -> dict[str, object]:
         return import_lora(body.path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class LyricsIn(BaseModel):

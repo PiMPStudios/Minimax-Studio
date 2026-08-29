@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import base64
-import mimetypes
 import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from minimax_studio.worker.jobs import JobRequest, is_cancelled, update_job
+from minimax_studio.worker.jobs import CancelledError, JobRequest, is_cancelled, update_job
 from minimax_studio.worker.runtime import runtime
 
 
@@ -132,7 +131,7 @@ def _poll_task(
     first = True
     while time.monotonic() < deadline:
         if job_id and is_cancelled(job_id):
-            raise RuntimeError("Cancelled")
+            raise CancelledError("Cancelled")
         if not first:
             time.sleep(5)
         first = False
@@ -176,7 +175,11 @@ def _file_data_url(path: str) -> str:
     file_path = Path(path)
     if not file_path.is_file():
         raise RuntimeError(f"Asset not found: {path}")
+    suffix = file_path.suffix.lower()
+    mime = _MIME.get(suffix)
+    if not mime:
+        # Never base64 arbitrary files just because a route accepted the path.
+        raise RuntimeError(f"Unsupported asset type: {suffix or 'no extension'}")
     raw = file_path.read_bytes()
-    mime = _MIME.get(file_path.suffix.lower()) or mimetypes.guess_type(path)[0] or "application/octet-stream"
     encoded = base64.b64encode(raw).decode("ascii")
     return f"data:{mime};base64,{encoded}"

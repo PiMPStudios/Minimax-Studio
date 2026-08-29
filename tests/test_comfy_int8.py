@@ -304,3 +304,128 @@ def test_auto_backend_int8_with_comfy(monkeypatch, studio_home: Path) -> None:
     )
     assert resolve_h3_backend("auto") == "comfy"
     assert INT8_NEEDS_COMFY.startswith("Comfy-Org")
+
+
+# --- Comfy-side file visibility (object_info) -----------------------------
+
+from minimax_studio.worker.backends import h3_comfy
+from minimax_studio.worker.backends.h3_comfy import (
+    AUDIO_VAE,
+    CLIP_NAME,
+    UNET_FL2VA,
+    VIDEO_VAE,
+    comfy_resolve_file,
+)
+from minimax_studio.worker.jobs import JobRequest
+from minimax_studio.worker.runtime import runtime
+
+_ALL_FILES = {UNET_FL2VA, CLIP_NAME, VIDEO_VAE, AUDIO_VAE}
+
+
+def _patch_objects(monkeypatch, listed):
+    """Make _object_names answer with `listed` per class (None = unknown)."""
+
+    def fake(cls, field):
+        value = listed.get(cls, "all")
+        return _ALL_FILES if value == "all" else value
+
+    monkeypatch.setattr(h3_comfy, "_object_names", fake)
+
+
+def test_comfy_resolve_file_exact_subfolder_and_unknown() -> None:
+    import time as _t
+
+    h3_comfy._OBJ_CACHE.clear()
+    h3_comfy._OBJ_CACHE["LoraLoaderModelOnly.lora_name"] = (
+        _t.monotonic(),
+        {"h3-comfy/turbo.safetensors"},
+    )
+    assert (
+        comfy_resolve_file("LoraLoaderModelOnly", "lora_name", "turbo.safetensors")
+        == "h3-comfy/turbo.safetensors"
+    )
+    h3_comfy._OBJ_CACHE["LoraLoaderModelOnly.lora_name"] = (
+        _t.monotonic(),
+        {"turbo.safetensors"},
+    )
+    assert (
+        comfy_resolve_file("LoraLoaderModelOnly", "lora_name", "turbo.safetensors")
+        == "turbo.safetensors"
+    )
+    h3_comfy._OBJ_CACHE["LoraLoaderModelOnly.lora_name"] = (
+        _t.monotonic(),
+        {"other.safetensors"},
+    )
+    assert comfy_resolve_file("LoraLoaderModelOnly", "lora_name", "turbo.safetensors") is None
+    h3_comfy._OBJ_CACHE["LoraLoaderModelOnly.lora_name"] = (_t.monotonic(), None)
+    assert (
+        comfy_resolve_file("LoraLoaderModelOnly", "lora_name", "turbo.safetensors")
+        == "turbo.safetensors"
+    )
+
+
+def test_resolve_h3_backend_comfy_blocks_when_comfy_cannot_see_files(
+    studio_home: Path, monkeypatch
+) -> None:
+    _touch_int8(runtime.config.models_root() / "h3-comfy")
+    monkeypatch.setattr(h3_comfy, "comfy_reachable", lambda: True)
+    _patch_objects(monkeypatch, {"CLIPLoader": {UNET_FL2VA, VIDEO_VAE, AUDIO_VAE}})
+    try:
+        resolve_h3_backend("comfy")
+        raise AssertionError("expected a not-visible-files error")
+    except RuntimeError as exc:
+        assert "cannot see" in str(exc)
+        assert CLIP_NAME in str(exc)
+
+
+def test_resolve_h3_backend_comfy_ok_when_visible(
+    studio_home: Path, monkeypatch
+) -> None:
+    _touch_int8(runtime.config.models_root() / "h3-comfy")
+    monkeypatch.setattr(h3_comfy, "comfy_reachable", lambda: True)
+    _patch_objects(monkeypatch, {})  # "all"
+    assert resolve_h3_backend("comfy") == "comfy"
+
+
+def test_generate_h3_comfy_fails_before_uploading_when_missing(
+    studio_home: Path, monkeypatch
+) -> None:
+    from minimax_studio.worker.backends.h3_comfy import generate_h3_comfy
+
+    _touch_int8(runtime.config.models_root() / "h3-comfy")
+    monkeypatch.setattr(h3_comfy, "comfy_reachable", lambda: True)
+    _patch_objects(monkeypatch, {"UNETLoader": {CLIP_NAME, VIDEO_VAE, AUDIO_VAE}})
+
+    def no_upload(path):
+        raise AssertionError("must not upload when model files are missing")
+
+    monkeypatch.setattr(h3_comfy, "_upload_file", no_upload)
+    request = JobRequest(kind="h3", backend="comfy", mode="t2va", prompt="a fox")
+    try:
+        generate_h3_comfy("jobfail0000", request)
+        raise AssertionError("expected a not-visible-files error")
+    except RuntimeError as exc:
+        assert "cannot see" in str(exc)
+        assert UNET_FL2VA in str(exc)
+
+
+def test_music_comfy_missing_files_lists_all_three(monkeypatch) -> None:
+    from minimax_studio.worker.backends import music_comfy
+    from minimax_studio.worker.backends.music_comfy import (
+        CLIP_INT8,
+        DIT_FP16,
+        DIT_INT8,
+        VAE_NAME,
+        comfy_music_files_missing,
+    )
+
+    _patch_objects(monkeypatch, {"UNETLoader": set(), "CLIPLoader": set(), "VAELoader": set()})
+    missing = comfy_music_files_missing()
+    assert any(DIT_INT8 in item for item in missing)
+    assert CLIP_INT8 in missing
+    assert VAE_NAME in missing
+
+    _patch_objects(monkeypatch, {"UNETLoader": {DIT_FP16}})
+    missing = comfy_music_files_missing()
+    assert not any(DIT_INT8 in item for item in missing)
+    h3_comfy._OBJ_CACHE.clear()

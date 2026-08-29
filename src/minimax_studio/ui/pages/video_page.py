@@ -336,14 +336,12 @@ class VideoPage(QWidget):
                     "speed": self._state.speed,
                     "attention": self._state.attention,
                     "ref_image_size": self.ref_size.currentText(),
-                    "backend": self._state.backend,
+                    "cfg": self._state.cfg,
                     "lora_id": self._state.lora_id,
                     "lora_strength": self._state.lora_strength,
-                    "loras": (
-                        [{"id": self._state.lora_id, "strength": self._state.lora_strength}]
-                        if self._state.lora_id
-                        else []
-                    ),
+                    "lora2_id": self._state.lora2_id,
+                    "lora2_strength": self._state.lora2_strength,
+                    "loras": self._state.lora_payload(),
                     "assets": [
                         item
                         for item in [

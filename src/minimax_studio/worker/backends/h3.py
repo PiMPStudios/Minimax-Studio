@@ -19,7 +19,9 @@ INT8_NEEDS_COMFY = (
 
 
 def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
-    backend = resolve_h3_backend(request.backend)
+    backend = resolve_h3_backend(
+        request.backend, "ref2va" if request.mode == "ref2va" else "fl2va"
+    )
     if backend == "api":
         from minimax_studio.worker.backends.h3_api import generate_h3_api
 
@@ -129,10 +131,10 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
         progress=0.35,
     )
     _apply_loras(pipe, loras)
-    from minimax_studio.worker.jobs import is_cancelled, step_cancel_callback
+    from minimax_studio.worker.jobs import CancelledError, is_cancelled, step_cancel_callback
 
     if is_cancelled(job_id):
-        raise RuntimeError("Cancelled")
+        raise CancelledError("Cancelled")
     try:
         results = pipe(
             **kwargs, callback_on_step_end=step_cancel_callback(job_id, steps)
@@ -150,7 +152,7 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
     return {"output_path": str(out_path), "backend": "cuda", "media_type": "video"}
 
 
-def resolve_h3_backend(requested: str) -> str:
+def resolve_h3_backend(requested: str, mode: str = "fl2va") -> str:
     name = requested.lower()
     root = runtime.config.models_root()
     official = pack_status(PACKS["h3-diffusers-fl2va"], root)["ready"]
@@ -160,6 +162,13 @@ def resolve_h3_backend(requested: str) -> str:
         from minimax_studio.worker.backends.h3_comfy import comfy_reachable
 
         return comfy_reachable()
+
+    def _comfy_core_missing() -> list[str]:
+        if not (int8["ready"] and _comfy_up()):
+            return []
+        from minimax_studio.worker.backends.h3_comfy import comfy_core_files_missing
+
+        return comfy_core_files_missing(mode)
 
     if name == "api":
         return "api"
@@ -189,6 +198,11 @@ def resolve_h3_backend(requested: str) -> str:
             )
         if not _comfy_up():
             raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
+        missing = _comfy_core_missing()
+        if missing:
+            from minimax_studio.worker.backends.h3_comfy import comfy_missing_message
+
+            raise RuntimeError(comfy_missing_message(missing))
         return "comfy"
     from minimax_studio.worker.probe import probe
 
@@ -208,10 +222,15 @@ def resolve_h3_backend(requested: str) -> str:
             )
     torch_ok = bool(hw.get("torch_available"))
     if name == "local":
+        core_missing = _comfy_core_missing()
         if official and torch_ok:
             return "cuda"
-        if int8["ready"] and _comfy_up():
+        if int8["ready"] and _comfy_up() and not core_missing:
             return "comfy"
+        if core_missing:
+            from minimax_studio.worker.backends.h3_comfy import comfy_missing_message
+
+            raise RuntimeError(comfy_missing_message(core_missing))
         if int8["ready"]:
             raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
         return "cuda"
@@ -219,7 +238,8 @@ def resolve_h3_backend(requested: str) -> str:
     from minimax_studio.worker.device import selected_vram_gb
 
     vram = selected_vram_gb(hw)
-    comfy_ok = int8["ready"] and _comfy_up()
+    core_missing = _comfy_core_missing()
+    comfy_ok = int8["ready"] and _comfy_up() and not core_missing
     official_ok = official and hw.get("cuda") and torch_ok and (vram >= 24 or vram == 0)
     if vram and vram < 24 and comfy_ok:
         return "comfy"
@@ -236,6 +256,10 @@ def resolve_h3_backend(requested: str) -> str:
             "Official H3 diffusers is on disk but PyTorch is not in the Studio venv. "
             "pip install torch, or start ComfyUI to use INT8 packs."
         )
+    if core_missing:
+        from minimax_studio.worker.backends.h3_comfy import comfy_missing_message
+
+        raise RuntimeError(comfy_missing_message(core_missing))
     if int8["ready"]:
         raise RuntimeError(INT8_NEEDS_COMFY + f" Found at {int8['path']}.")
     raise RuntimeError(

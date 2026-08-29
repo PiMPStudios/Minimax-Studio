@@ -24,8 +24,19 @@ def list_presets() -> list[dict[str, Any]]:
 
 
 def save_preset(payload: dict[str, Any]) -> dict[str, Any]:
-    items = list_presets()
-    item = {
+    with runtime.lock:
+        items = list_presets()
+        item = _build_item(payload)
+        items = [row for row in items if row.get("id") != item["id"]]
+        items.append(item)
+        dest = _path()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(items, indent=2), encoding="utf-8")
+    return item
+
+
+def _build_item(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
         "id": payload.get("id") or uuid.uuid4().hex[:10],
         "name": payload.get("name") or "Untitled",
         "created_at": time.time(),
@@ -50,15 +61,12 @@ def save_preset(payload: dict[str, Any]) -> dict[str, Any]:
         "loras": payload.get("loras") or [],
         "lora_id": payload.get("lora_id") or "",
         "lora_strength": payload.get("lora_strength", 1.0),
+        "lora2_id": payload.get("lora2_id") or "",
+        "lora2_strength": payload.get("lora2_strength", 1.0),
     }
-    items = [row for row in items if row.get("id") != item["id"]]
-    items.append(item)
-    dest = _path()
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(items, indent=2), encoding="utf-8")
-    return item
 
 
 def delete_preset(preset_id: str) -> None:
-    items = [row for row in list_presets() if row.get("id") != preset_id]
-    _path().write_text(json.dumps(items, indent=2), encoding="utf-8")
+    with runtime.lock:
+        items = [row for row in list_presets() if row.get("id") != preset_id]
+        _path().write_text(json.dumps(items, indent=2), encoding="utf-8")
