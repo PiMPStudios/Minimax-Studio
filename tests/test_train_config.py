@@ -102,6 +102,23 @@ def test_write_run_config_contract(studio_home: Path, tmp_path: Path) -> None:
     assert backends[0]["audio"]["lyrics_filename_format"] == "{filename}.lyrics"
 
 
+def _normalised(path: str, run_dir: Path):
+    """Parse-then-normalise: raw JSON escapes backslashes on Windows, so text
+    surgery on the file is the wrong comparison."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+
+    def walk(value):
+        if isinstance(value, dict):
+            return {k: walk(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        if isinstance(value, str):
+            return value.replace(str(run_dir), "RUN")
+        return value
+
+    return walk(data)
+
+
 def test_write_run_config_is_deterministic(studio_home: Path, tmp_path: Path) -> None:
     clips = _dataset(tmp_path)
     first = tmp_path / "a"
@@ -112,9 +129,7 @@ def test_write_run_config_is_deterministic(studio_home: Path, tmp_path: Path) ->
     pb = write_run_config(second, "same", clips, "24g")
     for key in pa:
         # run dir differs by design; the config *content* must not drift.
-        a = Path(pa[key]).read_text().replace(str(first), "RUN")
-        b = Path(pb[key]).read_text().replace(str(second), "RUN")
-        assert a == b
+        assert _normalised(pa[key], first) == _normalised(pb[key], second)
 
 
 def test_write_run_config_rejects_unknown_preset(studio_home: Path, tmp_path: Path) -> None:

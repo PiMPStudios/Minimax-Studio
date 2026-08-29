@@ -80,8 +80,14 @@ def test_start_run_writes_run_dir_and_state(trainer_stub: Path) -> None:
     assert (run_dir / "config" / state["id"] / "config.json").is_file()
     assert (run_dir / "train.log").is_file()
     # Datasets are read-only to the trainer: the backend points AT them.
-    backends = (run_dir / "config" / state["id"] / "multidatabackend.json").read_text()
-    assert str(clips.resolve()) in backends
+    import json as _json
+
+    backends = _json.loads(
+        (run_dir / "config" / state["id"] / "multidatabackend.json").read_text()
+    )
+    assert any(
+        row.get("instance_data_dir") == str(clips.resolve()) for row in backends
+    )
     _wait_status(state["id"], "completed")
 
 
