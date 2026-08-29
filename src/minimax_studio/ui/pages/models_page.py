@@ -50,7 +50,7 @@ class ModelsPage(QWidget):
         try:
             packs = self._client.list_packs()
             downloads = {item["pack_id"]: item for item in self._client.list_downloads()}
-        except Exception as exc:
+        except Exception:
             return
         known = {pack["id"] for pack in packs}
         for pack_id, card in list(self._cards.items()):
@@ -117,8 +117,22 @@ class ModelsPage(QWidget):
         try:
             self._client.start_download(pack["id"])
         except Exception as exc:
-            QMessageBox.warning(self, "Download failed", str(exc))
-            return
+            message = str(exc)
+            if "Not enough free disk" not in message:
+                QMessageBox.warning(self, "Download failed", message)
+                return
+            answer = QMessageBox.question(
+                self,
+                "Low disk space",
+                message + "\n\nDownload anyway?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            try:
+                self._client.start_download(pack["id"], force=True)
+            except Exception as exc2:
+                QMessageBox.warning(self, "Download failed", str(exc2))
+                return
         self.refresh()
 
     def _cancel_dl(self, pack: dict[str, Any], download_id: str | None) -> None:
@@ -147,10 +161,25 @@ class ModelsPage(QWidget):
         if answer != QMessageBox.StandardButton.Yes:
             return
         try:
-            self._client.delete_pack(pack["id"])
+            result = self._client.delete_pack(pack["id"])
         except Exception as exc:
             QMessageBox.warning(self, "Remove failed", str(exc))
             return
+        if result.get("folder_kept"):
+            freed = float(result.get("removed_bytes") or 0) / (1024**3)
+            kept_for = ", ".join(result.get("kept_for") or []) or "other packs"
+            answer = QMessageBox.question(
+                self,
+                "Shared folder kept",
+                f"Freed about {freed:.1f} GB. Files still needed by {kept_for} "
+                "were kept.\n\nDelete the whole folder anyway? That breaks "
+                "those packs too.",
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                try:
+                    self._client.delete_pack(pack["id"], delete_shared=True)
+                except Exception as exc:
+                    QMessageBox.warning(self, "Remove failed", str(exc))
         self.refresh()
 
 

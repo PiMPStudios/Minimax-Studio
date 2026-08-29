@@ -12,6 +12,47 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.26] — 2026-08-21
+
+### Fixed
+
+- **Background workers no longer vanish before running.** Enhance caption /
+  Enhance prompt, Write lyrics, Context-IR, the Settings connection checks,
+  and the Inspector “Will use” line all started a `QThread` whose `QObject`
+  worker was referenced only by signal connections — CPython freed it before
+  `started` was delivered, so the request silently never happened (spinner
+  forever). Workers now keep a strong reference and their results are
+  marshalled back to the GUI thread.
+- **Remove pack is honest.** It reports how many GB it actually freed, and
+  when other installed packs share the folder it keeps the files they need
+  (Ref2VA needs FL2VA’s encoder/VAE; the official Ref2VA transformer needs
+  the FL2VA tree) instead of unlinking markers and leaving 130 GB behind.
+  A follow-up dialog offers to wipe the whole shared folder if you really
+  want those packs gone too. Removing a pack nothing else uses now deletes
+  the folder entirely, as it always should have.
+- **UI-thread pressure.** The 500 ms tick made five-plus HTTP round-trips
+  (two queue lines, a status bar, two live-job polls); it now makes one
+  `/jobs` call shared by all of them. The Models page refreshes every 2 s
+  while open, not every 500 ms. Pack disk-size walks are cached for 5 s
+  (file existence checks stay live). Inspector preflight (“Will use”) runs
+  on a worker thread instead of the UI thread.
+
+### Added
+
+- **Disk guard before downloads.** A pack that would not fit is refused with
+  “X GB free, needs about Y GB”, and Models offers Download anyway.
+- **CI**: GitHub Actions on Linux/Windows/macOS × Python 3.11–3.13 running
+  `ruff check` and `pytest`. `ruff` is in the dev extra with an explicit
+  correctness-focused ruleset; unused imports and import order cleaned.
+- `docs/PLAN.md` carries an **Amendments** section: the INT8-consumer path
+  does drive a user-run ComfyUI (never bundled), 2K is API-relevant only,
+  and the worker token gate is documented.
+
+### Changed
+
+- Removed the unused `WorkerClient.iter_job_events` SSE client helper; the
+  documented `GET /jobs/{id}/events` endpoint stays for external tooling.
+
 ## [0.2.25] — 2026-08-21
 
 ### Fixed

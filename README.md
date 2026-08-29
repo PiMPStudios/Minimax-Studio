@@ -4,7 +4,7 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.25** generate studio. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
+Status: **0.2.26** generate studio. Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Locked for v1
 
@@ -23,6 +23,12 @@ python -m minimax_studio
 ```
 
 The app starts the worker, opens the studio window, and stops the worker on quit.
+
+The GUI hands the worker a fresh shared secret at launch
+(`MINIMAX_STUDIO_WORKER_TOKEN`, sent as `X-Minimax-Studio-Token`) so other
+local processes cannot call it. A worker you start yourself with
+`python -m minimax_studio --worker-only` has no token and stays open for
+development.
 
 Comfy-Org INT8 packs generate through a **running ComfyUI** (Studio does not embed it). Use **Start ComfyUI** on Welcome, Settings, or Go, or launch Comfy yourself. Extra args in Settings are passed to `main.py`, for example `--listen 0.0.0.0 --default-device 1`.
 

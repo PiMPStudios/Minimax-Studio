@@ -2,15 +2,23 @@ from pathlib import Path
 
 import pytest
 
+from minimax_studio.worker.backends import h3_comfy
 from minimax_studio.worker.backends.h3 import INT8_NEEDS_COMFY, resolve_h3_backend
 from minimax_studio.worker.backends.h3_comfy import (
+    AUDIO_VAE,
+    CLIP_NAME,
+    UNET_FL2VA,
     UNET_REF2VA,
+    VIDEO_VAE,
     _comfy_error_text,
     build_h3_comfy_graph,
+    comfy_resolve_file,
 )
 from minimax_studio.worker.backends.music_comfy import DIT_INT8, build_music_comfy_graph
 from minimax_studio.worker.catalog import PACKS
+from minimax_studio.worker.jobs import JobRequest
 from minimax_studio.worker.model_paths import pack_status, parse_extra_model_paths
+from minimax_studio.worker.runtime import runtime
 
 
 def _touch_int8(root: Path) -> None:
@@ -308,17 +316,6 @@ def test_auto_backend_int8_with_comfy(monkeypatch, studio_home: Path) -> None:
 
 # --- Comfy-side file visibility (object_info) -----------------------------
 
-from minimax_studio.worker.backends import h3_comfy
-from minimax_studio.worker.backends.h3_comfy import (
-    AUDIO_VAE,
-    CLIP_NAME,
-    UNET_FL2VA,
-    VIDEO_VAE,
-    comfy_resolve_file,
-)
-from minimax_studio.worker.jobs import JobRequest
-from minimax_studio.worker.runtime import runtime
-
 _ALL_FILES = {UNET_FL2VA, CLIP_NAME, VIDEO_VAE, AUDIO_VAE}
 
 
@@ -410,7 +407,6 @@ def test_generate_h3_comfy_fails_before_uploading_when_missing(
 
 
 def test_music_comfy_missing_files_lists_all_three(monkeypatch) -> None:
-    from minimax_studio.worker.backends import music_comfy
     from minimax_studio.worker.backends.music_comfy import (
         CLIP_INT8,
         DIT_FP16,

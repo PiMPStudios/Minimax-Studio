@@ -55,12 +55,15 @@ class WorkerClient:
     def list_packs(self) -> list[dict[str, Any]]:
         return self._get_list("/packs")
 
-    def start_download(self, pack_id: str) -> dict[str, Any]:
-        return self._post("/downloads", {"pack_id": pack_id})
+    def start_download(self, pack_id: str, force: bool = False) -> dict[str, Any]:
+        return self._post("/downloads", {"pack_id": pack_id, "force": force})
 
-    def delete_pack(self, pack_id: str) -> dict[str, Any]:
+    def delete_pack(self, pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
         with httpx.Client(timeout=self._timeout, headers=self._headers) as client:
-            response = client.delete(f"{self._base}/packs/{pack_id}")
+            response = client.delete(
+                f"{self._base}/packs/{pack_id}",
+                params={"delete_shared": "true" if delete_shared else "false"},
+            )
             self._raise(response)
             data = response.json()
             if not isinstance(data, dict):
@@ -81,25 +84,6 @@ class WorkerClient:
 
     def get_job(self, job_id: str) -> dict[str, Any]:
         return self._get(f"/jobs/{job_id}")
-
-    def iter_job_events(self, job_id: str, timeout: float = 600.0):
-        import json
-
-        with httpx.Client(timeout=timeout, headers=self._headers) as client:
-            with client.stream("GET", f"{self._base}/jobs/{job_id}/events") as response:
-                self._raise(response)
-                for line in response.iter_lines():
-                    if not line or line.startswith(":"):
-                        continue
-                    if line.startswith("event:"):
-                        name = line.split(":", 1)[1].strip()
-                        if name == "end":
-                            return
-                        continue
-                    if line.startswith("data:"):
-                        payload = line.split(":", 1)[1].strip()
-                        if payload and payload != "{}":
-                            yield json.loads(payload)
 
     def cancel_job(self, job_id: str) -> dict[str, Any]:
         return self._post(f"/jobs/{job_id}/cancel", {})

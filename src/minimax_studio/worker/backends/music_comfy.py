@@ -16,7 +16,7 @@ from minimax_studio.worker.backends.h3_comfy import (
     comfy_reachable,
     comfy_resolve_file,
 )
-from minimax_studio.worker.jobs import CancelledError, JobRequest, update_job
+from minimax_studio.worker.jobs import JobRequest, update_job
 from minimax_studio.worker.runtime import runtime
 
 DIT_INT8 = "minimax_music3_dit_int8_convrot.safetensors"

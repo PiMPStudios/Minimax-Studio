@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import threading
-import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from minimax_studio.worker.catalog import PACKS, Pack, pack_or_raise
 from minimax_studio.worker.fsutil import dir_bytes, first_existing
 from minimax_studio.worker.model_paths import pack_status as _pack_status
 from minimax_studio.worker.model_paths import search_roots
 from minimax_studio.worker.runtime import runtime
-
 
 SnapshotFn = Callable[..., str]
 
@@ -50,10 +49,25 @@ def list_packs() -> list[dict[str, Any]]:
     return rows
 
 
-def start_download(pack_id: str, snapshot: SnapshotFn | None = None) -> dict[str, Any]:
+def start_download(
+    pack_id: str, snapshot: SnapshotFn | None = None, force: bool = False
+) -> dict[str, Any]:
     pack = pack_or_raise(pack_id)
     dest = runtime.config.models_root() / pack.local_dir
     dest.mkdir(parents=True, exist_ok=True)
+    if pack.approx_gb and not force:
+        import shutil
+
+        try:
+            free_gb = shutil.disk_usage(dest).free / (1024**3)
+        except OSError:
+            free_gb = float("inf")
+        if free_gb < pack.approx_gb:
+            raise RuntimeError(
+                f"Not enough free disk on the models volume: {free_gb:.0f} GB free, "
+                f"“{pack.title}” needs about {pack.approx_gb:.0f} GB. Free up space "
+                "or choose Download anyway."
+            )
     job_id = uuid.uuid4().hex[:12]
     record: dict[str, Any] = {
         "id": job_id,
@@ -145,6 +159,9 @@ def _run_download(
             if first_existing(dest, pack.marker_files) is None and dir_bytes(dest) == 0:
                 raise RuntimeError("download finished but pack files are missing")
         _ensure_license(pack.repo_id, dest, runtime.config.hf_token)
+        from minimax_studio.worker.model_paths import reset_bytes_cache
+
+        reset_bytes_cache()
         _update(
             job_id,
             status="done",
@@ -156,6 +173,9 @@ def _run_download(
         _update(job_id, status="error", message="Download failed", error=str(exc))
     finally:
         stop.set()
+        from minimax_studio.worker.model_paths import reset_bytes_cache
+
+        reset_bytes_cache()
 
 
 def _watch_size(job_id: str, dest: Path, stop: threading.Event) -> None:
@@ -172,11 +192,12 @@ def _hf_snapshot(
 ) -> str:
     from huggingface_hub import snapshot_download
 
+    # huggingface_hub >= 1.0 always resumes; the old resume_download flag is
+    # deprecated and ignored there, so we do not pass it.
     kwargs: dict[str, Any] = {
         "repo_id": repo_id,
         "local_dir": local_dir,
         "token": token,
-        "resume_download": True,
     }
     if allow_patterns:
         kwargs["allow_patterns"] = allow_patterns
@@ -206,26 +227,90 @@ def _ensure_license(repo_id: str, dest: Path, token: str | None) -> None:
             continue
 
 
-def delete_pack(pack_id: str) -> dict[str, Any]:
+def _requires_chain(pack: Pack) -> list[Pack]:
+    """Transitive `requires` closure of a pack (same or other folders)."""
+    seen: set[str] = set()
+    queue = list(pack.requires)
+    chain: list[Pack] = []
+    while queue:
+        pack_id = queue.pop()
+        if pack_id in seen:
+            continue
+        seen.add(pack_id)
+        item = PACKS.get(pack_id)
+        if item is None:
+            continue
+        chain.append(item)
+        queue.extend(item.requires)
+    return chain
+
+
+def delete_pack(pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
+    """Remove a pack's Studio copy. Never touches a ComfyUI folder.
+
+    When other installed packs (or their requirements) share the folder,
+    only files they do not need are removed — unless ``delete_shared`` says
+    otherwise. Reports bytes actually freed.
+    """
     pack = pack_or_raise(pack_id)
     root = runtime.config.models_root().resolve()
     dest = (root / pack.local_dir).resolve()
     if dest != root and root not in dest.parents:
         raise RuntimeError("refusing to delete outside the Studio models folder")
+    result: dict[str, Any] = {
+        "ok": True,
+        "id": pack_id,
+        "removed": False,
+        "removed_bytes": 0,
+        "folder_kept": False,
+        "kept_for": [],
+        "kept_files": [],
+    }
     if not dest.exists():
-        return {"ok": True, "id": pack_id, "removed": False}
-    shared = [
+        return result
+    before = dir_bytes(dest)
+    in_use = [
         other
         for other in PACKS.values()
-        if other.local_dir == pack.local_dir and other.id != pack.id
+        if other.local_dir == pack.local_dir
+        and other.id != pack.id
+        and other.marker_files
+        and any((dest / marker).is_file() for marker in other.marker_files)
     ]
-    if shared and pack.marker_files:
-        for marker in pack.marker_files:
+    if in_use and not delete_shared:
+        protected: set[str] = set()
+        for other in in_use:
+            protected.update(other.marker_files)
+            for needed in _requires_chain(other):
+                if needed.local_dir == pack.local_dir:
+                    protected.update(needed.marker_files)
+        for marker in pack.marker_files or ():
+            if marker in protected:
+                result["kept_files"].append(marker)
+                continue
             path = dest / marker
             if path.is_file():
-                path.unlink()
-        return {"ok": True, "id": pack_id, "removed": True, "shared": True}
+                try:
+                    path.unlink()
+                except OSError:
+                    result["kept_files"].append(marker)
+        result["removed"] = True
+        result["removed_bytes"] = max(0, before - dir_bytes(dest))
+        result["folder_kept"] = True
+        result["shared"] = True
+        result["kept_for"] = sorted({other.title for other in in_use})
+        from minimax_studio.worker.model_paths import reset_bytes_cache
+
+        reset_bytes_cache()
+        return result
     import shutil
 
     shutil.rmtree(dest)
-    return {"ok": True, "id": pack_id, "removed": True, "shared": False}
+    result["removed"] = True
+    result["removed_bytes"] = before
+    result["shared"] = bool(in_use)
+    result["deleted_shared"] = bool(in_use) and delete_shared
+    from minimax_studio.worker.model_paths import reset_bytes_cache
+
+    reset_bytes_cache()
+    return result

@@ -1,6 +1,7 @@
+from fastapi.testclient import TestClient
+
 from minimax_studio.worker.probe import probe, reset_probe_cache
 from minimax_studio.worker.server import app
-from fastapi.testclient import TestClient
 
 
 def test_probe_has_os_fields() -> None:

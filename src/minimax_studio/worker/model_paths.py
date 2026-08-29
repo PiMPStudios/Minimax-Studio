@@ -6,6 +6,30 @@ from pathlib import Path
 from minimax_studio.worker.catalog import Pack
 from minimax_studio.worker.fsutil import dir_bytes
 
+_BYTES_TTL_S = 5.0
+_BYTES_CACHE: dict[str, tuple[float, int]] = {}
+
+
+def reset_bytes_cache() -> None:
+    """Forget cached directory sizes (after downloads/removals)."""
+    _BYTES_CACHE.clear()
+
+
+def _dir_bytes_cached(path: Path) -> int:
+    """dir_bytes with a short TTL. File *existence* stays live; only the
+    expensive whole-tree size walk is cached (Models page and preflight
+    refresh this constantly)."""
+    import time
+
+    key = str(path)
+    now = time.monotonic()
+    hit = _BYTES_CACHE.get(key)
+    if hit and now - hit[0] < _BYTES_TTL_S:
+        return hit[1]
+    value = dir_bytes(path)
+    _BYTES_CACHE[key] = (now, value)
+    return value
+
 _NESTED = ("", "h3-comfy", "minimax-h3", "minimax-music-3", "music3-comfy")
 _FOLDER_KEYS = {
     "checkpoints",
@@ -223,10 +247,10 @@ def pack_status(
 
     if ready and found:
         path = _common_parent([item.parent for item in found.values()])
-        bytes_on_disk = dir_bytes(path)
+        bytes_on_disk = _dir_bytes_cached(path)
     else:
         path = dest
-        bytes_on_disk = dir_bytes(dest) if dest.exists() else 0
+        bytes_on_disk = _dir_bytes_cached(dest) if dest.exists() else 0
 
     source = "studio"
     if ready and pack.marker_files and studio_hits < len(pack.marker_files):
@@ -248,7 +272,7 @@ def pack_status(
         "ready": ready,
         "missing": missing,
         "bytes_on_disk": bytes_on_disk,
-        "partial": (not ready) and dest.exists() and dir_bytes(dest) > 1024 * 1024,
+        "partial": (not ready) and dest.exists() and _dir_bytes_cached(dest) > 1024 * 1024,
         "source": source,
         "files": {key: str(value) for key, value in found.items()},
     }

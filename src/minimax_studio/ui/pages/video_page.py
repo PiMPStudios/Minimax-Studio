@@ -162,18 +162,26 @@ class VideoPage(QWidget):
         self.ref_size.setVisible(mode == "ref2va")
         self.prompt.setPlaceholderText(_placeholder(mode))
 
-    def poll(self) -> None:
-        self._refresh_queue()
+    def poll(self, jobs_snapshot: list[dict] | None = None) -> None:
+        """Update queue line + live job from the window's per-tick snapshot."""
+        self._refresh_queue(jobs_snapshot)
         if not self._job_id:
             return
-        try:
-            job = self._client.get_job(self._job_id)
-        except Exception as exc:
-            self._status.setText(str(exc))
-            self._job_id = None
-            self.generate.setEnabled(True)
-            self._cancel.setEnabled(False)
-            return
+        job = None
+        if jobs_snapshot is not None:
+            job = next(
+                (item for item in jobs_snapshot if item.get("id") == self._job_id),
+                None,
+            )
+        if job is None:
+            try:
+                job = self._client.get_job(self._job_id)
+            except Exception as exc:
+                self._status.setText(str(exc))
+                self._job_id = None
+                self.generate.setEnabled(True)
+                self._cancel.setEnabled(False)
+                return
         self._bar.show()
         self._bar.setValue(int(float(job.get("progress") or 0) * 100))
         self._status.setText(str(job.get("error") or job.get("message") or job.get("status")))
@@ -193,13 +201,14 @@ class VideoPage(QWidget):
 
             notify_job_result(self, job, on_retry=self._generate)
 
-    def _refresh_queue(self) -> None:
+    def _refresh_queue(self, jobs: list[dict] | None = None) -> None:
         from minimax_studio.ui.ready import format_queue_line
 
-        try:
-            jobs = self._client.list_jobs()
-        except Exception:
-            return
+        if jobs is None:
+            try:
+                jobs = self._client.list_jobs()
+            except Exception:
+                return
         self._queue.setText(format_queue_line(jobs, "h3", self._job_id))
 
     def _generate(self) -> None:
@@ -385,7 +394,9 @@ class VideoPage(QWidget):
         start_enhance(self, self._client, "h3", seed, "", done, fail)
 
     def _context_ir(self) -> None:
-        from PySide6.QtCore import QThread, QObject, Signal
+        from PySide6.QtCore import QObject, QThread, Signal
+
+        from minimax_studio.ui.enhance import on_main
 
         seed = self.prompt.toPlainText().strip()
         if not seed:
@@ -434,10 +445,11 @@ class VideoPage(QWidget):
             self._ir_btn.setEnabled(True)
             self._status.setText(err)
 
-        worker.finished.connect(done)
-        worker.failed.connect(fail)
+        worker.finished.connect(on_main(done))
+        worker.failed.connect(on_main(fail))
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
+        thread._worker = worker  # strong ref; connections are weak
         thread.start()
         self._ir_thread = thread
 

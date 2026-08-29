@@ -172,17 +172,27 @@ class MusicPage(QWidget):
                 float(second.get("strength") or 1.0),
             )
 
-    def poll(self) -> None:
-        self._refresh_queue()
+    def poll(self, jobs_snapshot: list[dict] | None = None) -> None:
+        """Update queue line + live job. `jobs_snapshot` comes from the
+        window's per-tick GET /jobs so the page adds no extra requests."""
+        self._refresh_queue(jobs_snapshot)
         if not self._job_id:
             return
-        try:
-            job = self._client.get_job(self._job_id)
-        except Exception as exc:
-            self._status.setText(str(exc))
-            self._job_id = None
-            self.generate.setEnabled(True)
-            return
+        job = None
+        if jobs_snapshot is not None:
+            job = next(
+                (item for item in jobs_snapshot if item.get("id") == self._job_id),
+                None,
+            )
+        if job is None:
+            try:
+                job = self._client.get_job(self._job_id)
+            except Exception as exc:
+                self._status.setText(str(exc))
+                self._job_id = None
+                self.generate.setEnabled(True)
+                self._cancel.setEnabled(False)
+                return
         status = job.get("status")
         progress = float(job.get("progress") or 0)
         self._bar.show()
@@ -205,13 +215,14 @@ class MusicPage(QWidget):
 
             notify_job_result(self, job, on_retry=self._generate)
 
-    def _refresh_queue(self) -> None:
+    def _refresh_queue(self, jobs: list[dict] | None = None) -> None:
         from minimax_studio.ui.ready import format_queue_line
 
-        try:
-            jobs = self._client.list_jobs()
-        except Exception:
-            return
+        if jobs is None:
+            try:
+                jobs = self._client.list_jobs()
+            except Exception:
+                return
         self._queue.setText(format_queue_line(jobs, "music", self._job_id))
 
     def _insert_tag(self, tag: str) -> None:

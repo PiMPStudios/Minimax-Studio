@@ -1,6 +1,6 @@
-from pathlib import Path
 import threading
 import time
+from pathlib import Path
 
 from minimax_studio.worker.jobs import (
     JobRequest,

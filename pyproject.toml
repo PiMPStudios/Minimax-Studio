@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.5"]
 secrets = ["keyring>=25"]
 
 [project.scripts]
@@ -36,3 +36,9 @@ version = {attr = "minimax_studio.__version__"}
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# Correctness-focused: unused code, real bugs, import hygiene. Deliberately
+# not enabling BLE/S/TRY/SIM style rules — broad excepts are the worker's
+# deliberate boundary style and rewrites would add churn for no safety.
+select = ["E4", "E7", "E9", "F", "I", "UP035"]

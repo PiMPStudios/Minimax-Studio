@@ -9,7 +9,6 @@ from minimax_studio.worker.downloads import pack_status
 from minimax_studio.worker.jobs import JobRequest, update_job
 from minimax_studio.worker.runtime import runtime
 
-
 INT8_NEEDS_COMFY = (
     "Comfy-Org INT8 H3 is on disk, but those files use Comfy convrot kernels — "
     "diffusers cannot load them. Start ComfyUI (Settings → ComfyUI URL, default "

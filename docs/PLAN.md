@@ -2,6 +2,27 @@
 
 Working name: **MiniMax Studio**. Repo: `minimax-gui`. Local git only for now.
 
+## Status amendments (as built, v0.2.26)
+
+Reality notes against this plan, newest first:
+
+- **INT8 + ComfyUI.** This plan says we will not require Comfy. We still do
+  not bundle, embed, or depend on it — but the consumer CUDA default path
+  (Comfy-Org INT8 packs) only runs inside a user-owned ComfyUI, so Studio
+  detects, launches, and drives one as a separate process over its HTTP API.
+  The official diffusers packs remain the no-Comfy in-process path. Since
+  0.2.25 Studio verifies via `/object_info` that the running ComfyUI can
+  actually see every file the graph needs before submitting.
+- **2K is API-only.** The Resolution combo's `2K` entry maps to the API
+  backend. Local generate stays on the 768 canvas (H3-Regenerate-2K is not
+  in the open drop).
+- **Worker token.** GUI launches pass a per-launch shared secret
+  (`MINIMAX_STUDIO_WORKER_TOKEN` → `X-Minimax-Studio-Token` header). `--worker-only` runs open for development.
+- **Music API backend ignores duration/seed/steps** (MiniMax’s
+  `/v1/music_generation` accepts none of them). UI should surface that; do
+  not fake it.
+- Presets store the full inspector state (CFG, both LoRA slots, attention).
+
 This is the PiMP Audio Studio idea — first-launch downloader, sidebar studio, history, presets, inspector — rebuilt as a **Windows / Linux / macOS** desktop app for MiniMax H3 and MiniMax Music 3. Not a Swift/MLX Mac app. Not ComfyUI.
 
 ## Locked decisions

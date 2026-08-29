@@ -1,8 +1,21 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QThread, Signal
+from collections.abc import Callable
+from typing import Any
+
+from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from minimax_studio.worker_client import WorkerClient
+
+
+def on_main(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a callback so it runs on the GUI thread even when emitted from a
+    worker thread (plain functions connected to signals run on the emitter)."""
+
+    def wrapper(*args: Any) -> None:
+        QTimer.singleShot(0, lambda: fn(*args))
+
+    return wrapper
 
 
 class EnhanceWorker(QObject):
@@ -37,13 +50,15 @@ def start_enhance(
     worker = EnhanceWorker(client, kind, text, extra)
     worker.moveToThread(thread)
     thread.started.connect(worker.run)
-    worker.finished.connect(on_done)
-    worker.failed.connect(on_fail)
+    worker.finished.connect(on_main(on_done))
+    worker.failed.connect(on_main(on_fail))
     worker.finished.connect(thread.quit)
     worker.failed.connect(thread.quit)
     worker.finished.connect(worker.deleteLater)
     worker.failed.connect(worker.deleteLater)
     thread.finished.connect(thread.deleteLater)
+    # Strong ref: signal connections only weakly reference the worker.
+    thread._worker = worker
     thread.start()
     parent._enhance_thread = thread  # keep a ref
     return thread

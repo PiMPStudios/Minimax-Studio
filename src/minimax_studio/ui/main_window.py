@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
@@ -56,6 +56,9 @@ class MainWindow(QMainWindow):
         self._client = client
         self._config = config
         self._state = StudioState()
+        self._route_thread: QThread | None = None
+        self._route_ticks = 0
+        self._models_ticks = 0
         self.setWindowTitle(f"MiniMax Studio {__version__}")
         self.resize(1320, 840)
 
@@ -263,7 +266,6 @@ class MainWindow(QMainWindow):
         self._timer.setInterval(500)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
-        self._route_ticks = 0
         QTimer.singleShot(0, self._refresh_route)
         QTimer.singleShot(0, self._refresh_job_status)
 
@@ -456,22 +458,35 @@ class MainWindow(QMainWindow):
             pass
 
     def _tick(self) -> None:
-        self._music.poll()
-        self._video.poll()
-        self._refresh_job_status()
+        # One list_jobs per tick shared by both pages and the status bar —
+        # this runs every 500 ms, so extra round-trips here add up.
+        try:
+            jobs = self._client.list_jobs()
+        except Exception:
+            jobs = []
+        self._music.poll(jobs)
+        self._video.poll(jobs)
+        self._refresh_job_status(jobs)
+        self._refresh_download_status()
         row = self._nav.currentRow()
         if 0 <= row < len(self._nav_keys) and self._nav_keys[row] == "models":
-            self._models.refresh()
+            self._models_ticks += 1
+            if self._models_ticks >= 4:  # /packs walks model trees — 2 s is enough
+                self._models_ticks = 0
+                self._models.refresh()
+        else:
+            self._models_ticks = 0
         self._route_ticks += 1
         if self._route_ticks >= 8:
             self._route_ticks = 0
             self._refresh_route()
 
-    def _refresh_job_status(self) -> None:
-        try:
-            jobs = self._client.list_jobs()
-        except Exception:
-            jobs = []
+    def _refresh_job_status(self, jobs: list[dict] | None = None) -> None:
+        if jobs is None:
+            try:
+                jobs = self._client.list_jobs()
+            except Exception:
+                jobs = []
         running = next(
             (
                 item
@@ -636,21 +651,75 @@ class MainWindow(QMainWindow):
         WelcomeDialog(self._client).exec()
 
     def _refresh_route(self) -> None:
+        """Preflight off the UI thread — it can hit Comfy/packs and take
+        seconds; the window must not freeze while it thinks."""
         row = self._nav.currentRow()
         key = self._nav_keys[row] if 0 <= row < len(self._nav_keys) else None
         kind = "h3" if key == "video" else "music"
         mode = getattr(self._video, "_mode", "t2va") if kind == "h3" else "ttm"
-        try:
-            check = self._client.preflight(
-                kind, self._state.backend, mode, self._state.speed
-            )
-        except Exception:
+        if self._route_thread is not None:
+            try:
+                if self._route_thread.isRunning():
+                    return  # a check is already in flight
+            except RuntimeError:  # C++ object already deleted
+                self._route_thread = None
+
+        from PySide6.QtCore import QObject, QThread, Signal
+
+        from minimax_studio.ui.enhance import on_main
+
+        class Worker(QObject):
+            finished = Signal(dict)
+            failed = Signal(str)
+
+            def run(inner_self) -> None:
+                try:
+                    inner_self.finished.emit(
+                        self._client.preflight(
+                            kind, self._state.backend, mode, self._state.speed
+                        )
+                    )
+                except Exception as exc:
+                    inner_self.failed.emit(str(exc))
+
+        thread = QThread(self)
+        worker = Worker()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+
+        def done(check: dict) -> None:
+            if check.get("ok"):
+                self._route.setText(
+                    str(check.get("detail") or f"Will use {check.get('backend')}")
+                )
+            else:
+                self._route.setText(
+                    "Not ready: " + str(check.get("detail") or "no backend")
+                )
+            thread.quit()
+
+        def fail(_err: str) -> None:
             self._route.setText("Will use: worker unreachable")
-            return
-        if check.get("ok"):
-            self._route.setText(str(check.get("detail") or f"Will use {check.get('backend')}"))
-        else:
-            self._route.setText("Not ready: " + str(check.get("detail") or "no backend"))
+            thread.quit()
+
+        worker.finished.connect(on_main(done))
+        worker.failed.connect(on_main(fail))
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+
+        def _reset() -> None:
+            self._route_thread = None
+
+        thread.finished.connect(_reset)
+        thread.finished.connect(thread.deleteLater)
+        # Signal connections hold only a weak reference to the worker —
+        # without this it is garbage-collected before `started` is delivered
+        # and the thread never runs.
+        thread._worker = worker
+        thread.start()
+        self._route_thread = thread
 
 
 def _format_probe(probe: dict[str, Any]) -> str:

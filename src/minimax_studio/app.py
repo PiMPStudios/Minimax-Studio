@@ -10,7 +10,6 @@ from pathlib import Path
 from secrets import token_hex  # stdlib secrets, not minimax_studio.secrets
 
 from minimax_studio.config import (
-    AppConfig,
     default_config_path,
     load_config,
     save_config,

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QCheckBox,
-    QComboBox,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -216,6 +216,8 @@ class SettingsPage(QWidget):
         self._comfy_found.setToolTip(" ".join(str(part) for part in argv) if argv else "")
 
     def _refresh_pings(self) -> None:
+        from minimax_studio.ui.enhance import on_main
+
         class Worker(QObject):
             finished = Signal(dict)
             failed = Signal(str)
@@ -245,10 +247,11 @@ class SettingsPage(QWidget):
             if self._save_status.text().startswith("Saved"):
                 self._save_status.setText(err)
 
-        worker.finished.connect(done)
-        worker.failed.connect(fail)
+        worker.finished.connect(on_main(done))
+        worker.failed.connect(on_main(fail))
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
+        thread._worker = worker  # strong ref; connections are weak
         thread.start()
         self._ping_thread = thread
 

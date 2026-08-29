@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,9 @@ class Pack:
     allow_patterns: tuple[str, ...] | None = None
     marker_files: tuple[str, ...] = ()
     territory_notice: str | None = None
+    # Packs whose files this pack needs at run time (same local_dir).
+    # Deleting a required pack's files would break this one.
+    requires: tuple[str, ...] = ()
 
 
 H3_TERRITORY = (
@@ -112,6 +115,7 @@ PACKS: dict[str, Pack] = {
         allow_patterns=("transformer_ref/*",),
         marker_files=("transformer_ref/config.json",),
         territory_notice=H3_TERRITORY,
+        requires=("h3-diffusers-fl2va",),
     ),
     "h3-fl2va": Pack(
         id="h3-fl2va",
@@ -154,6 +158,7 @@ PACKS: dict[str, Pack] = {
             "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
         ),
         territory_notice=H3_TERRITORY,
+        requires=("h3-fl2va",),
     ),
     "h3-turbo": Pack(
         id="h3-turbo",

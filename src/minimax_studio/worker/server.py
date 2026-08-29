@@ -150,6 +150,9 @@ def post_settings(body: SettingsIn) -> dict[str, object]:
     config = AppConfig.model_validate(data)
     save_config(config)
     runtime.config = config
+    from minimax_studio.worker.model_paths import reset_bytes_cache
+
+    reset_bytes_cache()
     try:
         config.ensure_dirs()
     except RuntimeError:
@@ -167,12 +170,13 @@ def packs() -> list[dict[str, object]]:
 
 class DownloadIn(BaseModel):
     pack_id: str
+    force: bool = False
 
 
 @app.delete("/packs/{pack_id}")
-def remove_pack(pack_id: str) -> dict[str, object]:
+def remove_pack(pack_id: str, delete_shared: bool = False) -> dict[str, object]:
     try:
-        return downloads.delete_pack(pack_id)
+        return downloads.delete_pack(pack_id, delete_shared=delete_shared)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -182,7 +186,7 @@ def remove_pack(pack_id: str) -> dict[str, object]:
 @app.post("/downloads")
 def create_download(body: DownloadIn) -> dict[str, object]:
     try:
-        return downloads.start_download(body.pack_id)
+        return downloads.start_download(body.pack_id, force=body.force)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
