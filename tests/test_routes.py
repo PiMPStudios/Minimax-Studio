@@ -1,8 +1,23 @@
 import json
+import time
 
 from fastapi.testclient import TestClient
 
 from minimax_studio.worker.server import app
+
+
+def _wait_for_job(client: TestClient, job_id: str, timeout: float = 60.0) -> dict:
+    """A generate job runs in its own thread. A fixed number of in-process
+    polls races thread startup and loses on a loaded runner (it did on
+    Windows CI) — wait on wall-clock time, then judge the outcome."""
+    deadline = time.time() + timeout
+    job: dict = {}
+    while time.time() < deadline:
+        job = client.get(f"/jobs/{job_id}").json()
+        if job.get("status") in {"done", "error"}:
+            return job
+        time.sleep(0.05)
+    return job
 
 
 def test_packs_and_stub_job(studio_home) -> None:
@@ -19,11 +34,7 @@ def test_packs_and_stub_job(studio_home) -> None:
     )
     assert created.status_code == 200
     job_id = created.json()["id"]
-    for _ in range(50):
-        job = client.get(f"/jobs/{job_id}")
-        if job.json()["status"] in {"done", "error"}:
-            break
-    assert job.json()["status"] == "done"
+    assert _wait_for_job(client, job_id)["status"] == "done"
     history = client.get("/history")
     assert history.status_code == 200
     assert any(item["id"] == job_id for item in history.json())
