@@ -77,7 +77,10 @@ def load_config(path: Path | None = None) -> AppConfig:
     path = path or default_config_path()
     if not path.is_file():
         return AppConfig()
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return AppConfig()
     config = AppConfig.model_validate(data)
     if config.use_os_keyring:
         from minimax_studio.secrets import keyring_available, load_secrets
@@ -105,4 +108,6 @@ def save_config(config: AppConfig, path: Path | None = None) -> None:
             persist_secrets({key: data.get(key) for key in SECRET_FIELDS})
             for key in SECRET_FIELDS:
                 data[key] = None
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    from minimax_studio.worker.fsutil import atomic_write_text
+
+    atomic_write_text(path, json.dumps(data, indent=2) + "\n")

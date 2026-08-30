@@ -646,20 +646,33 @@ class MainWindow(QMainWindow):
             )
 
     def _refresh_train_status(self) -> None:
-        try:
-            runs = self._client.list_train_runs()
-        except Exception:
-            runs = []
-        live = [row for row in runs if row.get("status") in {"running", "queued"}]
-        if not live:
-            self._status_train.setText("")
-            return
-        run = live[0]
-        more = f" (+{len(live) - 1} more)" if len(live) > 1 else ""
-        self._status_train.setText(
-            f"Training: {run.get('name')} · {run.get('status')} · "
-            f"{run.get('steps')} steps{more} — Ctrl+Shift+T"
-        )
+        from minimax_studio.ui.enhance import start_background
+
+        def work() -> list:
+            try:
+                runs = self._client.list_train_runs()
+            except Exception:
+                return []
+            return runs if isinstance(runs, list) else []
+
+        def done(payload: object) -> None:
+            runs = payload if isinstance(payload, list) else []
+            live = [
+                row
+                for row in runs
+                if row.get("status") in {"running", "queued", "lost"}
+            ]
+            if not live:
+                self._status_train.setText("")
+                return
+            run = live[0]
+            more = f" (+{len(live) - 1} more)" if len(live) > 1 else ""
+            self._status_train.setText(
+                f"Training: {run.get('name')} · {run.get('status')} · "
+                f"{run.get('steps')} steps{more} — Ctrl+Shift+T"
+            )
+
+        start_background(self, work, done, attr="_train_status_thread")
 
     def _refresh_download_status(
         self, downloads: list[dict[str, Any]] | None = None
@@ -852,8 +865,13 @@ class MainWindow(QMainWindow):
         thread.started.connect(worker.run)
 
         def done(check: dict) -> None:
+            from minimax_studio.ui.ready import remember_preflight
+
             self._route_backend = str(check.get("backend") or "")
             self._route_kind = str(check.get("kind") or "")
+            remember_preflight(
+                check, speed=self._state.speed, resolution=resolution
+            )
             self._apply_api_param_hints(check)
             if check.get("ok"):
                 self._route.setText(

@@ -188,7 +188,11 @@ def _generate_cuda(job_id: str, request: JobRequest, wav_path: Path) -> dict[str
         try:
             audio = pipe(**call, callback_on_step_end=step_cancel_callback(job_id, steps))[0]
         except TypeError:
+            if is_cancelled(job_id):
+                raise CancelledError("Cancelled")
             audio = pipe(**call)[0]
+    if is_cancelled(job_id):
+        raise CancelledError("Cancelled")
     update_job(job_id, message="Writing WAV", progress=0.9)
     if hasattr(audio, "float") and hasattr(audio, "cpu"):
         array = audio.T.float().cpu().numpy()
@@ -220,7 +224,7 @@ def _generate_mlx(job_id: str, request: JobRequest, wav_path: Path) -> dict[str,
     result = next(
         model.generate(
             text=request.prompt,
-            lyrics=request.lyrics or "[instrumental]",
+            lyrics=request.lyrics or "",
             duration=float(request.duration_s),
             steps=int(request.steps),
             seed=None if request.seed < 0 else int(request.seed),

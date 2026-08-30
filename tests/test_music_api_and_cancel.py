@@ -53,6 +53,47 @@ def test_history_delete(studio_home: Path) -> None:
     assert not (studio_home / "history" / "abc123abc123").exists()
 
 
+def test_mlx_blank_lyrics_are_not_an_instrumental(
+    studio_home: Path, monkeypatch
+) -> None:
+    import sys
+    import types
+
+    import numpy as np
+
+    captured: dict = {}
+
+    class FakeResult:
+        audio = np.zeros(16)
+        sample_rate = 32000
+
+    class FakeModel:
+        def generate(self, **kwargs):
+            captured.update(kwargs)
+            yield FakeResult()
+
+    mlx_audio = types.ModuleType("mlx_audio")
+    mlx_music = types.ModuleType("mlx_audio.music")
+    mlx_music.load = lambda path: FakeModel()
+    monkeypatch.setitem(sys.modules, "mlx_audio", mlx_audio)
+    monkeypatch.setitem(sys.modules, "mlx_audio.music", mlx_music)
+
+    from minimax_studio.worker.backends import music
+    from minimax_studio.worker.catalog import PACKS
+    from minimax_studio.worker.runtime import runtime
+
+    pack = runtime.config.models_root() / PACKS["music3-mlx"].local_dir
+    pack.mkdir(parents=True, exist_ok=True)
+    dest = runtime.config.history_root() / "mlxjob"
+    dest.mkdir(parents=True, exist_ok=True)
+    music._generate_mlx(
+        "mlxjob",
+        JobRequest(kind="music", prompt="folk", lyrics=""),
+        dest / "audio.wav",
+    )
+    assert captured.get("lyrics") == ""
+
+
 def test_music_api_and_mlx_refuse_loras(studio_home: Path, monkeypatch) -> None:
     from minimax_studio.worker.backends.music import generate_music
     from minimax_studio.worker.jobs import JobRequest

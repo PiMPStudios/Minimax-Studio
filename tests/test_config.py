@@ -5,6 +5,16 @@ import pytest
 from minimax_studio.config import AppConfig, load_config, save_config
 
 
+def test_corrupt_config_does_not_crash_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "cfg.json"
+    monkeypatch.setenv("MINIMAX_STUDIO_CONFIG", str(path))
+    path.write_text("{not json", encoding="utf-8")
+    loaded = load_config(path)
+    assert loaded.output_dir is None
+
+
 def test_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "cfg.json"
     monkeypatch.setenv("MINIMAX_STUDIO_CONFIG", str(path))

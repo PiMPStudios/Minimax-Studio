@@ -22,6 +22,10 @@ class WorkerClient:
         self._headers = {}
         if token:
             self._headers[self.TOKEN_HEADER] = token
+        self._http = httpx.Client(timeout=timeout, headers=self._headers)
+
+    def close(self) -> None:
+        self._http.close()
 
     def health(self) -> dict[str, Any]:
         return self._get("/health")
@@ -289,42 +293,42 @@ class WorkerClient:
         return self._delete(f"/adapters/{_seg(adapter_id)}")
 
     def _get(self, path: str, timeout: float | None = None) -> dict[str, Any]:
-        with httpx.Client(timeout=timeout or self._timeout, headers=self._headers) as client:
-            response = client.get(f"{self._base}{path}")
-            self._raise(response)
-            data = response.json()
-            if not isinstance(data, dict):
-                raise RuntimeError(f"unexpected payload from {path}")
-            return data
+        response = self._http.get(
+            f"{self._base}{path}", timeout=timeout or self._timeout
+        )
+        self._raise(response)
+        data = response.json()
+        if not isinstance(data, dict):
+            raise RuntimeError(f"unexpected payload from {path}")
+        return data
 
     def _get_list(self, path: str) -> list[dict[str, Any]]:
-        with httpx.Client(timeout=self._timeout, headers=self._headers) as client:
-            response = client.get(f"{self._base}{path}")
-            self._raise(response)
-            data = response.json()
-            if not isinstance(data, list):
-                raise RuntimeError(f"unexpected list payload from {path}")
-            return data
+        response = self._http.get(f"{self._base}{path}", timeout=self._timeout)
+        self._raise(response)
+        data = response.json()
+        if not isinstance(data, list):
+            raise RuntimeError(f"unexpected list payload from {path}")
+        return data
 
     def _post(
         self, path: str, payload: dict[str, Any], timeout: float | None = None
     ) -> dict[str, Any]:
-        with httpx.Client(timeout=timeout or self._timeout, headers=self._headers) as client:
-            response = client.post(f"{self._base}{path}", json=payload)
-            self._raise(response)
-            data = response.json()
-            if not isinstance(data, dict):
-                raise RuntimeError(f"unexpected payload from {path}")
-            return data
+        response = self._http.post(
+            f"{self._base}{path}", json=payload, timeout=timeout or self._timeout
+        )
+        self._raise(response)
+        data = response.json()
+        if not isinstance(data, dict):
+            raise RuntimeError(f"unexpected payload from {path}")
+        return data
 
     def _delete(self, path: str) -> dict[str, Any]:
-        with httpx.Client(timeout=self._timeout, headers=self._headers) as client:
-            response = client.delete(f"{self._base}{path}")
-            self._raise(response)
-            data = response.json()
-            if not isinstance(data, dict):
-                raise RuntimeError(f"unexpected delete payload from {path}")
-            return data
+        response = self._http.delete(f"{self._base}{path}", timeout=self._timeout)
+        self._raise(response)
+        data = response.json()
+        if not isinstance(data, dict):
+            raise RuntimeError(f"unexpected delete payload from {path}")
+        return data
 
     @staticmethod
     def _raise(response: httpx.Response) -> None:

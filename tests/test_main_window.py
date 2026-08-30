@@ -225,7 +225,7 @@ def _drain_window(app, window) -> None:
     started, so pytest teardown never sees a running QThread."""
     window._timer.stop()
     app.processEvents()
-    for attr in ("_route_thread", "_jobs_thread"):
+    for attr in ("_route_thread", "_jobs_thread", "_train_status_thread"):
         thread = getattr(window, attr, None)
         if thread is not None:
             try:
@@ -344,22 +344,38 @@ def test_status_bar_names_a_live_training_run(tmp_path) -> None:
     apply_theme(app)
 
     class Training(FakeWorker):
-        def list_train_runs(self) -> list:
-            return [
+        def __init__(self) -> None:
+            self.runs = [
                 {"id": "r1", "name": "Overnight", "status": "running", "steps": 1000},
                 {"id": "r2", "name": "Retake", "status": "completed", "steps": 500},
             ]
 
+        def list_train_runs(self) -> list:
+            return list(self.runs)
+
+    client = Training()
     config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
-    window = MainWindow(Training(), config)  # type: ignore[arg-type]
+    window = MainWindow(client, config)  # type: ignore[arg-type]
+    # Constructor already kicked this off-thread via _on_nav; wait, then ask
+    # again so a skipped start_background (thread still running) cannot hide
+    # a hung fetch.
+    _drain_window(app, window)
     window._refresh_train_status()
+    _drain_window(app, window)
     assert "Training: Overnight" in window._status_train.text()
+    assert "running" in window._status_train.text()
     assert "Ctrl+Shift+T" in window._status_train.text(), "say where to look"
+
+    client.runs[0]["status"] = "lost"
+    window._refresh_train_status()
+    _drain_window(app, window)
+    assert "Training: Overnight" in window._status_train.text()
+    assert "lost" in window._status_train.text()
 
     window._client = FakeWorker()  # run finished / worker unreachable
     window._refresh_train_status()
-    assert window._status_train.text() == ""
     _drain_window(app, window)
+    assert window._status_train.text() == ""
 
 
 def test_dataset_page_hands_its_dataset_to_the_train_page(tmp_path) -> None:
@@ -407,3 +423,26 @@ def test_installing_an_adapter_updates_the_registry_and_the_picker(tmp_path, mon
     window._train.adapter_installed.emit()
     assert refreshes == {"pickers": 1, "registry": 1}
     _drain_window(app, window)
+
+
+def test_music_poll_empty_snapshot_does_not_call_get_job(tmp_path) -> None:
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+
+    class Client(FakeWorker):
+        def __init__(self) -> None:
+            self.gets = 0
+
+        def get_job(self, _job_id: str) -> dict:
+            self.gets += 1
+            raise RuntimeError("should not round-trip")
+
+    from minimax_studio.ui.pages.music_page import MusicPage
+    from minimax_studio.ui.state import StudioState
+
+    client = Client()
+    page = MusicPage(client, StudioState())  # type: ignore[arg-type]
+    page._job_id = "abc123"
+    page.poll([])
+    assert client.gets == 0
+    assert page._job_id == "abc123"

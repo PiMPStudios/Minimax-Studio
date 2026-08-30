@@ -470,7 +470,6 @@ class DatasetsPage(QWidget):
         copied = len(result.get("copied") or [])
         captions = int(result.get("captions") or 0)
         self.refresh()
-        self._validate(quiet=True)
         missing = copied - captions
         note = (
             f" — {captions} brought a caption with them"
@@ -478,10 +477,13 @@ class DatasetsPage(QWidget):
             else " — none carried a .txt caption, so write one per clip "
             "(SimpleTuner reads them verbatim)"
         )
-        self._status.setText(
-            f"Copied {copied} clip{'s' if copied != 1 else ''} from "
-            f"{Path(folder).name}{note}."
-            + (" Missing captions are listed below." if missing > 0 else "")
+        self._validate(
+            quiet=True,
+            after_status=(
+                f"Copied {copied} clip{'s' if copied != 1 else ''} from "
+                f"{Path(folder).name}{note}."
+                + (" Missing captions are listed below." if missing > 0 else "")
+            ),
         )
 
     def _add_from_history(self) -> None:
@@ -518,34 +520,57 @@ class DatasetsPage(QWidget):
             QMessageBox.warning(self, "Could not add that take", str(exc))
             return
         self.refresh()
-        self._validate(quiet=True)
-        self._status.setText(
-            f"Added {added.get('added')} from History, with its caption and "
-            "lyrics carried over."
+        self._validate(
+            quiet=True,
+            after_status=(
+                f"Added {added.get('added')} from History, with its caption and "
+                "lyrics carried over."
+            ),
         )
 
-    def _validate(self, quiet: bool = False) -> None:
+    def _validate(self, quiet: bool = False, after_status: str | None = None) -> None:
         row = self._current_row()
         if not row:
             return
-        try:
-            report = self._client.validate_dataset(str(row["id"]))
-        except Exception as exc:
-            QMessageBox.warning(self, "Validation failed", str(exc))
-            return
-        self.refresh()
-        if not quiet and not report.get("ok"):
-            bad = [entry for entry in report.get("rows", []) if not entry.get("ok")]
-            QMessageBox.warning(
-                self,
-                "Not ready to train",
-                "\n".join(
-                    f"{entry.get('file')}: {problem}"
-                    for entry in bad[:8]
-                    for problem in (entry.get("problems") or [])
-                )[:2000]
-                or "Nothing checked.",
-            )
+        dataset_id = str(row["id"])
+        from minimax_studio.ui.enhance import start_background
+
+        def work() -> dict:
+            try:
+                return self._client.validate_dataset(dataset_id)
+            except Exception as exc:
+                return {"_error": str(exc)}
+
+        def done(payload: object) -> None:
+            if not isinstance(payload, dict):
+                return
+            if payload.get("_error"):
+                if not quiet:
+                    QMessageBox.warning(
+                        self, "Validation failed", str(payload["_error"])
+                    )
+                return
+            self.refresh()
+            if after_status:
+                self._status.setText(after_status)
+            if not quiet and not payload.get("ok"):
+                bad = [entry for entry in payload.get("rows", []) if not entry.get("ok")]
+                QMessageBox.warning(
+                    self,
+                    "Not ready to train",
+                    "\n".join(
+                        f"{entry.get('file')}: {problem}"
+                        for entry in bad[:8]
+                        for problem in (entry.get("problems") or [])
+                    )[:2000]
+                    or "Nothing checked.",
+                )
+
+        def fail() -> None:
+            if not quiet:
+                QMessageBox.warning(self, "Validation failed", "Worker unreachable")
+
+        start_background(self, work, done, fail, attr="_validate_thread")
 
     def _toggle_target_mode(self) -> None:
         """`video` ⇄ `av` for an H3 dataset.

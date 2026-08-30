@@ -548,14 +548,16 @@ def train_preflight(
         )
 
     hw = probe()
-    result["free_vram_gb"] = hw.get("free_vram_gb")
+    from minimax_studio.worker.device import selected_free_vram_gb
+
+    free = selected_free_vram_gb(hw)
+    result["free_vram_gb"] = free
     if not hw.get("cuda"):
         problems.append(
             "Training is CUDA-only (Windows/Linux) — Mac generates with "
             "MLX and the API but does not train."
         )
     else:
-        free = hw.get("free_vram_gb")
         if free is not None and free < preset.vram_floor_gb:
             problems.append(
                 f"'{preset.title}' needs {preset.vram_floor_gb} GB of free "

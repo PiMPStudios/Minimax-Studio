@@ -140,6 +140,7 @@ def start_run(
             stdout=log,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            env=_trainer_env(),
         )
     finally:
         log.close()
@@ -648,6 +649,7 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
             stdout=log,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            env=_trainer_env(),
         )
     finally:
         log.close()
@@ -668,6 +670,15 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
     return {**state, "path": str(run_dir)}
 
 
+def _trainer_env() -> dict[str, str]:
+    """SimpleTuner is a subprocess: pin it to Settings → CUDA device."""
+    env = os.environ.copy()
+    from minimax_studio.worker.runtime import runtime
+
+    env["CUDA_VISIBLE_DEVICES"] = str(max(0, int(runtime.config.cuda_device or 0)))
+    return env
+
+
 def export_run(
     run_id: str, dest: str | Path, include_cache: bool = False
 ) -> dict[str, Any]:
@@ -679,26 +690,34 @@ def export_run(
     import shutil
 
     run_dir, state = get_run(run_id)
-    target = Path(str(dest)).expanduser() / run_id
+    parent = Path(str(dest)).expanduser()
+    target = parent / run_id
+    staging = parent / f".{run_id}.exporting"
     if target.exists():
         raise RuntimeError(
             f"{target} already exists — move or delete it first; Studio will "
             "not overwrite a folder it did not write."
         )
-    target.mkdir(parents=True)
+    if staging.exists():
+        shutil.rmtree(staging)
     copied = 0
     total = 0
-    for item in sorted(run_dir.rglob("*")):
-        if not item.is_file():
-            continue
-        relative = item.relative_to(run_dir)
-        if not include_cache and "cache" in relative.parts:
-            continue
-        into = target / relative
-        into.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(item, into)
-        copied += 1
-        total += item.stat().st_size
+    try:
+        staging.mkdir(parents=True)
+        for item in sorted(run_dir.rglob("*")):
+            if not item.is_file():
+                continue
+            relative = item.relative_to(run_dir)
+            if not include_cache and "cache" in relative.parts:
+                continue
+            into = staging / relative
+            into.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, into)
+            copied += 1
+            total += item.stat().st_size
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     manifest = {
         "version": 1,
         "id": run_id,
@@ -708,9 +727,14 @@ def export_run(
         "bytes": total,
         "cache_included": bool(include_cache),
     }
-    (target / "EXPORT.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    try:
+        (staging / "EXPORT.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        staging.replace(target)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     return {"path": str(target), "files": copied, "bytes": total, "id": run_id}
 
 

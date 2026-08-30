@@ -3,6 +3,16 @@ from minimax_studio.worker.jobs import JobRequest
 from minimax_studio.worker.presets import delete_preset, list_presets, save_preset
 
 
+def test_corrupt_presets_file_is_empty(studio_home) -> None:
+    from pathlib import Path
+
+    from minimax_studio.worker.runtime import runtime
+
+    path = Path(runtime.config.output_dir) / "presets.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert list_presets() == []
+
+
 def test_preset_round_trip(studio_home) -> None:
     saved = save_preset({"name": "Folk", "kind": "music", "prompt": "banjo", "lyrics": "[Verse]\nhi"})
     assert saved["id"]

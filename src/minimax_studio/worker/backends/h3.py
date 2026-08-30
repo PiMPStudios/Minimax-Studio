@@ -156,7 +156,11 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
             **kwargs, callback_on_step_end=step_cancel_callback(job_id, steps)
         )
     except TypeError:
+        if is_cancelled(job_id):
+            raise CancelledError("Cancelled")
         results = pipe(**kwargs)
+    if is_cancelled(job_id):
+        raise CancelledError("Cancelled")
     update_job(job_id, message="Muxing MP4", progress=0.9)
     encode_video(
         results["videos"][0],
@@ -284,22 +288,64 @@ def resolve_h3_backend(requested: str, mode: str = "fl2va") -> str:
     )
 
 
+def _reset_loras(pipe: Any) -> None:
+    """Drop whatever the previous job fused — Fast then Quality must be Quality."""
+    for name in ("unload_lora_weights", "unfuse_lora"):
+        fn = getattr(pipe, name, None)
+        if callable(fn):
+            try:
+                fn()
+                return
+            except Exception:
+                continue
+    fn = getattr(pipe, "disable_lora", None)
+    if callable(fn):
+        try:
+            fn()
+        except Exception:
+            pass
+    setter = getattr(pipe, "set_adapters", None)
+    if callable(setter):
+        try:
+            setter([])
+        except Exception:
+            pass
+
+
 def _apply_loras(pipe: Any, loras: list[dict[str, Any]]) -> None:
-    if not loras or not hasattr(pipe, "load_lora_weights"):
+    # Always reset first: the pipe is cached across jobs, so an empty LoRA list
+    # is "none", not "whatever Fast left fused".
+    if not hasattr(pipe, "load_lora_weights"):
+        if loras:
+            raise RuntimeError(
+                "This backend cannot load LoRAs — clear the LoRA picker, or "
+                "switch Inspector Backend."
+            )
+        return
+    _reset_loras(pipe)
+    wanted = [item for item in loras if item.get("id") or item.get("path")]
+    if not wanted:
         return
     names: list[str] = []
     weights: list[float] = []
-    for index, item in enumerate(loras):
+    for index, item in enumerate(wanted):
         path = item.get("id") or item.get("path")
-        if not path:
-            continue
         name = f"adapter{index}"
         try:
             pipe.load_lora_weights(path, adapter_name=name)
         except TypeError:
-            pipe.load_lora_weights(path)
-            names = []
-            break
+            if len(wanted) > 1:
+                raise RuntimeError(
+                    "This generator cannot stack LoRAs — it has no adapter_name. "
+                    "Leave only one in the picker, or switch Inspector Backend."
+                ) from None
+            try:
+                pipe.load_lora_weights(path)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Could not load LoRA {Path(str(path)).name}: {exc}"
+                ) from exc
+            return
         except Exception as exc:
             raise RuntimeError(
                 f"Could not load LoRA {Path(str(path)).name}: {exc}"
@@ -307,14 +353,22 @@ def _apply_loras(pipe: Any, loras: list[dict[str, Any]]) -> None:
         names.append(name)
         weights.append(float(item.get("strength") or 1.0))
     setter = getattr(pipe, "set_adapters", None)
-    if setter and names:
-        try:
-            setter(names, adapter_weights=weights)
-        except Exception:
-            try:
-                setter(names)
-            except Exception:
-                pass
+    if not callable(setter) or not names:
+        return
+    try:
+        setter(names, adapter_weights=weights)
+        return
+    except Exception:
+        pass
+    try:
+        setter(names)
+    except Exception as exc:
+        labels = ", ".join(
+            Path(str(item.get("id") or item.get("path"))).name for item in wanted
+        )
+        raise RuntimeError(
+            f"Could not apply LoRA {labels}: {exc}"
+        ) from exc
 
 
 def _find_turbo_lora(mode: str = "t2va") -> str | None:

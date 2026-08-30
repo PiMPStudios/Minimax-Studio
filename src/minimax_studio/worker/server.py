@@ -33,6 +33,13 @@ from minimax_studio.worker.runtime import runtime
 
 app = FastAPI(title="MiniMax Studio Worker", version=__version__)
 
+
+@app.on_event("shutdown")
+def _shutdown_downloads() -> None:
+    from minimax_studio.worker.downloads import kill_active_downloads
+
+    kill_active_downloads()
+
 AUTH_ENV = "MINIMAX_STUDIO_WORKER_TOKEN"
 TOKEN_HEADER = "X-Minimax-Studio-Token"
 

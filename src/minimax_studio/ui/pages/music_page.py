@@ -186,7 +186,11 @@ class MusicPage(QWidget):
                 (item for item in jobs_snapshot if item.get("id") == self._job_id),
                 None,
             )
-        if job is None:
+            if job is None:
+                # Snapshot is the source of truth — do not freeze on get_job.
+                self._status.setText("Worker unreachable")
+                return
+        else:
             try:
                 job = self._client.get_job(self._job_id)
             except Exception as exc:

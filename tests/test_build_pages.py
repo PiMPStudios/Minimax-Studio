@@ -18,6 +18,7 @@ import pytest
 # A modal in a test is a hung CI runner: every box answers itself. Shared with
 # the Storage dialog tests.
 from dialogs import Dialogs as _Dialogs
+from dialogs import wait_background
 from PySide6.QtWidgets import QMessageBox
 
 from minimax_studio.ui.pages import adapters_page as adapters_module
@@ -382,6 +383,7 @@ def test_import_copies_then_validates_without_being_asked(app, monkeypatch) -> N
     )
     page = DatasetsPage(worker)
     page._import_btn.click()
+    wait_background(page)
     assert worker.imported == [("summer", "/home/me/tapes")]
     assert worker.validated == ["summer"]
     assert "Copied 2 clips" in page._status.text()
@@ -411,6 +413,7 @@ def test_history_picker_offers_only_media_this_dataset_takes(app, monkeypatch) -
     monkeypatch.setattr(datasets_module, "_HistoryPicker", Picker)
     page = DatasetsPage(worker)
     page._from_history_btn.click()
+    wait_background(page)
     assert captured == {"entries": ["h1"], "kind": "music"}
     assert "Added h1.wav from History" in page._status.text()
 
@@ -536,6 +539,7 @@ def test_start_refuses_while_preflight_is_failing(app, monkeypatch) -> None:
     worker = FakeBuildWorker(preflight_ok=False)
     page = TrainPage(worker)
     page._start_btn.click()
+    wait_background(page)
     assert worker.started == []
     assert dialogs.kinds()[-1] == "warning"
     assert "nothing was started" in dialogs.last()[1]
@@ -548,6 +552,7 @@ def test_start_refuses_a_dataset_that_does_not_validate(app, monkeypatch) -> Non
     page = TrainPage(worker)
     assert page._dataset.count() == 1
     page._start_btn.click()
+    wait_background(page)
     assert worker.started == []
     assert "not ready" in dialogs.last()[1].lower()
     assert "one.wav" in dialogs.last()[2]
@@ -566,6 +571,7 @@ def test_start_sends_the_contract_the_worker_reads(app, monkeypatch) -> None:
     page._steps.setValue(400)
     page._validation_prompt.setText("jangly indie")
     page._start_btn.click()
+    wait_background(page)
     assert worker.started == [
         {
             "name": "Summer LoRA",
@@ -814,6 +820,7 @@ def test_an_h3_run_is_started_without_an_audio_length(app, monkeypatch) -> None:
     _select_dataset(page, "movies")
     page._name.setText("push-in lora")
     page._start_run()
+    wait_background(page)
     assert worker.started, [call[0] for call in worker.preflights]
     payload = worker.started[-1]
     assert payload["preset"] == "h3-24g"

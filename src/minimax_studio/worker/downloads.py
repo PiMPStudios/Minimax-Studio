@@ -196,6 +196,13 @@ def _watch_size(job_id: str, dest: Path, stop: threading.Event) -> None:
         _update(job_id, bytes=dir_bytes(dest))
 
 
+def kill_active_downloads() -> None:
+    """Worker shutdown: pack pulls must not outlive Studio."""
+    for job_id, proc in list(runtime.download_procs.items()):
+        _kill_snapshot(proc)
+        runtime.download_procs.pop(job_id, None)
+
+
 def _cancellable_hf_snapshot(job_id: str, **kwargs: Any) -> str:
     """``snapshot_download`` has no cancel hook; run it in a child we can kill."""
     import json
@@ -203,6 +210,10 @@ def _cancellable_hf_snapshot(job_id: str, **kwargs: Any) -> str:
     import sys
 
     payload = {key: value for key, value in kwargs.items() if value is not None}
+    dest = Path(str(kwargs.get("local_dir") or "."))
+    dest.mkdir(parents=True, exist_ok=True)
+    err_path = dest / ".hf-snapshot.err"
+    err_handle = err_path.open("wb")
     proc = subprocess.Popen(
         [
             sys.executable,
@@ -212,13 +223,14 @@ def _cancellable_hf_snapshot(job_id: str, **kwargs: Any) -> str:
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
+        stderr=err_handle,
         start_new_session=True,
     )
+    runtime.download_procs[job_id] = proc
     assert proc.stdin is not None
-    proc.stdin.write(json.dumps(payload).encode("utf-8"))
-    proc.stdin.close()
     try:
+        proc.stdin.write(json.dumps(payload).encode("utf-8"))
+        proc.stdin.close()
         while proc.poll() is None:
             if _stopped(job_id):
                 _kill_snapshot(proc)
@@ -230,13 +242,26 @@ def _cancellable_hf_snapshot(job_id: str, **kwargs: Any) -> str:
         if proc.returncode not in (0, None):
             if _stopped(job_id):
                 raise _DownloadCancelled()
-            err = (proc.stderr.read() if proc.stderr else b"")[:400]
+            err = b""
+            try:
+                err = err_path.read_bytes()[-400:]
+            except OSError:
+                pass
             raise RuntimeError(
                 f"download process failed: {err.decode('utf-8', 'replace')}"
             )
     finally:
+        runtime.download_procs.pop(job_id, None)
+        try:
+            err_handle.close()
+        except OSError:
+            pass
         if proc.poll() is None:
             _kill_snapshot(proc)
+        try:
+            err_path.unlink()
+        except OSError:
+            pass
     return str(kwargs.get("local_dir") or "")
 
 
@@ -261,29 +286,6 @@ def _kill_snapshot(proc: Any) -> None:
                 proc.wait(timeout=2)
     except (ProcessLookupError, PermissionError, OSError, subprocess.SubprocessError):
         pass
-
-
-def _hf_snapshot(
-    repo_id: str,
-    local_dir: str,
-    token: str | None,
-    allow_patterns: list[str] | None,
-    ignore_patterns: list[str] | None,
-) -> str:
-    from huggingface_hub import snapshot_download
-
-    # huggingface_hub >= 1.0 always resumes; the old resume_download flag is
-    # deprecated and ignored there, so we do not pass it.
-    kwargs: dict[str, Any] = {
-        "repo_id": repo_id,
-        "local_dir": local_dir,
-        "token": token,
-    }
-    if allow_patterns:
-        kwargs["allow_patterns"] = allow_patterns
-    if ignore_patterns:
-        kwargs["ignore_patterns"] = ignore_patterns
-    return snapshot_download(**kwargs)
 
 
 def _ensure_license(repo_id: str, dest: Path, token: str | None) -> None:

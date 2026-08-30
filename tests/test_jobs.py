@@ -216,3 +216,24 @@ def test_real_error_during_cancel_stays_error(
     final = _wait_terminal(job["id"])
     assert final["status"] == "error"
     assert "out of memory" in (final.get("error") or "")
+
+
+def test_terminal_jobs_are_pruned(studio_home: Path) -> None:
+    from minimax_studio.worker.jobs import MAX_TERMINAL_JOBS, _prune_jobs, list_jobs
+    from minimax_studio.worker.runtime import runtime
+
+    runtime.jobs.clear()
+    for index in range(MAX_TERMINAL_JOBS + 3):
+        runtime.jobs[str(index)] = {
+            "id": str(index),
+            "status": "done",
+            "created_at": index,
+        }
+    runtime.jobs["live"] = {"id": "live", "status": "running", "created_at": 99}
+    _prune_jobs()
+    ids = {item["id"] for item in list_jobs()}
+    assert "live" in ids
+    assert "0" not in ids
+    assert "1" not in ids
+    assert "2" not in ids
+    assert str(MAX_TERMINAL_JOBS + 2) in ids

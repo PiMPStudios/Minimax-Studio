@@ -1,4 +1,32 @@
-from minimax_studio.ui.ready import classify_preflight, format_queue_line, notify_job_result
+from minimax_studio.ui.ready import (
+    classify_preflight,
+    confirm_generate,
+    format_queue_line,
+    notify_job_result,
+    remember_preflight,
+)
+
+
+def test_confirm_generate_reuses_fresh_inspector_check(monkeypatch) -> None:
+    remember_preflight(
+        {
+            "ok": True,
+            "kind": "music",
+            "requested": "auto",
+            "mode": "ttm",
+        },
+        speed="quality",
+        resolution="768P",
+    )
+    called = []
+
+    class Client:
+        def preflight(self, *args, **kwargs):
+            called.append(args)
+            return {"ok": False, "detail": "should not hit the worker"}
+
+    assert confirm_generate(None, Client(), "music", "auto", "ttm")  # type: ignore[arg-type]
+    assert called == []
 
 
 def test_classify_preflight_ok() -> None:

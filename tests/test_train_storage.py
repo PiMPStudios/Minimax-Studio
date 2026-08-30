@@ -404,6 +404,21 @@ def test_export_can_include_the_cache_when_asked(runs_home, tmp_path):
     assert out["bytes"] >= 16 * 1024
 
 
+def test_export_cleans_staging_when_a_copy_fails(runs_home, tmp_path, monkeypatch):
+    run = _make_run()
+    _checkpoint(run, 100, kb=4)
+
+    def boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("shutil.copy2", boom)
+    dest = tmp_path / "out"
+    with pytest.raises(OSError, match="disk full"):
+        train_runs.export_run(run["id"], dest)
+    assert not (dest / run["id"]).exists()
+    assert not list(dest.glob(".*.exporting"))
+
+
 def test_export_refuses_to_overwrite_a_folder_it_did_not_write(runs_home, tmp_path):
     run = _make_run()
     train_runs.export_run(run["id"], tmp_path / "out")

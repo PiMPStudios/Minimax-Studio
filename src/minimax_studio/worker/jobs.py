@@ -13,6 +13,7 @@ from minimax_studio.worker.runtime import runtime
 TERMINAL_STATUSES = frozenset({"done", "error", "cancelled"})
 ACTIVE_STATUSES = frozenset({"queued", "running", "cancelling"})
 MAX_QUEUE = 8
+MAX_TERMINAL_JOBS = 32
 
 
 class CancelledError(RuntimeError):
@@ -319,4 +320,21 @@ def _run_job(job_id: str, request: JobRequest) -> None:
                 progress=0.0,
             )
     finally:
+        _prune_jobs()
         _kick_queue()
+
+
+def _prune_jobs() -> None:
+    """History has the takes; the in-memory queue only needs the live ones."""
+    with runtime.lock:
+        terminal = [
+            item
+            for item in runtime.jobs.values()
+            if item.get("status") in TERMINAL_STATUSES
+        ]
+        extra = len(terminal) - MAX_TERMINAL_JOBS
+        if extra <= 0:
+            return
+        terminal.sort(key=lambda item: item.get("created_at") or 0)
+        for item in terminal[:extra]:
+            runtime.jobs.pop(item.get("id"), None)

@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from minimax_studio.worker.fsutil import atomic_write_text
 from minimax_studio.worker.runtime import runtime
 
 
@@ -17,7 +18,10 @@ def list_presets() -> list[dict[str, Any]]:
     path = _path()
     if not path.is_file():
         return []
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
     if isinstance(data, list):
         return data
     return []
@@ -29,9 +33,7 @@ def save_preset(payload: dict[str, Any]) -> dict[str, Any]:
         item = _build_item(payload)
         items = [row for row in items if row.get("id") != item["id"]]
         items.append(item)
-        dest = _path()
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        atomic_write_text(_path(), json.dumps(items, indent=2))
     return item
 
 
@@ -69,4 +71,4 @@ def _build_item(payload: dict[str, Any]) -> dict[str, Any]:
 def delete_preset(preset_id: str) -> None:
     with runtime.lock:
         items = [row for row in list_presets() if row.get("id") != preset_id]
-        _path().write_text(json.dumps(items, indent=2), encoding="utf-8")
+        atomic_write_text(_path(), json.dumps(items, indent=2))

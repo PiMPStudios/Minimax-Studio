@@ -42,7 +42,10 @@ def list_loras() -> list[dict[str, Any]]:
         if not folder.is_dir():
             continue
         for path in sorted(folder.rglob("*.safetensors")):
-            key = path.name.lower()
+            try:
+                key = str(path.resolve()).lower()
+            except OSError:
+                key = str(path).lower()
             if key in seen:
                 continue
             if "turbo" not in path.name.lower() and "lora" not in path.name.lower():

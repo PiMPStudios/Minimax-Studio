@@ -66,9 +66,9 @@ def probe() -> dict[str, Any]:
         for index, gpu in enumerate(info["gpus"]):
             if index < len(smi) and smi[index].get("free_vram_gb") is not None:
                 gpu["free_vram_gb"] = smi[index]["free_vram_gb"]
-    info["free_vram_gb"] = max(
-        (gpu.get("free_vram_gb") or 0.0 for gpu in info["gpus"]), default=None
-    ) or None
+    from minimax_studio.worker.device import selected_free_vram_gb
+
+    info["free_vram_gb"] = selected_free_vram_gb(info)
     _CACHE = info
     _CACHE_AT = now
     return dict(info)

@@ -28,6 +28,24 @@ def test_nvidia_smi_fallback_when_no_torch(monkeypatch) -> None:
         assert info["cuda_source"] == "nvidia-smi"
 
 
+def test_free_vram_is_the_selected_gpu(monkeypatch, studio_home) -> None:
+    from minimax_studio.worker.probe import probe, reset_probe_cache
+    from minimax_studio.worker.runtime import runtime
+
+    runtime.config.cuda_device = 1
+    reset_probe_cache()
+    monkeypatch.setattr("minimax_studio.worker.probe._torch_probe", lambda: {})
+    monkeypatch.setattr(
+        "minimax_studio.worker.probe._nvidia_smi_gpus",
+        lambda: [
+            {"name": "GPU0", "vram_gb": 8.0, "free_vram_gb": 7.0},
+            {"name": "GPU1", "vram_gb": 24.0, "free_vram_gb": 22.0},
+        ],
+    )
+    info = probe()
+    assert info["free_vram_gb"] == 22.0
+
+
 def test_health_and_probe_routes() -> None:
     client = TestClient(app)
     health = client.get("/health")

@@ -23,11 +23,25 @@ def select_cuda_device() -> str:
     return f"cuda:{index}"
 
 
-def selected_vram_gb(hw: dict[str, Any]) -> float:
+def selected_gpu_index(hw: dict[str, Any]) -> int:
     gpus = hw.get("gpus") or []
     index = max(0, int(runtime.config.cuda_device or 0))
+    if gpus and index >= len(gpus):
+        return 0
+    return index
+
+
+def selected_vram_gb(hw: dict[str, Any]) -> float:
+    gpus = hw.get("gpus") or []
     if gpus:
-        if index >= len(gpus):
-            index = 0
-        return float(gpus[index].get("vram_gb") or 0)
+        return float(gpus[selected_gpu_index(hw)].get("vram_gb") or 0)
     return float(hw.get("vram_gb") or 0)
+
+
+def selected_free_vram_gb(hw: dict[str, Any]) -> float | None:
+    """Free VRAM on the GPU Settings selected — not max() across cards."""
+    gpus = hw.get("gpus") or []
+    if not gpus:
+        return None
+    value = gpus[selected_gpu_index(hw)].get("free_vram_gb")
+    return None if value is None else float(value)

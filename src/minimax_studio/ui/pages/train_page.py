@@ -671,48 +671,9 @@ class TrainPage(QWidget):
             return
         name = self._name.text().strip() or "training run"
         preset = str(self._preset.currentData() or "24g")
-        try:
-            check = self._client.train_preflight(preset, str(dataset_dir))
-        except Exception as exc:
-            QMessageBox.warning(self, "Could not check requirements", str(exc))
-            return
-        self.preflight()
-        if not check.get("ok"):
-            QMessageBox.warning(
-                self,
-                "Not ready — nothing was started",
-                str(check.get("detail") or " ".join(check.get("problems") or [])),
-            )
-            return
-        try:
-            report = self._client.validate_dataset(dataset_id)
-        except Exception as exc:
-            QMessageBox.warning(self, "Dataset check failed", str(exc))
-            return
-        if not report.get("ok"):
-            bad = [entry for entry in report.get("rows", []) if not entry.get("ok")]
-            first = bad[0] if bad else {}
-            QMessageBox.warning(
-                self,
-                "This dataset is not ready",
-                f"{len(bad)} of {report.get('checked', 0)} clips have problems — "
-                f"first: {first.get('file')} "
-                f"{'; '.join(first.get('problems') or [])}. Fix them on the "
-                "Datasets page; hours of VRAM is a rough way to find a missing "
-                "caption.",
-            )
-            return
-        clips = report.get("checked", 0)
-        answer = QMessageBox.question(
-            self,
-            "Start training",
-            f"Train “{name}” for {self._steps.value()} steps on {clips} clips "
-            f"({self._preset.currentText()})?\n\n"
-            "The run is its own process: closing Studio will not stop it. "
-            "Cancel any time — it resumes from the last checkpoint.",
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
+        preset_title = self._preset.currentText()
+        steps = int(self._steps.value())
+        rank = int(self._rank.value())
         validation: dict[str, Any] = {
             "prompt": self._validation_prompt.text().strip()
         }
@@ -720,26 +681,113 @@ class TrainPage(QWidget):
             # An H3 run has no audio length to promise; sending one would be a
             # key the trainer either ignores or rejects.
             validation["duration"] = int(self._validation_duration.value())
-        try:
-            run = self._client.start_train_run(
-                {
-                    "name": name,
-                    "dataset_dir": str(dataset_dir),
-                    "preset": preset,
-                    "steps": int(self._steps.value()),
-                    "rank": int(self._rank.value()),
-                    "validation": validation,
+        self._form_status.setText("Checking requirements…")
+        self._start_btn.setEnabled(False)
+        from minimax_studio.ui.enhance import start_background
+
+        def checks() -> dict[str, Any]:
+            try:
+                check = self._client.train_preflight(preset, str(dataset_dir))
+            except Exception as exc:
+                return {
+                    "phase": "error",
+                    "title": "Could not check requirements",
+                    "message": str(exc),
                 }
+            if not check.get("ok"):
+                return {"phase": "preflight", "check": check}
+            try:
+                report = self._client.validate_dataset(dataset_id)
+            except Exception as exc:
+                return {
+                    "phase": "error",
+                    "title": "Dataset check failed",
+                    "message": str(exc),
+                }
+            return {"phase": "checked", "check": check, "report": report}
+
+        def after_checks(payload: object) -> None:
+            self.preflight()
+            if not isinstance(payload, dict):
+                self._start_btn.setEnabled(True)
+                return
+            if payload.get("phase") == "error":
+                self._start_btn.setEnabled(True)
+                QMessageBox.warning(
+                    self,
+                    str(payload.get("title") or "Could not check requirements"),
+                    str(payload.get("message") or "Worker unreachable"),
+                )
+                return
+            if payload.get("phase") == "preflight":
+                self._start_btn.setEnabled(True)
+                check = payload.get("check") or {}
+                QMessageBox.warning(
+                    self,
+                    "Not ready — nothing was started",
+                    str(check.get("detail") or " ".join(check.get("problems") or [])),
+                )
+                return
+            report = payload.get("report") or {}
+            if not report.get("ok"):
+                self._start_btn.setEnabled(True)
+                bad = [entry for entry in report.get("rows", []) if not entry.get("ok")]
+                first = bad[0] if bad else {}
+                QMessageBox.warning(
+                    self,
+                    "This dataset is not ready",
+                    f"{len(bad)} of {report.get('checked', 0)} clips have problems — "
+                    f"first: {first.get('file')} "
+                    f"{'; '.join(first.get('problems') or [])}. Fix them on the "
+                    "Datasets page; hours of VRAM is a rough way to find a missing "
+                    "caption.",
+                )
+                return
+            clips = report.get("checked", 0)
+            answer = QMessageBox.question(
+                self,
+                "Start training",
+                f"Train “{name}” for {steps} steps on {clips} clips "
+                f"({preset_title})?\n\n"
+                "The run is its own process: closing Studio will not stop it. "
+                "Cancel any time — it resumes from the last checkpoint.",
             )
-        except Exception as exc:
-            QMessageBox.warning(self, "Training did not start", str(exc))
-            return
-        self._form_status.setText(
-            f"Started “{run.get('name')}” (pid {run.get('pid')}). "
-            "It survives Studio closing — this page reattaches."
-        )
-        self._selected_run = str(run.get("id"))
-        self.refresh()
+            if answer != QMessageBox.StandardButton.Yes:
+                self._start_btn.setEnabled(True)
+                return
+            try:
+                run = self._client.start_train_run(
+                    {
+                        "name": name,
+                        "dataset_dir": str(dataset_dir),
+                        "preset": preset,
+                        "steps": steps,
+                        "rank": rank,
+                        "validation": validation,
+                    }
+                )
+            except Exception as exc:
+                self._start_btn.setEnabled(True)
+                QMessageBox.warning(self, "Training did not start", str(exc))
+                return
+            self._start_btn.setEnabled(True)
+            self._form_status.setText(
+                f"Started “{run.get('name')}” (pid {run.get('pid')}). "
+                "It survives Studio closing — this page reattaches."
+            )
+            self._selected_run = str(run.get("id"))
+            self.refresh()
+
+        def checks_fail() -> None:
+            self._start_btn.setEnabled(True)
+            QMessageBox.warning(
+                self, "Could not check requirements", "Worker unreachable"
+            )
+
+        if not start_background(
+            self, checks, after_checks, checks_fail, attr="_check_thread"
+        ):
+            self._start_btn.setEnabled(True)
 
     def _cancel_run(self) -> None:
         run_id = self._selected_run

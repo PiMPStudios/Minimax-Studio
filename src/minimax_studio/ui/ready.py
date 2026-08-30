@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from PySide6.QtWidgets import QInputDialog, QMessageBox, QWidget
@@ -40,6 +41,44 @@ def classify_preflight(check: dict[str, Any]) -> str:
     return "ok"
 
 
+_PREFLIGHT_TTL_S = 8.0
+_preflight_cache: dict[str, Any] = {}
+_preflight_cache_at = 0.0
+
+
+def remember_preflight(
+    check: dict[str, Any],
+    *,
+    speed: str = "quality",
+    resolution: str = "768P",
+) -> None:
+    """Inspector route check is already off-thread; Generate reuses it."""
+    global _preflight_cache, _preflight_cache_at
+    _preflight_cache = {
+        **check,
+        "_speed": str(speed),
+        "_resolution": str(resolution),
+    }
+    _preflight_cache_at = time.monotonic()
+
+
+def _cached_preflight(
+    kind: str, backend: str, mode: str, speed: str, resolution: str
+) -> dict[str, Any] | None:
+    if time.monotonic() - _preflight_cache_at > _PREFLIGHT_TTL_S:
+        return None
+    check = _preflight_cache
+    if (
+        str(check.get("kind") or "") == str(kind)
+        and str(check.get("requested") or "") == str(backend)
+        and str(check.get("mode") or "") == str(mode)
+        and str(check.get("_speed") or "") == str(speed)
+        and str(check.get("_resolution") or "") == str(resolution)
+    ):
+        return check
+    return None
+
+
 def confirm_generate(
     parent: QWidget,
     client: WorkerClient,
@@ -50,7 +89,10 @@ def confirm_generate(
     resolution: str = "768P",
 ) -> bool:
     try:
-        check = client.preflight(kind, backend, mode, speed, resolution)
+        check = _cached_preflight(kind, backend, mode, speed, resolution)
+        if check is None:
+            check = client.preflight(kind, backend, mode, speed, resolution)
+            remember_preflight(check, speed=speed, resolution=resolution)
     except Exception as exc:
         QMessageBox.warning(parent, "Worker unreachable", str(exc))
         return False

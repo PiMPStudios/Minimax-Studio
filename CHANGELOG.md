@@ -12,6 +12,70 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.36] — 2026-08-30
+
+0.2.35 rest-of-app pass (issues 51–67). Full suite green: 336 passed, `ruff
+check` clean.
+
+### Fixed
+
+- **CUDA generate no longer keeps Turbo/LoRAs across jobs (51, 63).** The
+  cached `h3_pipe` / `music_pipe` now unloads adapters at the start of every
+  job, so Fast then Quality is Quality, and LoRA A then none is none. No
+  `adapter_name` + two LoRAs refuses instead of dropping LoRA 2.
+  `set_adapters` failure names the file (issue 34 again). Tests:
+  `tests/test_apply_loras.py`.
+- **History ids cannot walk out of the history folder (52).** Same `_require_id`
+  as datasets/runs. `DELETE /history/..` is 404, not `rmtree(output_dir)`.
+  Tests: `tests/test_history.py`.
+- **Generate poll no longer `get_job`s on the GUI thread (53).** If the shared
+  snapshot was passed and the live id is missing, the page says worker
+  unreachable and keeps the id for reattach. `poll()` with no snapshot (tests)
+  may still `get_job`.
+- **Training honors Settings → CUDA GPU (54).** SimpleTuner subprocess gets
+  `CUDA_VISIBLE_DEVICES`. Probe/preflight free VRAM is that GPU, not `max()`
+  across cards.
+- **Pack download Cancel/quit actually stops Hugging Face (55).** Snapshot
+  child writes stderr to a file (no PIPE deadlock). Worker shutdown kills
+  tracked snapshot process groups so a 130 GB pull does not outlive Studio.
+- **MLX blank lyrics is not an instrumental (56).** Empty lyrics pass through,
+  matching CUDA and the Music API `lyrics_optimizer` path.
+- **Generate confirm reuses the inspector preflight (57).** Fresh (8 s) route
+  check is reused so Generate does not hit Comfy `/object_info` on the GUI
+  thread. Cache miss still calls `/preflight` sync.
+- **Train status bar is off-thread and shows `lost` (58).** Same live set as
+  the Train page (`running` / `queued` / `lost`).
+- **Datasets Validate and Train Start checks are off-thread (59).** ffprobe on
+  a big set no longer freezes the shell. Train Start: preflight+validate off
+  the GUI thread, confirm dialog on the GUI, `start_train_run` (process spawn)
+  stays on the GUI after Yes — a second QThread here segfaulted Qt teardown in
+  tests. Constructor `refresh()` stays sync.
+- **In-memory job list is capped (60).** Keep live jobs plus the last 32
+  terminal ones. History already has the takes.
+- **History index is atomic and rebuilds if missing (61).** Delete writes temp
+  + replace. No `index.jsonl` → rebuild from `history/*/meta.json`.
+- **Corrupt `config.json` / `presets.json` / `meta.json` do not crash (62).**
+  Same swallow as `validation.json` (issue 15). Writes use temp + replace.
+- **CUDA `TypeError` fallback respects Cancel (64).** If cancel flipped around
+  the no-callback `pipe(**kwargs)` call, the job is `cancelled` and History is
+  not written. Mid-sample abort still needs the step callback.
+- **`list_loras` keys on resolved path (65).** Two `style.safetensors` in
+  different folders both show.
+- **One `httpx.Client` per `WorkerClient` (66).** Per-request timeout still
+  overrides. `close()` exists; the window dying with the process is enough.
+- **Failed `export_run` does not leave a dest you cannot overwrite (67).**
+  Copy into `.{id}.exporting`, rename, rmtree staging on failure.
+
+### Tests
+
+- Status-bar live-training assertion waits for the off-thread fetch (issue 58)
+  and now covers `lost` as well as `running`.
+
+### Notes
+
+- H3 SimpleTuner keys / encoder path (`H3_UNVERIFIED_KEYS`, PLAN-V2 S0 metal)
+  and H3 still-pair audition stay for a metal session.
+
 ## [0.2.35] — 2026-08-30
 
 ### Fixed

@@ -16,11 +16,68 @@ Usage::
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox
 
-__all__ = ["Dialogs", "MessageBoxShim"]
+__all__ = ["Dialogs", "MessageBoxShim", "wait_background"]
+
+
+def wait_background(widget: Any, timeout: float = 4.0) -> None:
+    """Join QThreads start_background started, and flush singleShot(0) callbacks."""
+    app = QApplication.instance()
+    deadline = time.monotonic() + timeout
+    idle = 0
+    while time.monotonic() < deadline:
+        threads: list[Any] = []
+        running = False
+        thread_attrs: list[str] = []
+        for name, value in list(vars(widget).items()):
+            try:
+                is_running = getattr(value, "isRunning", None)
+                wait = getattr(value, "wait", None)
+                if callable(is_running) and callable(wait):
+                    threads.append(("qt", value))
+                    thread_attrs.append(name)
+                    if is_running():
+                        running = True
+                    continue
+                is_alive = getattr(value, "is_alive", None)
+                join = getattr(value, "join", None)
+                if callable(is_alive) and callable(join):
+                    threads.append(("py", value))
+                    thread_attrs.append(name)
+                    if is_alive():
+                        running = True
+            except RuntimeError:
+                continue
+        if app is not None:
+            app.processEvents()
+        if running:
+            idle = 0
+            time.sleep(0.01)
+            continue
+        idle += 1
+        # on_main uses QTimer.singleShot(0); a second thread may start after that.
+        if idle < 8:
+            time.sleep(0.01)
+            continue
+        for kind, thread in threads:
+            try:
+                if kind == "qt":
+                    thread.wait(3000)
+                else:
+                    thread.join(3.0)
+            except RuntimeError:
+                pass
+        if app is not None:
+            for _ in range(8):
+                app.processEvents()
+        for name in thread_attrs:
+            setattr(widget, name, None)
+        return
+    raise AssertionError(f"background work still running on {type(widget).__name__}")
 
 
 class Dialogs:

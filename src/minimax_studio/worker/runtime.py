@@ -13,6 +13,7 @@ class Runtime:
         self.config = load_config()
         self.downloads: dict[str, dict[str, Any]] = {}
         self.download_stops: dict[str, threading.Event] = {}
+        self.download_procs: dict[str, Any] = {}
         self.jobs: dict[str, dict[str, Any]] = {}
         self.music_pipe: Any = None
         self.music_pipe_path: str | None = None

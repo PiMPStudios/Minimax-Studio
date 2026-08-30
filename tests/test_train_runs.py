@@ -72,6 +72,25 @@ def _wait_status(run_id: str, wanted: str, timeout: float = 25.0) -> dict:
     pytest.fail(f"run never reached {wanted}; last state: {state}")
 
 
+def test_start_run_sets_cuda_visible_devices(
+    trainer_stub: Path, studio_home: Path, monkeypatch
+) -> None:
+    from minimax_studio.worker.runtime import runtime
+
+    runtime.config.cuda_device = 1
+    captured: dict[str, object] = {}
+    real = train_runs.subprocess.Popen
+
+    def wrapped(*args, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(train_runs.subprocess, "Popen", wrapped)
+    train_runs.start_run("gpu pin", _dataset(trainer_stub), "24g", steps=2)
+    env = captured.get("env") or {}
+    assert env.get("CUDA_VISIBLE_DEVICES") == "1"
+
+
 def test_start_run_writes_run_dir_and_state(trainer_stub: Path) -> None:
     clips = _dataset(trainer_stub)
     state = train_runs.start_run("my song lora", clips, "24g", steps=42)
