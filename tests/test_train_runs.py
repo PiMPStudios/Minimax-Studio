@@ -147,6 +147,13 @@ def test_cancel_stops_the_whole_group(trainer_stub: Path, monkeypatch) -> None:
     assert done["exit_code"] not in (None,)
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason=(
+        "Windows cancel is taskkill /F (exit 1). SIGTERM-exits-0 is how "
+        "SimpleTuner dies on POSIX, which is the case this test pins."
+    ),
+)
 def test_cancel_is_still_cancelled_when_the_trainer_exits_zero(
     trainer_stub: Path, monkeypatch
 ) -> None:
