@@ -23,6 +23,7 @@ from minimax_studio.worker.train_config import (
     simpletuner_command_prefix,
     train_preflight,
     validate_music_dataset_dir,
+    validate_video_dataset_dir,
     write_run_config,
 )
 
@@ -74,15 +75,34 @@ def start_run(
             f"Unknown training preset '{preset}' "
             f"(known: {', '.join(sorted(PRESETS))})."
         )
-    errors = validate_music_dataset_dir(dataset_dir)
+    from minimax_studio.worker.datasets import assert_trainable, dataset_spec
+
+    spec = dataset_spec(dataset_dir)
+    # Family before fire. An H3 preset pointed at a Music dataset (or the other
+    # way round) would train the wrong model and then credit the wrong
+    # provenance to the result, so this refusal is outside the force switch.
+    preset_row = PRESETS[preset]
+    wanted = "video" if preset_row.family == "h3" else "music"
+    if spec["kind"] != wanted:
+        raise RuntimeError(
+            f"Preset '{preset_row.title}' trains "
+            f"{'MiniMax H3 — stills and short clips' if preset_row.family == 'h3' else 'MiniMax Music 3 — audio clips'}"
+            f", but {dataset_dir} holds a {spec['kind']} dataset "
+            f"({spec['stills']} stills, {spec['clips']} clips, "
+            f"{spec['audio_files']} audio). Pick the preset for this kind."
+        )
+    errors = (
+        validate_video_dataset_dir(dataset_dir)
+        if spec["kind"] == "video"
+        else validate_music_dataset_dir(dataset_dir)
+    )
     if errors:
         raise RuntimeError("Dataset is not ready to train: " + " ".join(errors[:3]))
     # If it's an app-managed dataset (has a manifest), it must validate clean.
-    from minimax_studio.worker.datasets import assert_trainable
 
     assert_trainable(Path(dataset_dir).resolve())
     if not os.environ.get("MINIMAX_STUDIO_TRAIN_FORCE"):
-        check = train_preflight(preset)
+        check = train_preflight(preset, dataset_dir)
         if not check["ok"]:
             raise RuntimeError(check["detail"])
     prefix = simpletuner_command_prefix()
@@ -103,6 +123,7 @@ def start_run(
         steps=steps,
         rank=rank,
         validation=validation,
+        dataset_spec=spec,
     )
     log = open(run_dir / "train.log", "ab")
     cmd = [*prefix, "train", f"env={run_id}"]
@@ -121,6 +142,11 @@ def start_run(
         "id": run_id,
         "name": name,
         "dataset_dir": str(Path(dataset_dir).resolve()),
+        "dataset_kind": spec["kind"],
+        # Kept with the run, not re-derived at resume: if the dataset folder is
+        # gone or moved, resuming must still write the same kind of config.
+        "dataset_spec": spec,
+        "family": preset_row.family,
         "preset": preset,
         "steps": int(steps),
         "rank": int(rank or PRESETS[preset].lora_rank),
@@ -558,6 +584,7 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
         steps=int(state.get("steps") or 1000),
         rank=state.get("rank"),
         resume_from_checkpoint=source,
+        dataset_spec=state.get("dataset_spec") or None,
     )
     log = open(run_dir / "train.log", "ab")
     try:

@@ -440,11 +440,14 @@ class TrainRunIn(BaseModel):
 
 
 @app.get("/train/preflight")
-def train_preflight(preset: str = "24g") -> dict[str, object]:
+def train_preflight(preset: str = "24g", dataset_dir: str | None = None) -> dict[str, object]:
+    """`dataset_dir` is optional: the Train page checks as the user picks, and
+    passes the dataset once there is one — that is what catches a Music preset
+    aimed at an H3 dataset before a run folder exists."""
     from minimax_studio.worker.train_config import train_preflight as check
 
     try:
-        return check(preset)
+        return check(preset, dataset_dir)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -601,6 +604,22 @@ def dataset_validate(dataset_id: str) -> dict[str, object]:
 
     try:
         return datasets.validate_dataset(dataset_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+class H3TargetModeIn(BaseModel):
+    mode: str
+
+
+@app.post("/datasets/{dataset_id}/target-mode")
+def dataset_target_mode(dataset_id: str, body: H3TargetModeIn) -> dict[str, object]:
+    """`video` or `av` for an H3 dataset. `av` is refused with the clip names
+    when the set cannot carry it — see datasets.set_h3_target_mode."""
+    from minimax_studio.worker import datasets
+
+    try:
+        return datasets.set_h3_target_mode(dataset_id, body.mode)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

@@ -25,6 +25,11 @@ from typing import Any
 
 SIMPLETUNER_PIN = "4.8.0"
 
+# VAE + text-embed caches grow past the dataset size; demand headroom, not luck.
+# Each preset can raise it — video caches are another order of magnitude, and
+# "40 GB wanted" beats a full disk at step 400.
+MIN_FREE_CACHE_GB = 10.0
+
 
 @dataclass(frozen=True)
 class TrainPreset:
@@ -36,10 +41,30 @@ class TrainPreset:
     text_encoder_precision: str
     gradient_checkpointing: bool = True
     note: str = ""
+    #: which trainer this preset belongs to — a Music dataset and an H3 preset
+    #: must never meet, and the only way to guarantee that is to say it here.
+    family: str = "music"
+    #: SimpleTuner's CPU-offload: how a 24 GB card reaches H3 at all.
+    ram_torch: bool = False
+    #: the pixel bucket the trainer fills (stills and frames alike).
+    resolution: int = 512
+    #: packs that must be on disk, all of them…
+    packs: tuple[str, ...] = ()
+    #: …and packs where any one will do (the H3 weights share one folder).
+    packs_any: tuple[str, ...] = ()
+    min_free_cache_gb: float = MIN_FREE_CACHE_GB
 
 
 # Floors from SimpleTuner's own MiniMax Music 3 quickstart (24 GB minimum,
-# 48 GB recommended); ranks/precisions are its conservative defaults.
+# 48 GB recommended); ranks/precisions are its conservative defaults. The H3
+# tiers are the four SimpleTuner names for LoRA on the video model (24G with
+# RamTorch CPU-offload, 32G, 48G, 80G).
+#
+# H3 note, said out loud rather than hidden in a key name: H3 has never been
+# trained on this machine yet (PLAN-V2 S0 steps 3–5 own that evening), so the
+# H3 config keys below are written against SimpleTuner's documentation. Preflight
+# says so on every H3 preset, and the metal session is what turns that warning
+# off — same rule that keeps STEP_RE/LOSS_RE honest.
 PRESETS: dict[str, TrainPreset] = {
     "24g": TrainPreset(
         name="24g",
@@ -59,11 +84,98 @@ PRESETS: dict[str, TrainPreset] = {
         text_encoder_precision="int8-quanto",
         note="bf16 transformer, int8 text encoder",
     ),
+    "h3-24g": TrainPreset(
+        name="h3-24g",
+        title="24 GB — H3 LoRA with RamTorch",
+        vram_floor_gb=24,
+        lora_rank=16,
+        base_model_precision="int8-quanto",
+        text_encoder_precision="int8-quanto",
+        note="RamTorch CPU-offload, int8 everywhere, 480p buckets",
+        family="h3",
+        ram_torch=True,
+        resolution=480,
+        packs_any=("h3-diffusers-fl2va", "h3-diffusers-ref2va"),
+        min_free_cache_gb=40.0,
+    ),
+    "h3-32g": TrainPreset(
+        name="h3-32g",
+        title="32 GB — H3 LoRA",
+        vram_floor_gb=32,
+        lora_rank=16,
+        base_model_precision="int8-quanto",
+        text_encoder_precision="int8-quanto",
+        note="int8 + gradient checkpointing, 768p buckets",
+        family="h3",
+        resolution=768,
+        packs_any=("h3-diffusers-fl2va", "h3-diffusers-ref2va"),
+        min_free_cache_gb=40.0,
+    ),
+    "h3-48g": TrainPreset(
+        name="h3-48g",
+        title="48 GB — H3 LoRA, rank 32",
+        vram_floor_gb=48,
+        lora_rank=32,
+        base_model_precision="int8-quanto",
+        text_encoder_precision="int8-quanto",
+        note="int8 at 768p, rank 32",
+        family="h3",
+        resolution=768,
+        packs_any=("h3-diffusers-fl2va", "h3-diffusers-ref2va"),
+        min_free_cache_gb=60.0,
+    ),
+    "h3-80g": TrainPreset(
+        name="h3-80g",
+        title="80 GB — H3 LoRA, full precision transformer",
+        vram_floor_gb=80,
+        lora_rank=32,
+        base_model_precision="bf16",
+        text_encoder_precision="int8-quanto",
+        note="bf16 transformer at 1080p buckets",
+        family="h3",
+        resolution=1080,
+        packs_any=("h3-diffusers-fl2va", "h3-diffusers-ref2va"),
+        min_free_cache_gb=80.0,
+    ),
 }
 DEFAULT_PRESET = "24g"
 
-# VAE + text-embed caches grow past the dataset size; demand headroom, not luck.
-MIN_FREE_CACHE_GB = 10.0
+#: Keys the H3 config writes that only real SimpleTuner output can confirm.
+#: Listed in code so the metal session has a checklist instead of a memory, and
+#: surfaced by preflight so the user is told before the run, not after.
+H3_UNVERIFIED_KEYS = (
+    "minimax_h3_target_mode",
+    "ram_torch",
+    "resolution",
+    "validation_prompt",
+)
+
+
+def validate_video_dataset_dir(path: str | Path) -> list[str]:
+    """Cheap, honest checks for an H3 dataset — the full validator is
+    :func:`datasets._validate_video_dir`; this is the preflight-shaped version
+    that answers in milliseconds without measuring a single frame."""
+    from minimax_studio.worker.datasets import MEDIA_BY_KIND
+
+    folder = Path(path)
+    if not folder.is_dir():
+        return [f"Dataset folder not found: {folder}"]
+    media = [
+        item
+        for item in sorted(folder.iterdir())
+        if item.suffix.lower() in MEDIA_BY_KIND["video"]
+    ]
+    if not media:
+        return [
+            f"No stills or clips in {folder} — H3 wants .png/.jpg stills or "
+            "short .mp4 clips"
+        ]
+    errors = [
+        f"{item.name}: missing caption {item.stem}.txt"
+        for item in media
+        if not item.with_suffix(".txt").is_file()
+    ]
+    return errors
 
 
 def validate_music_dataset_dir(path: str | Path) -> list[str]:
@@ -79,6 +191,16 @@ def validate_music_dataset_dir(path: str | Path) -> list[str]:
         if not clip.with_suffix(".txt").is_file():
             errors.append(f"{clip.name}: missing caption {clip.stem}.txt")
     return errors
+
+
+def _default_prompt(preset: TrainPreset) -> str:
+    """Something worth rendering every 50 steps, per family."""
+    if preset.family == "h3":
+        return (
+            "a steady camera push across a neon-lit street at dusk, shallow "
+            "depth of field, film grain"
+        )
+    return "bright synth pop with clean vocal melody and crisp percussion"
 
 
 def simpletuner_command_prefix() -> list[str] | None:
@@ -121,12 +243,19 @@ def write_run_config(
     learning_rate: float = 5e-5,
     validation: dict[str, Any] | None = None,
     resume_from_checkpoint: str | Path | None = None,
+    dataset_spec: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Write SimpleTuner's two JSON files for one detached run.
 
     Layout is what `simpletuner train env=<run_id>` expects when launched with
     cwd=run_dir. Everything SimpleTuner may ever write stays under run_dir:
     checkpoints and both caches included.
+
+    ``dataset_spec`` is what :func:`datasets.dataset_spec` measured — kind,
+    whether the set holds stills or clips, and the chosen H3 target mode. The
+    preset family and the dataset kind have to agree: an H3 preset pointed at a
+    Music dataset would train the wrong model and call it provenance, so it is
+    refused here rather than discovered an hour in.
 
     ``resume_from_checkpoint`` continues a finished or killed run from one of
     its own checkpoints — same run dir, so the weights and the cache stay put
@@ -140,22 +269,25 @@ def write_run_config(
             f"(known: {', '.join(sorted(PRESETS))})."
         )
     preset = PRESETS[preset_name]
+    dataset_spec = dataset_spec or {"kind": "music"}
+    kind = str(dataset_spec.get("kind") or "music")
+    wanted_family = "h3" if kind == "video" else "music"
+    if preset.family != wanted_family:
+        raise RuntimeError(
+            f"Preset '{preset.title}' trains "
+            f"{'MiniMax H3 (video/stills)' if preset.family == 'h3' else 'MiniMax Music 3 (audio)'}, "
+            f"but this dataset is a {kind} one. Pick the matching trainer on the "
+            "preset row."
+        )
     root = _models_root()
-    model_dir = root / "music3-cuda"
-    encoder_dir = root / "music3-train-encoder"
     env_dir = run_dir / "config" / run_id
     env_dir.mkdir(parents=True, exist_ok=True)
     validation = validation or {}
-
-    config: dict[str, Any] = {
-        "model_family": "minimaxmusic",
-        "model_flavour": "music3",
+    common = {
         "model_type": "lora",
-        "pretrained_model_name_or_path": str(model_dir),
-        "pretrained_vae_model_name_or_path": str(encoder_dir),
         "output_dir": str(run_dir / "checkpoints"),
         "data_backend_config": str(env_dir / "multidatabackend.json"),
-        "resolution": 512,
+        "resolution": preset.resolution,
         "mixed_precision": "bf16",
         "base_model_precision": preset.base_model_precision,
         "text_encoder_1_precision": preset.text_encoder_precision,
@@ -166,7 +298,6 @@ def write_run_config(
         "optimizer": "adamw_bf16",
         "learning_rate": learning_rate,
         "train_batch_size": 1,
-        "vae_batch_size": 1,
         "max_train_steps": int(steps),
         # Only present when resuming, so a fresh run's config is unchanged.
         **(
@@ -174,33 +305,78 @@ def write_run_config(
             if resume_from_checkpoint
             else {}
         ),
-        "validation_prompt": str(
-            validation.get("prompt")
-            or "bright synth pop with clean vocal melody and crisp percussion"
-        ),
-        "validation_lyrics": str(validation.get("lyrics") or ""),
-        "validation_audio_duration": float(validation.get("duration") or 15),
-        "validation_guidance": 1.7,
-        "validation_num_inference_steps": 30,
+        "validation_prompt": str(validation.get("prompt") or _default_prompt(preset)),
         "validation_steps": 50,
-        "validation_disable_unconditional": True,
     }
+    if preset.family == "h3":
+        config: dict[str, Any] = {
+            **common,
+            "model_family": "minimax_h3",
+            "model_flavour": "h3",
+            "pretrained_model_name_or_path": str(root / "h3-diffusers"),
+            # The 24 GB tier only reaches H3 by keeping layers in RAM. Written
+            # when set, absent otherwise — an unexplained key is a mystery the
+            # log has to pay for.
+            **({"ram_torch": True} if preset.ram_torch else {}),
+            # SimpleTuner's H3 target mode, straight from the dataset manifest:
+            # "av" is a choice the user made (and the validator approved),
+            # "video" is the default. Stills ride the same mode — they are the
+            # frames a video dataset would have sampled.
+            "minimax_h3_target_mode": str(
+                dataset_spec.get("h3_target_mode") or "video"
+            ),
+            # Video validation wants frames, not lyrics: `validation_prompt` is
+            # the one key common to every family, so that is what we send; how
+            # many frames to sample and with which sampler stays at SimpleTuner's
+            # defaults rather than our guesses.
+            #
+            # Drift distillation is SimpleTuner's own H3 safety net and stays on:
+            # no key is written here, because switching it off is the thing that
+            # has not been proved safe for the audio heads.
+        }
+        backend_type = "image" if (
+            dataset_spec.get("has_stills") and not dataset_spec.get("has_clips")
+        ) else "video"
+        # No bucket/aspect-ratio block for H3: those keys are the ones we have
+        # not seen SimpleTuner accept for this family, and an invented key is
+        # worse than the trainer's own default. Stills and clips both ride the
+        # resolution buckets the preset names.
+    else:
+        config = {
+            **common,
+            "model_family": "minimaxmusic",
+            "model_flavour": "music3",
+            "pretrained_model_name_or_path": str(root / "music3-cuda"),
+            "pretrained_vae_model_name_or_path": str(root / "music3-train-encoder"),
+            "vae_batch_size": 1,
+            "validation_lyrics": str(validation.get("lyrics") or ""),
+            "validation_audio_duration": float(validation.get("duration") or 15),
+            "validation_guidance": 1.7,
+            "validation_num_inference_steps": 30,
+            "validation_disable_unconditional": True,
+        }
+        backend_type = "audio"
+        media_block: dict[str, Any] = {
+            "bucket_strategy": "duration",
+            "duration_interval": 3.0,
+            "max_duration_seconds": 60,
+            "lyrics_filename_format": "{filename}.lyrics",
+        }
+    backend: dict[str, Any] = {
+        "id": f"studio-{run_id}",
+        "type": "local",
+        "dataset_type": backend_type,
+        "instance_data_dir": str(Path(dataset_dir).resolve()),
+        "metadata_backend": "discovery",
+        "caption_strategy": "textfile",
+        "cache_dir_vae": str(run_dir / "cache" / "vae"),
+    }
+    if backend_type == "audio":
+        # Music 3 buckets by duration; the key shape is the one the pinned
+        # trainer has been writing since S0.
+        backend["audio"] = media_block
     backends = [
-        {
-            "id": f"studio-{run_id}",
-            "type": "local",
-            "dataset_type": "audio",
-            "instance_data_dir": str(Path(dataset_dir).resolve()),
-            "metadata_backend": "discovery",
-            "caption_strategy": "textfile",
-            "audio": {
-                "bucket_strategy": "duration",
-                "duration_interval": 3.0,
-                "max_duration_seconds": 60,
-                "lyrics_filename_format": "{filename}.lyrics",
-            },
-            "cache_dir_vae": str(run_dir / "cache" / "vae"),
-        },
+        backend,
         {
             "id": "text-embeds",
             "dataset_type": "text_embeds",
@@ -224,9 +400,16 @@ def write_run_config(
     return paths
 
 
-def train_preflight(preset_name: str = DEFAULT_PRESET) -> dict[str, Any]:
+def train_preflight(
+    preset_name: str = DEFAULT_PRESET, dataset_dir: str | Path | None = None
+) -> dict[str, Any]:
     """Everything that must be true before burning hours of GPU — with the
-    named numbers product style demands, never a mystery OOM."""
+    named numbers product style demands, never a mystery OOM.
+
+    ``dataset_dir`` is optional because the Train page checks requirements while
+    the user is still choosing; once a dataset is picked, passing it here is what
+    catches "that preset is for the other model" before the run exists.
+    """
     if preset_name not in PRESETS:
         raise RuntimeError(
             f"Unknown training preset '{preset_name}' "
@@ -238,6 +421,7 @@ def train_preflight(preset_name: str = DEFAULT_PRESET) -> dict[str, Any]:
     result: dict[str, Any] = {
         "ok": False,
         "preset": preset_name,
+        "family": preset.family,
         "vram_floor_gb": preset.vram_floor_gb,
         "simpletuner": None,
         # The Train page builds its VRAM picker from this instead of keeping a
@@ -248,6 +432,11 @@ def train_preflight(preset_name: str = DEFAULT_PRESET) -> dict[str, Any]:
                 "vram_floor_gb": row.vram_floor_gb,
                 "lora_rank": row.lora_rank,
                 "note": row.note,
+                # The Train page filters these by the dataset's kind, so the
+                # only place the tier list lives is this table.
+                "family": row.family,
+                "ram_torch": row.ram_torch,
+                "resolution": row.resolution,
             }
             for name, row in PRESETS.items()
         },
@@ -283,15 +472,33 @@ def train_preflight(preset_name: str = DEFAULT_PRESET) -> dict[str, Any]:
     from minimax_studio.worker.downloads import pack_status
 
     root = _models_root()
-    if not pack_status(PACKS["music3-cuda"], root)["ready"]:
-        problems.append(
-            "Training LoRAs needs the official weights — download "
-            "MiniMax-Music3 (CUDA / diffusers) on the Models page."
+    if preset.family == "music":
+        if not pack_status(PACKS["music3-cuda"], root)["ready"]:
+            problems.append(
+                "Training LoRAs needs the official weights — download "
+                "MiniMax-Music3 (CUDA / diffusers) on the Models page."
+            )
+        if not pack_status(PACKS["music3-train-encoder"], root)["ready"]:
+            problems.append(
+                "The Music 3 Training Encoder pack (DAV VAE, ~0.3 GB) is "
+                "missing — download it on the Models page."
+            )
+    for pack_id in preset.packs:
+        if not pack_status(PACKS[pack_id], root)["ready"]:
+            problems.append(
+                f"'{preset.title}' needs {PACKS[pack_id].title} — download it "
+                "on the Models page."
+            )
+    if preset.packs_any and not any(
+        pack_status(PACKS[pack_id], root)["ready"] for pack_id in preset.packs_any
+    ):
+        titles = " or ".join(
+            PACKS[pack_id].title for pack_id in preset.packs_any
         )
-    if not pack_status(PACKS["music3-train-encoder"], root)["ready"]:
         problems.append(
-            "The Music 3 Training Encoder pack (DAV VAE, ~0.3 GB) is "
-            "missing — download it on the Models page."
+            f"Training H3 LoRAs needs the H3 weights in the diffusers layout — "
+            f"download {titles} on the Models page. The Comfy packs will not do: "
+            "the trainer reads the diffusers folder."
         )
 
     from minimax_studio.worker.runtime import runtime
@@ -330,15 +537,53 @@ def train_preflight(preset_name: str = DEFAULT_PRESET) -> dict[str, Any]:
 
     from minimax_studio.worker.train_runs import runs_root
 
+    if dataset_dir:
+        from minimax_studio.worker.datasets import dataset_spec
+
+        spec = dataset_spec(dataset_dir)
+        result["dataset_kind"] = spec["kind"]
+        wanted = "video" if preset.family == "h3" else "music"
+        if spec["kind"] != wanted:
+            problems.append(
+                f"'{preset.title}' trains "
+                f"{'MiniMax H3 — stills and short clips' if preset.family == 'h3' else 'MiniMax Music 3'}"
+                f", and this dataset holds "
+                f"{'clips and stills' if spec['kind'] == 'video' else 'audio'}"
+                f" ({spec['stills'] + spec['clips'] or spec['audio_files']} "
+                "file(s)). Pick the preset for the other model."
+            )
+        elif spec["kind"] == "video" and spec["has_stills"] and spec["has_clips"]:
+            result["warnings"].append(
+                f"This set mixes {spec['stills']} still(s) with {spec['clips']} "
+                "clip(s) in one run. Nothing forbids it, and nothing proves it "
+                "either — two runs, one per kind, is the comparison you can "
+                "actually read."
+            )
+
     try:
         free_disk_gb = shutil.disk_usage(runs_root()).free / (1024**3)
-        if free_disk_gb < MIN_FREE_CACHE_GB:
+        if free_disk_gb < preset.min_free_cache_gb:
             problems.append(
                 f"Only {free_disk_gb:.0f} GB free on the training volume — "
-                f"VAE/text-embed caches want about {MIN_FREE_CACHE_GB:.0f} GB."
+                f"'{preset.title}' wants about {preset.min_free_cache_gb:.0f} GB "
+                "for its VAE/text-embed caches."
             )
     except OSError:
         pass
+
+    if preset.family == "h3":
+        result["warnings"].append(
+            "H3 LoRA training has not run on this build yet: "
+            f"{', '.join(H3_UNVERIFIED_KEYS)} are written from SimpleTuner's "
+            "documentation, not its output. Watch the first minutes of the log "
+            "and report anything odd — that session is what retires this "
+            "warning."
+        )
+        if preset.ram_torch:
+            result["warnings"].append(
+                "RamTorch keeps layers in system RAM: expect the run to be "
+                "memory-bound and slower than the same tier on 32 GB."
+            )
 
     result["ok"] = not problems
     result["detail"] = (

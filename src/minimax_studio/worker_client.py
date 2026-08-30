@@ -185,9 +185,21 @@ class WorkerClient:
             f"/datasets/{_seg(dataset_id)}/validate", {}, timeout=1800.0
         )
 
-    def train_preflight(self, preset: str = "24g") -> dict[str, Any]:
-        # Reads nvidia-smi on the worker — allow for the subprocess.
-        return self._get(f"/train/preflight?preset={_seg(preset)}", timeout=90.0)
+    def set_dataset_target_mode(self, dataset_id: str, mode: str) -> dict[str, Any]:
+        # "av" is refused with the clip names when the set cannot carry it.
+        return self._post(
+            f"/datasets/{_seg(dataset_id)}/target-mode", {"mode": mode}, timeout=1800.0
+        )
+
+    def train_preflight(
+        self, preset: str = "24g", dataset_dir: str | None = None
+    ) -> dict[str, Any]:
+        # Reads nvidia-smi on the worker — allow for the subprocess. Passing the
+        # dataset is what lets the worker catch a Music preset aimed at an H3 set.
+        query = f"?preset={_seg(preset)}"
+        if dataset_dir:
+            query += f"&dataset_dir={quote(str(dataset_dir))}"
+        return self._get(f"/train/preflight{query}", timeout=90.0)
 
     def list_train_runs(self) -> list[dict[str, Any]]:
         return self._get_list("/train/runs")

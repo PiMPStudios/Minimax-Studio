@@ -149,6 +149,38 @@ def list_entries(folder: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def dataset_spec(path: str | Path) -> dict[str, Any]:
+    """What a trainer needs to know about a folder before writing a config:
+    the kind, whether it holds stills or clips, and the H3 target mode the user
+    chose. For a folder we did not make (no manifest) the kind is inferred from
+    what is in it, because people do point the trainer at a loose folder.
+    """
+    folder = Path(path)
+    manifest = _read_manifest(folder) or {}
+    stills = clips = audio = 0
+    if folder.is_dir():
+        for item in folder.iterdir():
+            suffix = item.suffix.lower()
+            if suffix in STILL_EXTS:
+                stills += 1
+            elif suffix in CLIP_EXTS:
+                clips += 1
+            elif suffix in MEDIA_BY_KIND["music"]:
+                audio += 1
+    kind = str(manifest.get("kind") or "")
+    if kind not in KINDS:
+        kind = "video" if (stills or clips) and not audio else "music"
+    return {
+        "kind": kind,
+        "stills": stills,
+        "clips": clips,
+        "audio_files": audio,
+        "has_stills": bool(stills),
+        "has_clips": bool(clips),
+        "h3_target_mode": str(manifest.get("h3_target_mode") or "video"),
+    }
+
+
 def import_folder(dataset_id: str, folder: str) -> dict[str, Any]:
     """Copy audio (+ sibling captions/lyrics) in. Copies, not references —
     cleaning the source folder must not gut a dataset (PLAN-V2 open Q3)."""
