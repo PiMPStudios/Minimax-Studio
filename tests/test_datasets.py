@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import wave
 from pathlib import Path
 
@@ -162,7 +163,7 @@ def test_validate_reports_named_problems(datasets_env: Path) -> None:
     assert any("over the 300s cap" in p for p in problems["long.wav"])
     assert any("nocaption.txt" in p for p in problems["nocaption.wav"])
     assert any("cannot read" in p for p in problems["junk.wav"])
-    assert any("no matching audio" in p for p in problems["orphan.txt"])
+    assert any("no matching media" in p for p in problems["orphan.txt"])
 
     # Summary lives in the manifest; the full report travels with the folder.
     listing = {row["id"]: row for row in datasets.list_datasets()}
@@ -178,15 +179,10 @@ def test_clean_dataset_validates_ok(datasets_env: Path) -> None:
     assert report["checked"] == 2
 
 
-def test_empty_and_video_datasets(datasets_env: Path) -> None:
+def test_empty_datasets_are_refused_by_name(datasets_env: Path) -> None:
     empty = datasets.create_dataset("empty")
     report = datasets.validate_dataset(empty["id"])
     assert report["ok"] is False and report["checked"] == 0
-
-    video = datasets.create_dataset("clips", "video")
-    report = datasets.validate_dataset(video["id"])
-    assert report["ok"] is False
-    assert any("S4" in p for p in report["rows"][0]["problems"])
 
 
 def test_assert_trainable_gates_managed_and_plain_folders(datasets_env: Path) -> None:
@@ -263,3 +259,198 @@ def test_dataset_api_roundtrip(datasets_env: Path, tmp_path: Path) -> None:
     assert client.delete(f"/datasets/{dataset_id}").json()["ok"] is True
     assert client.get(f"/datasets/{dataset_id}").status_code == 404
     assert client.post("/datasets", json={"name": "x", "kind": "soup"}).status_code == 409
+
+
+# --- Video (H3) datasets: PLAN-V2 S4, stills first ---------------------------
+
+#: Filename protocol, so a test reads as a claim about media rather than about
+#: JSON: `1280x720` sets the pixel size, `t4s` the duration, `audio` an
+#: audio stream. Everything else is a plain video/still with no streams.
+FFPROBE_STUB = '''
+import json, re, sys
+name = sys.argv[-1].lower()
+dims = re.search(r"(\\d+)x(\\d+)", name)
+dur = re.search(r"t(\\d+(?:\\.\\d+)?)s", name)
+streams = []
+streams.append({
+    "codec_type": "video",
+    "width": int(dims.group(1)) if dims else 0,
+    "height": int(dims.group(2)) if dims else 0,
+})
+if dur:
+    streams[0]["duration"] = dur.group(1)
+if "audio" in name:
+    streams.append({"codec_type": "audio"})
+print(json.dumps({"streams": streams,
+                  "format": {"duration": dur.group(1) if dur else "N/A"}}))
+'''
+
+
+@pytest.fixture
+def ffprobe(monkeypatch, tmp_path: Path) -> Path:
+    script = tmp_path / "ffprobe_stub.py"
+    script.write_text(FFPROBE_STUB, encoding="utf-8")
+    monkeypatch.setenv(
+        "MINIMAX_STUDIO_FFPROBE_BIN", f'"{sys.executable}" "{script}"'
+    )
+    return tmp_path
+
+
+def _video_dataset(name: str = "stills", files: dict[str, str] | None = None) -> tuple[Path, dict]:
+    """A video dataset with the given files, each key mapping to a caption (or
+    None for no caption)."""
+    manifest = datasets.create_dataset(name, "video")
+    folder, _ = datasets.get_dataset(manifest["id"])
+    for file_name, caption in (files or {}).items():
+        (folder / file_name).write_bytes(b"\x00stub-media")
+        if caption is not None:
+            (folder / Path(file_name).with_suffix(".txt")).write_text(
+                caption, encoding="utf-8"
+            )
+    return folder, manifest
+
+
+def test_stills_and_short_clips_validate_clean(ffprobe, datasets_env: Path) -> None:
+    _folder, manifest = _video_dataset(
+        "campaign",
+        {
+            "cover_1280x720.png": "neon cover shot",
+            "take_1280x720_t4s.mp4": "camera push on the band",
+        },
+    )
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is True, report["rows"]
+    assert report["stills"] == 1 and report["clips"] == 1
+    assert report["target_mode"] == "video"
+    assert report["av_ready"] is False  # one still and a silent clip: no audio to train
+    rows = {row["file"]: row for row in report["rows"]}
+    assert rows["cover_1280x720.png"]["entry_kind"] == "still"
+    assert rows["take_1280x720_t4s.mp4"]["seconds"] == 4.0
+
+
+def test_a_thumbnail_and_a_long_clip_are_refused_with_their_numbers(
+    ffprobe, datasets_env: Path
+) -> None:
+    _folder, manifest = _video_dataset(
+        "scrap",
+        {
+            "tiny_128x96.png": "poster thumb",
+            "talky_1920x1080_t12s.mp4": "dialogue scene",
+        },
+    )
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is False
+    problems = {row["file"]: row["problems"] for row in report["rows"]}
+    assert any("128×96 is under the 256 px" in p for p in problems["tiny_128x96.png"])
+    (long_problem,) = problems["talky_1920x1080_t12s.mp4"]
+    assert "12.0s is over the 8s cap" in long_problem
+    # The reason for the cap belongs in the message, not only in the plan.
+    assert "audio heads" in long_problem
+
+
+def test_video_entries_need_captions_too(ffprobe, datasets_env: Path) -> None:
+    _folder, manifest = _video_dataset(
+        "nocaptions",
+        {"shot_1280x720_t3s.mp4": None, "stray.txt": "nothing behind me"},
+    )
+    report = datasets.validate_dataset(manifest["id"])
+    problems = {row["file"]: row["problems"] for row in report["rows"]}
+    assert any("shot_1280x720_t3s.txt" in p for p in problems["shot_1280x720_t3s.mp4"])
+    assert any("no matching media" in p for p in problems["stray.txt"])
+
+
+def test_without_ffprobe_the_validator_warns_instead_of_accusing(
+    monkeypatch, datasets_env: Path
+) -> None:
+    """Missing ffmpeg is our limitation, not the user's broken clip."""
+    monkeypatch.setattr(datasets, "ffprobe_command", lambda: None)
+    _folder, manifest = _video_dataset(
+        "unmeasured", {"shot_1280x720_t999s.mp4": "whatever it is"}
+    )
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is True  # the caption is there; nothing else was checkable
+    assert report["rows"][0]["ok"] is True
+    assert any("install ffmpeg/ffprobe" in warning for warning in report["warnings"])
+
+
+def test_av_mode_needs_audio_in_every_clip_and_no_stills(
+    ffprobe, datasets_env: Path
+) -> None:
+    _folder, manifest = _video_dataset(
+        "av-ok",
+        {
+            "a_1280x720_t4s_audio.mp4": "verse",
+            "b_1280x720_t5s_audio.mp4": "chorus",
+        },
+    )
+    assert datasets.validate_dataset(manifest["id"])["av_ready"] is True
+    updated = datasets.set_h3_target_mode(manifest["id"], "av")
+    assert updated["h3_target_mode"] == "av"
+    assert datasets.validate_dataset(manifest["id"])["target_mode"] == "av"
+
+
+def test_av_mode_refusals_name_what_is_missing(ffprobe, datasets_env: Path) -> None:
+    _folder, silent = _video_dataset(
+        "silent-set",
+        {"a_1280x720_t4s_audio.mp4": "verse", "b_1280x720_t5s.mp4": "chorus"},
+    )
+    with pytest.raises(RuntimeError, match="have none"):
+        datasets.set_h3_target_mode(silent["id"], "av")
+
+    _folder, with_still = _video_dataset(
+        "mixed-set",
+        {"a_1280x720_t4s_audio.mp4": "verse", "cover_1280x720.png": "cover"},
+    )
+    with pytest.raises(RuntimeError, match="1 still"):
+        datasets.set_h3_target_mode(with_still["id"], "av")
+
+    music = datasets.create_dataset("songs", "music")
+    with pytest.raises(RuntimeError, match="only a Video"):
+        datasets.set_h3_target_mode(music["id"], "av")
+
+    _folder, ok = _video_dataset("strict", {"a_1280x720_t4s_audio.mp4": "verse"})
+    with pytest.raises(RuntimeError, match="Unknown H3 target mode"):
+        datasets.set_h3_target_mode(ok["id"], "video-with-audio")
+
+
+def test_av_mode_reports_the_silent_clip_by_name_after_it_is_chosen(
+    ffprobe, datasets_env: Path
+) -> None:
+    folder, manifest = _video_dataset(
+        "gone-quiet", {"a_1280x720_t4s_audio.mp4": "verse"}
+    )
+    datasets.set_h3_target_mode(manifest["id"], "av")
+    (folder / "b_1280x720_t5s.mp4").write_bytes(b"\x00stub-media")
+    (folder / "b_1280x720_t5s.txt").write_text("added later", encoding="utf-8")
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is False
+    problems = {row["file"]: row["problems"] for row in report["rows"]}
+    assert any("no audio stream" in p for p in problems["b_1280x720_t5s.mp4"])
+
+
+def test_import_folder_brings_stills_into_a_video_dataset(
+    ffprobe, datasets_env: Path, tmp_path: Path
+) -> None:
+    manifest = datasets.create_dataset("moodboard", "video")
+    source = tmp_path / "shots"
+    source.mkdir()
+    (source / "one_1280x720.png").write_bytes(b"\x00a")
+    (source / "one_1280x720.txt").write_text("first frame", encoding="utf-8")
+    (source / "song.wav").write_bytes(b"RIFF")  # not this kind of dataset
+
+    result = datasets.import_folder(manifest["id"], str(source))
+    assert result["copied"] == ["one_1280x720.png"]
+    assert result["captions"] == 1
+
+
+def test_a_video_dataset_gates_training_the_same_way(ffprobe, datasets_env: Path) -> None:
+    """train_runs calls assert_trainable for every kind — the H3 path gets the
+    same refusal as Music, not a freer pass."""
+    folder, manifest = _video_dataset(
+        "ready", {"cover_1280x720.png": "cover"}
+    )
+    datasets.assert_trainable(folder)
+
+    (folder / "cover_1280x720.txt").unlink()
+    with pytest.raises(RuntimeError, match="not ready to train"):
+        datasets.assert_trainable(folder)

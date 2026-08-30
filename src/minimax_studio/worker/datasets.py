@@ -1,13 +1,18 @@
-"""Training datasets (PLAN-V2 S1).
+"""Training datasets (PLAN-V2 S1, video half in S4).
 
 A dataset is a plain folder in the layout SimpleTuner reads natively —
-``track.wav`` + ``track.txt`` caption + optional ``track.lyrics`` — plus a
-``dataset.json`` manifest of ours for name/kind/provenance. The trainer never
-touches the manifest; the app uses it to validate before anyone burns GPU
-hours, per the standing rule: named numbers, no mystery failures.
+``track.wav`` + ``track.txt`` caption + optional ``track.lyrics`` (music), or
+``shot.png`` / ``shot.mp4`` + ``shot.txt`` (H3) — plus a ``dataset.json``
+manifest of ours for name/kind/provenance. The trainer never touches the
+manifest; the app uses it to validate before anyone burns GPU hours, per the
+standing rule: named numbers, no mystery failures.
 
-WAV duration is probed with the stdlib ``wave`` module on purpose: it needs
-no ffmpeg, so CI can generate clips and test the validator honestly.
+WAV duration is probed with the stdlib ``wave`` module on purpose: it needs no
+ffmpeg, so CI can generate clips and test the validator honestly. Everything
+else — mp3, mp4, png — is measured with ``ffprobe`` when it exists, and
+reported as a **warning** when it does not: "could not check the duration" is
+not the same fact as "the duration is wrong", and the validator must not
+pretend otherwise.
 """
 
 from __future__ import annotations
@@ -24,9 +29,30 @@ from typing import Any
 from minimax_studio.worker.runtime import runtime
 
 KINDS = ("music", "video")
-MEDIA_BY_KIND = {"music": (".wav", ".flac", ".mp3"), "video": (".mp4", ".mov", ".webm")}
+CLIP_EXTS = (".mp4", ".mov", ".webm")
+STILL_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+MEDIA_BY_KIND = {
+    "music": (".wav", ".flac", ".mp3"),
+    # H3 trains on stills first, short clips after (PLAN-V2 S4). One "video"
+    # kind holds both: SimpleTuner's H3 backend buckets images and clips
+    # together, and making someone create a second kind to add a poster frame
+    # would be a taxonomy question, not a dataset one.
+    "video": CLIP_EXTS + STILL_EXTS,
+}
 MIN_SECONDS = 3.0
 MAX_SECONDS = 300.0
+
+# "Stills/short clips only": clips with dialogue wait for proof they do not
+# wreck the audio heads, so the cap is a product decision and not a crash.
+MAX_VIDEO_SECONDS = 8.0
+# Below this, a still is not a training target — it is a thumbnail.
+MIN_EDGE = 256
+
+#: SimpleTuner's H3 target modes. ``av`` (audio+video) costs extra VRAM and
+#: disk and is a checkbox, never the default; the exact key names are part of
+#: the pinned contract and get verified against real SimpleTuner in the metal
+#: session, like ``STEP_RE`` before them.
+H3_TARGET_MODES = ("video", "av")
 
 
 def datasets_root() -> Path:
@@ -65,6 +91,10 @@ def create_dataset(name: str, kind: str = "music", notes: str = "") -> dict[str,
         # "Show in folder" needs it too — the layout is ours, the path is not.
         "path": str(folder),
     }
+    if kind == "video":
+        # Explicit rather than implied: the picker shows the mode, and "what did
+        # this train with?" is answered by the manifest, not by memory.
+        manifest["h3_target_mode"] = "video"
     _write_manifest(folder, manifest)
     return manifest
 
@@ -177,6 +207,20 @@ def add_from_history(dataset_id: str, history_id: str) -> dict[str, Any]:
     return {"added": target.name}
 
 
+def ffprobe_command() -> list[str] | None:
+    """``MINIMAX_STUDIO_FFPROBE_BIN`` is a test seam with the same precedent as
+    the SimpleTuner override (a whole command, shell-quoted): the stub answers
+    with real ffprobe-shaped JSON, so the parsing and the decisions it drives are
+    both under test without ffmpeg on PATH."""
+    override = os.environ.get("MINIMAX_STUDIO_FFPROBE_BIN")
+    if override:
+        import shlex
+
+        return shlex.split(override)
+    found = shutil.which("ffprobe")
+    return [found] if found else None
+
+
 def probe_audio(path: Path) -> dict[str, Any]:
     if path.suffix.lower() == ".wav":
         with wave.open(str(path), "rb") as handle:
@@ -186,14 +230,14 @@ def probe_audio(path: Path) -> dict[str, Any]:
             raise RuntimeError("unreadable wav (zero sample rate)")
         return {"seconds": frames / float(rate), "format": "wav"}
     # Other formats want ffprobe; that path is only honest if ffmpeg exists.
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = ffprobe_command()
     if not ffprobe:
         raise RuntimeError("install ffmpeg/ffprobe to probe " + path.suffix)
     import subprocess
 
     proc = subprocess.run(
         [
-            ffprobe,
+            *ffprobe,
             "-v",
             "error",
             "-show_entries",
@@ -211,6 +255,61 @@ def probe_audio(path: Path) -> dict[str, Any]:
     except ValueError as exc:
         raise RuntimeError(f"unreadable audio ({path.suffix})") from exc
     return {"seconds": seconds, "format": path.suffix.lstrip(".")}
+
+
+def probe_video(path: Path) -> dict[str, Any]:
+    """Measure a still or a clip: pixel size, duration, and whether it carries
+    an audio stream — the three numbers that decide whether an H3 dataset can
+    train, and in which target mode.
+
+    Raises RuntimeError when nothing can measure it; the validator turns that
+    into a warning, never a false accusation against the user's clips.
+    """
+    ffprobe = ffprobe_command()
+    if not ffprobe:
+        raise RuntimeError("install ffmpeg/ffprobe to measure " + path.suffix)
+    import json as _json
+    import subprocess
+
+    proc = subprocess.run(
+        [
+            *ffprobe,
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type,width,height,duration",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    try:
+        payload = _json.loads(proc.stdout or "{}")
+    except _json.JSONDecodeError as exc:
+        raise RuntimeError(f"unreadable media ({path.suffix})") from exc
+    streams = payload.get("streams") or []
+    video = next((row for row in streams if row.get("codec_type") == "video"), None)
+    if video is None and path.suffix.lower() in CLIP_EXTS:
+        raise RuntimeError(f"no video stream in {path.name}")
+    seconds: float | None = None
+    for source in (video or {}), (payload.get("format") or {}):
+        try:
+            seconds = float(source.get("duration"))
+            break
+        except (TypeError, ValueError):
+            continue
+    return {
+        "seconds": seconds,
+        "width": int((video or {}).get("width") or 0) or None,
+        "height": int((video or {}).get("height") or 0) or None,
+        "has_audio": any(row.get("codec_type") == "audio" for row in streams),
+        "format": path.suffix.lstrip("."),
+    }
 
 
 def validate_dataset(dataset_id: str) -> dict[str, Any]:
@@ -231,26 +330,41 @@ def validate_dataset(dataset_id: str) -> dict[str, Any]:
 
 
 def _validate_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    """One report shape for both kinds: ``rows`` per file, ``warnings`` for what
+    could not be checked, ``ok`` for whether to hand it to the trainer."""
+    if manifest.get("kind") == "video":
+        return _validate_video_dir(folder, manifest)
+    return _validate_music_dir(folder, manifest)
+
+
+def _caption_rules(path: Path, problems: list[str]) -> None:
+    """What every entry has in common, whatever its kind: a caption beside it."""
+    if not path.with_suffix(".txt").is_file():
+        problems.append(f"missing caption {path.stem}.txt")
+
+
+def _orphan_captions(folder: Path, stems: set[str], rows: list[dict[str, Any]]) -> None:
+    for path in sorted(folder.glob("*.txt")):
+        if path.stem not in stems:
+            rows.append(
+                {
+                    "file": path.name,
+                    "ok": False,
+                    "problems": ["caption with no matching media file"],
+                }
+            )
+
+
+def _validate_music_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     report: dict[str, Any] = {
         "at": time.time(),
         "ok": False,
-        "kind": manifest.get("kind"),
+        "kind": "music",
         "checked": 0,
         "rows": [],
+        "warnings": [],
     }
     rows: list[dict[str, Any]] = report["rows"]
-    if manifest.get("kind") != "music":
-        rows.append(
-            {
-                "file": "(dataset)",
-                "ok": False,
-                "problems": [
-                    "Video dataset validation and the H3 trainer arrive in "
-                    "PLAN-V2 S4 — training is Music-only for now."
-                ],
-            }
-        )
-        return report
     media_exts = set(MEDIA_BY_KIND["music"])
     stems_seen: set[str] = set()
     for path in sorted(folder.iterdir()):
@@ -259,12 +373,12 @@ def _validate_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any]:
         report["checked"] += 1
         stems_seen.add(path.stem)
         problems: list[str] = []
-        if not path.with_suffix(".txt").is_file():
-            problems.append(f"missing caption {path.stem}.txt")
+        _caption_rules(path, problems)
         if path.with_suffix(".lyrics").is_file() and not path.with_suffix(
             ".txt"
         ).is_file():
             problems.append(".lyrics without a matching .txt caption")
+        seconds = None
         try:
             seconds = probe_audio(path)["seconds"]
             if seconds < MIN_SECONDS:
@@ -277,22 +391,179 @@ def _validate_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any]:
                 )
         except (RuntimeError, wave.Error, OSError) as exc:
             problems.append(f"cannot read audio: {exc}")
-        rows.append({"file": path.name, "ok": not problems, "problems": problems})
-    for path in sorted(folder.glob("*.txt")):
-        if path.stem not in stems_seen:
-            rows.append(
-                {
-                    "file": path.name,
-                    "ok": False,
-                    "problems": ["caption with no matching audio file"],
-                }
-            )
+        rows.append(
+            {
+                "file": path.name,
+                "ok": not problems,
+                "problems": problems,
+                "seconds": seconds,
+            }
+        )
+    _orphan_captions(folder, stems_seen, rows)
     report["ok"] = report["checked"] > 0 and all(row["ok"] for row in rows)
     if report["checked"] == 0:
         rows.append(
             {"file": "(dataset)", "ok": False, "problems": ["no audio clips yet"]}
         )
     return report
+
+
+def _validate_video_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    """The H3 validator (PLAN-V2 S4): stills and short clips, captions, pixel
+    floor, clip-length cap, and whether the set can carry ``av`` mode.
+
+    Anything ffprobe could not look at is a **warning** on the report, not a
+    problem on the file: "no ffmpeg here, so durations and sizes were not
+    checked" is a different fact from "your clip is too long", and a validator
+    that blurs the two teaches people to ignore it.
+    """
+    mode = str(manifest.get("h3_target_mode") or "video")
+    report: dict[str, Any] = {
+        "at": time.time(),
+        "ok": False,
+        "kind": "video",
+        "checked": 0,
+        "rows": [],
+        "warnings": [],
+        "target_mode": mode,
+        "stills": 0,
+        "clips": 0,
+        "with_audio": 0,
+        "av_ready": False,
+    }
+    rows: list[dict[str, Any]] = report["rows"]
+    media_exts = set(MEDIA_BY_KIND["video"])
+    stems_seen: set[str] = set()
+    unmeasured = 0
+    for path in sorted(folder.iterdir()):
+        if path.suffix.lower() not in media_exts or path.name.startswith("."):
+            continue
+        report["checked"] += 1
+        stems_seen.add(path.stem)
+        is_still = path.suffix.lower() in STILL_EXTS
+        report["stills" if is_still else "clips"] += 1
+        problems: list[str] = []
+        _caption_rules(path, problems)
+        entry: dict[str, Any] = {
+            "file": path.name,
+            "entry_kind": "still" if is_still else "clip",
+            "seconds": None,
+            "width": None,
+            "height": None,
+            "has_audio": False,
+        }
+        try:
+            info = probe_video(path)
+        except (RuntimeError, OSError) as exc:
+            unmeasured += 1
+            report["warnings"].append(f"{path.name}: {exc}")
+        else:
+            width, height = info.get("width"), info.get("height")
+            entry["width"], entry["height"] = width, height
+            entry["seconds"] = info.get("seconds")
+            entry["has_audio"] = bool(info.get("has_audio"))
+            if width and height and min(width, height) < MIN_EDGE:
+                problems.append(
+                    f"{width}×{height} is under the {MIN_EDGE} px short-edge "
+                    "floor — a thumbnail cannot teach a frame"
+                )
+            if not is_still:
+                if info.get("has_audio"):
+                    report["with_audio"] += 1
+                elif mode == "av":
+                    problems.append(
+                        "av mode trains audio+video and this clip has no audio "
+                        "stream — put the dataset back to Video mode or fix the clip"
+                    )
+                seconds = info.get("seconds")
+                if seconds is None:
+                    report["warnings"].append(f"{path.name}: no duration reported")
+                elif seconds > MAX_VIDEO_SECONDS:
+                    problems.append(
+                        f"{seconds:.1f}s is over the {MAX_VIDEO_SECONDS:.0f}s cap "
+                        "— clips with dialogue wait for proof they do not wreck "
+                        "the audio heads"
+                    )
+        rows.append({**entry, "ok": not problems, "problems": problems})
+    _orphan_captions(folder, stems_seen, rows)
+
+    if mode == "av" and report["stills"]:
+        rows.append(
+            {
+                "file": "(dataset)",
+                "ok": False,
+                "problems": [
+                    f"av mode trains audio+video: a still has no audio at all. "
+                    f"Move the {report['stills']} still(s) out or switch the "
+                    "dataset back to Video mode."
+                ],
+            }
+        )
+    if unmeasured:
+        report["warnings"].append(
+            f"{unmeasured} of {report['checked']} file(s) could not be measured "
+            "(install ffmpeg/ffprobe) — captions were checked, pixel size and "
+            "duration were not."
+        )
+    report["av_ready"] = bool(
+        report["clips"]
+        and not report["stills"]
+        and report["with_audio"] == report["clips"]
+        and not unmeasured
+    )
+    report["ok"] = report["checked"] > 0 and all(row["ok"] for row in rows)
+    if report["checked"] == 0:
+        rows.append(
+            {
+                "file": "(dataset)",
+                "ok": False,
+                "problems": ["no stills or clips yet — add .png/.jpg stills or short .mp4 clips"],
+            }
+        )
+    return report
+
+
+def set_h3_target_mode(dataset_id: str, mode: str) -> dict[str, Any]:
+    """Choose the H3 target mode: ``video`` (default) or ``av``.
+
+    ``av`` is a checkbox and never a default — it pays VRAM and disk for an
+    audio stream the run may not need, and it only makes sense when *every*
+    clip has one and there are no stills in the set. Refusal names the clips.
+    """
+    if mode not in H3_TARGET_MODES:
+        raise RuntimeError(
+            f"Unknown H3 target mode '{mode}' (known: {', '.join(H3_TARGET_MODES)})."
+        )
+    folder, manifest = get_dataset(dataset_id)
+    if manifest.get("kind") != "video":
+        raise RuntimeError(
+            f"Dataset “{manifest.get('name')}” is a “{manifest.get('kind')}” "
+            "dataset — only a Video (H3) dataset has a target mode."
+        )
+    if mode == "av":
+        report = _validate_video_dir(folder, manifest)
+        if not report["av_ready"]:
+            silent = [
+                row["file"]
+                for row in report["rows"]
+                if row.get("entry_kind") == "clip" and not row.get("has_audio")
+            ]
+            if report["stills"]:
+                raise RuntimeError(
+                    f"“{manifest.get('name')}” holds {report['stills']} still(s). "
+                    "av mode trains audio+video, and a still has no audio track "
+                    "to train — use Video mode for a set with stills in it."
+                )
+            raise RuntimeError(
+                f"av mode needs an audio stream in every clip, and "
+                f"{len(silent)} of {report['clips']} have none"
+                + (f" (first: {silent[0]})" if silent else "")
+                + ". Use Video mode, or re-export the clips with audio."
+            )
+    manifest = dict(manifest)
+    manifest["h3_target_mode"] = mode
+    _write_manifest(folder, manifest)
+    return {**manifest, "path": str(folder)}
 
 
 def assert_trainable(dataset_dir: Path) -> None:
