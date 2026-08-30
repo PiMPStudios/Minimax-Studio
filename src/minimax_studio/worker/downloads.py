@@ -199,8 +199,6 @@ def _watch_size(job_id: str, dest: Path, stop: threading.Event) -> None:
 def _cancellable_hf_snapshot(job_id: str, **kwargs: Any) -> str:
     """``snapshot_download`` has no cancel hook; run it in a child we can kill."""
     import json
-    import os
-    import signal
     import subprocess
     import sys
 
