@@ -307,7 +307,8 @@ class AdaptersPage(QWidget):
         self._audition_btn.setEnabled(bool(row and row.get("can_audition")))
         if row and not row.get("can_audition"):
             self._audition_btn.setToolTip(
-                "H3 adapters are auditioned as a still pair in PLAN-V2 S4."
+                "One-click audition renders a clip: Music adapters only. An H3 "
+                "adapter has no preview wired up yet — load it on Generate Video."
                 if row.get("kind") != "music"
                 else "The file is not on disk — reinstall it from its run."
             )

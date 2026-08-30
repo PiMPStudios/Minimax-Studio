@@ -80,12 +80,21 @@ bar stops the running job. Presets can be filtered like History.</p>
 installed.</p>
 
 <h3>Build — datasets and LoRA training (experimental)</h3>
-<p><b>Datasets</b> (Ctrl+Shift+D) keeps Music clips in SimpleTuner’s own layout —
-<code>track.wav</code> plus a <code>track.txt</code> caption, optionally
-<code>track.lyrics</code>. Imports <b>copy</b> files, so cleaning up your
-originals never guts a dataset; <b>Add from History</b> brings a good take’s
-caption and lyrics with it. <b>Validate</b> names the problem on every clip
-that can’t train, and starting a run refuses a dataset that doesn’t validate.</p>
+<p><b>Datasets</b> (Ctrl+Shift+D) keeps a training set in SimpleTuner’s own
+layout — <code>track.wav</code> plus a <code>track.txt</code> caption and
+optionally <code>track.lyrics</code> for Music, or <code>shot.png</code> stills
+and short <code>shot.mp4</code> clips for H3. Imports <b>copy</b> files, so
+cleaning up your originals never guts a dataset; <b>Add from History</b> brings
+a good take’s caption and lyrics with it. <b>Validate</b> names the problem on
+every entry that can’t train — a missing caption, a 12.0s clip over the 8s cap,
+a 128×96 still under the 256 px floor — and starting a run refuses a dataset
+that doesn’t validate. Without ffmpeg it says what it could not measure instead
+of blaming your clips.</p>
+<p>An <b>H3 dataset</b> trains stills and short clips. Clips are capped at 8
+seconds because dialogue footage waits for proof it does not wreck the audio
+heads. <b>Audio+video (av) mode</b> is a checkbox, never the default: it pays
+extra VRAM and disk, needs an audio stream in every clip, and cannot include
+stills at all — refusing it names the clips that made it impossible.</p>
 <p><b>Train LoRA</b> (Ctrl+Shift+T) writes SimpleTuner’s two config files and launches
 the pinned <code>simpletuner</code> as <b>its own process</b>: closing Studio
 does not stop a run, and the page reattaches to it from the run folder.
@@ -100,12 +109,20 @@ selected</b> continues a stopped run from any checkpoint it wrote — same folde
 same caches, new process. Nothing destructive is offered at all while a run is
 live, and <b>Export…</b> / <b>Import run folder</b> move a run (weights, config,
 log — not its caches) to another disk or another machine.</p>
-<p>Training is <b>experimental</b>: Music 3 only, CUDA only, Python 3.12 with
-<code>pip install -e ".[train]"</code> and the <b>Music 3 Training Encoder</b>
-pack on Models. A 24 GB card is the floor, and preflight names the VRAM, packs,
-active jobs and free cache disk before anything starts — no mystery OOM.
-Video (H3) training is the next slice; a Video dataset is a place to collect
-clips until then.</p>
+<p>Training is <b>experimental</b>: CUDA only, Python 3.12 with
+<code>pip install -e ".[train]"</code>, plus the weights the run needs — the
+<b>Music 3 Training Encoder</b> pack for Music LoRAs, the <b>H3 diffusers</b>
+weights for video ones (the Comfy packs will not do; the trainer reads the
+diffusers folder). 24 GB is the floor for Music. H3 offers 24 GB with RamTorch
+CPU-offload, then 32, 48 and 80 GB, and the preset list changes with the dataset
+you pick — the two trainers never share a run. Preflight names the VRAM, packs,
+active jobs and free cache disk before anything starts; no mystery OOM.</p>
+<p><b>Said plainly:</b> H3 LoRA training has not run on this build yet. Its
+config keys are written from SimpleTuner’s documentation rather than its output,
+and preflight says so on every H3 preset until a real run confirms them — watch
+the first minutes and report anything odd. Auditioning is still Music-only: an
+H3 adapter loads in the picker and works on Generate Video, but it has no
+one-click preview.</p>
 <p>A live training run warns you on Generate (and shows in the status bar) —
 one GPU, two hungry things.</p>
 

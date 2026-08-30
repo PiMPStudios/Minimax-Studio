@@ -199,6 +199,30 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 
 ### S4 — H3 LoRA (stills first, clips after)
 
+> **Status (0.2.34): the off-GPU half landed.** An H3 dataset validates (stills
+> ≥ 256 px on the short edge, clips ≤ 8 s with the *reason* in the message —
+> dialogue footage waits for proof it doesn't wreck the audio heads), the four
+> SimpleTuner tiers exist (`h3-24g` with RamTorch, `h3-32g`, `h3-48g`, `h3-80g`)
+> each with its own VRAM and cache floor, and an H3 run writes
+> `model_family: minimax_h3` + `minimax_h3_target_mode` with `ram_torch` only
+> where it pays. `av` is a checkbox, validated: every clip needs audio, stills
+> are incompatible with it, and the refusal names the clips. The preset list
+> filters by the dataset's kind and the mismatch is refused twice (in the config
+> writer and in `start_run`, outside the force switch) — training the wrong model
+> and crediting the wrong provenance is exactly what this app exists to prevent.
+> `dataset_spec` (kind, stills/clips, mode) is stored in `state.json`, so a
+> resume writes the same kind of config even if the dataset folder moved.
+> Drift distillation is **not written**, because switching it off is the part
+> nobody has proved safe.
+>
+> **Still to prove:** everything that needs the card. `minimax_h3_target_mode`,
+> `ram_torch` and the resolution buckets are listed in
+> `train_config.H3_UNVERIFIED_KEYS` and announced by preflight on every H3
+> preset — that warning retires when SimpleTuner's own output confirms them
+> (S0 steps 3–5). Unchanged from before: H3 adapter **audition** (the still
+> pair) is not built; an H3 LoRA loads on Generate Video today and has no
+> one-click preview.
+
 - Video dataset validator in S1's frame; `minimax_h3_target_mode: "video"`
   default, `av` only when the dataset has clean audio (checkbox, not default
   — audio VAE work is extra VRAM/disk)
@@ -310,11 +334,13 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 
 **S0 steps 3–5 on a 24 GB card** is the only thing still blocking real
 training: `simpletuner train env=<id>`, `STEP_RE`/`LOSS_RE`,
-`resume_from_checkpoint` and a real `.safetensors` in the picker have been
+`resume_from_checkpoint`, and the H3 keys in `H3_UNVERIFIED_KEYS` have all been
 written against SimpleTuner's docs, not its stdout. Everything around them has a
-screen and a test now (S1 datasets, S2 Build pages, S3 adapters + audition, S5
-long-run hardening), so that evening is calibration, not construction — run
-`scripts/run.sh` (Python 3.12), download the Music 3 Training Encoder pack,
+screen and a test now (S1 datasets incl. H3, S2 Build pages, S3 adapters +
+audition, S4a H3 training surfaces, S5 long-run hardening), so that evening is
+calibration, not construction — run `scripts/run.sh` (Python 3.12), download the
+Music 3 Training Encoder pack (and the H3 diffusers weights, for the video run),
 train ~200 steps on 5 clips, install, audition, then let it run past a second
 checkpoint and prune it.
-After that: **S4 (H3 LoRA, stills first)**.
+Remaining after that: the H3 **audition** (still pair) and whatever the metal
+session says the H3 config keys need.

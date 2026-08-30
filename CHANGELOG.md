@@ -12,6 +12,69 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.34] — 2026-08-29
+
+### Added
+
+- **H3 (video) LoRA training — the off-GPU half of PLAN-V2 S4.** A Video dataset
+  is now something Studio can check and train, not a folder to park clips in
+  until later. Stills (`.png/.jpg/.webp`) and short clips (`.mp4/.mov/.webm`)
+  live in one kind, because SimpleTuner's H3 backend buckets them together.
+- **The H3 validator** names its numbers: a still under **256 px** on the short
+  edge is refused (`128×96 is under the 256 px short-edge floor — a thumbnail
+  cannot teach a frame`), a clip over **8 s** is refused with the *reason*
+  attached — clips with dialogue wait for proof they don't wreck the audio heads.
+  Captions and orphans follow the Music rules. `ffprobe` measures pixel size,
+  duration and audio streams; when it is missing, the report **warns**
+  ("1 of 3 file(s) could not be measured — captions were checked, pixel size and
+  duration were not") instead of accusing clips it never read.
+- **`av` (audio+video) mode is a checkbox, never a default.** It pays extra VRAM
+  and disk, needs an audio stream in every clip, and cannot include stills at
+  all; refusing it names the clips (`av mode needs an audio stream in every clip,
+  and 1 of 2 have none (first: push.mp4)`). The chosen mode is stored in the
+  dataset manifest, so "what did this train with?" is answered by the folder.
+- **Four H3 tiers** — `h3-24g` (RamTorch CPU-offload, 480p), `h3-32g`, `h3-48g`
+  (rank 32), `h3-80g` (bf16 transformer, 1080p) — each with its own VRAM floor
+  and its own cache floor (40–80 GB: video caches are another order of magnitude,
+  and `Only 25 GB free on the training volume — '32 GB — H3 LoRA' wants about
+  40 GB` beats a full disk at step 400). The preset list filters to the dataset
+  you picked, so a Music tier can't be offered for an H3 run.
+- **An H3 run writes an H3 config**: `model_family: minimax_h3`, the diffusers
+  folder, `minimax_h3_target_mode` straight from the manifest, `ram_torch` only
+  on the tier that pays for it, and none of the Music-only keys. Drift
+  distillation is not written at all — it is SimpleTuner's own safety net for the
+  audio heads, and switching it off is the part nobody has proved. A golden test
+  pins the Music config's shape so the shared writer can't drift it.
+- **Preflight got a second argument**: pass the dataset and it checks the pair
+  (`'24 GB — conservative LoRA' trains MiniMax Music 3, and this dataset holds
+  clips and stills (3 file(s))`). Mixing stills and clips in one run warns rather
+  than forbids — two runs is the comparison a person can actually read.
+- `dataset_spec` (kind, stills/clips, target mode) is recorded in `state.json`,
+  so **resume** writes the same kind of config even if the dataset folder moved
+  or went away.
+
+### Changed
+
+- **Honesty about what has never run**: the H3 keys only real SimpleTuner output
+  can confirm are listed in `train_config.H3_UNVERIFIED_KEYS` and announced by
+  preflight on every H3 preset ("written from SimpleTuner's documentation, not
+  its output — watch the first minutes"). A green test suite does not retire that
+  warning; the metal session does.
+- The Train page hides **Validation length** for H3 instead of showing a control
+  that does nothing, and an H3 payload carries no audio duration.
+- `MINIMAX_STUDIO_FFPROBE_BIN` is a test seam shaped like the SimpleTuner one, so
+  ffprobe's JSON parsing is under test without ffmpeg installed.
+- The Datasets page says "entries" when something is broken (a stray caption is
+  neither a clip nor a still) and names measured facts otherwise —
+  `cover.png · 1280×720 · still`, `push.mp4 · 1920×1080 · 4.2s`.
+
+### Fixed
+
+- Switching dataset on the Train page could leave the preflight verdict on screen
+  from a check of the *previous* preset: the full tier table is now kept apart
+  from the family-filtered view, so a switch re-picks the tier before asking (and
+  the first load, where the table is not yet known, re-asks once).
+
 ## [0.2.33] — 2026-08-29
 
 ### Added

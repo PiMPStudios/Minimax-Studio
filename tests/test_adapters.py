@@ -226,7 +226,7 @@ def test_audition_refuses_a_missing_file_and_an_h3_adapter(
 
     adapters.record({"file": Path(row["path"]).name, "kind": "video"})
     _lora_file(studio_home, Path(row["path"]).name)
-    with pytest.raises(RuntimeError, match="S4"):
+    with pytest.raises(RuntimeError, match="no one-click preview"):
         adapters.audition(Path(row["path"]).name)
 
 

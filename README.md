@@ -72,19 +72,26 @@ engine and its torch stack:
 pip install -e ".[train]"      # resolves on 3.12 only; CI asserts this
 ```
 
-Then download the **Music 3 Training Encoder** pack on Models. **Datasets**
-(Ctrl+Shift+D) takes a folder of `track.wav` + `track.txt` (+ optional
-`track.lyrics`) or pulls good generations out of History; **Train LoRA**
+Then download the **Music 3 Training Encoder** pack on Models (or the **H3
+diffusers** weights, to train video LoRAs). **Datasets** (Ctrl+Shift+D) takes a
+folder of `track.wav` + `track.txt` (+ optional `track.lyrics`) or pulls good
+generations out of History; an H3 dataset takes `shot.png` stills and short
+`shot.mp4` clips instead — capped at 8 seconds, with `av` (audio+video) mode as
+an opt-in checkbox because it costs VRAM and disk. **Train LoRA**
 (Ctrl+Shift+T) checks VRAM, packs, active jobs and cache disk by name, then
 launches the trainer as **its own process** — closing Studio does not stop a
-run, and the page reattaches to it. **Storage…** on that page names the
+run, and the page reattaches to it. The VRAM presets change with the dataset you
+pick: Music 3 has 24/48 GB tiers, H3 has 24 GB (RamTorch CPU-offload), 32, 48
+and 80 GB. **Storage…** on that page names the
 bytes before anything goes: prune old checkpoints (whatever you installed as an
 adapter is always kept), clear the VAE/text caches, **resume** a stopped run
 from any checkpoint it wrote, or **export** the run to another disk — caches
 excluded, since the next run rebuilds them. **Adapters** (Ctrl+Shift+A) records where
 every LoRA came from and **auditions** it: one 30-second render at 0.8 strength
-with the caption it trained on, badged in History. Music 3 + CUDA only, 24 GB
-VRAM floor. See [`docs/PLAN-V2.md`](docs/PLAN-V2.md).
+with the caption it trained on, badged in History. CUDA only, 24 GB
+VRAM floor. H3 training is newer than its own config keys — preflight says so
+until a real run confirms them. See
+[`docs/PLAN-V2.md`](docs/PLAN-V2.md).
 
 ## License (models)
 

@@ -278,8 +278,9 @@ def audition(
         )
     if row.get("kind") != "music":
         raise RuntimeError(
-            "H3 adapters are auditioned as a still pair in PLAN-V2 S4 — Music "
-            "adapters only for now."
+            "Audition renders a 30-second clip, which only a Music adapter "
+            "has — an H3 adapter is a still/video LoRA and has no one-click "
+            "preview wired up yet. Load it in Generate Video instead."
         )
     text = (prompt or "").strip() or str(row.get("audition_prompt") or "").strip()
     if not text:
