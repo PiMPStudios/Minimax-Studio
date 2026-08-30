@@ -98,6 +98,9 @@ class TrainPage(QWidget):
         self._selected_run: str | None = None
         self._detail: dict[str, Any] = {}
         self._presets: dict[str, dict[str, Any]] = dict(_FALLBACK_PRESETS)
+        # The whole table as the worker described it, kept apart from the
+        # filtered view above: filtering a filtered list loses the other family.
+        self._all_presets: dict[str, dict[str, Any]] = {}
         self._preflight: dict[str, Any] = {}
 
         root = QVBoxLayout(self)
@@ -357,7 +360,7 @@ class TrainPage(QWidget):
         self._dataset.setEnabled(bool(trainable))
         self._start_btn.setEnabled(bool(trainable))
         if self._family() != previous_kind:
-            self._adopt_presets(self._presets)
+            self._adopt_presets(self._all_presets or self._presets)
         self._show_family_fields()
         if not trainable:
             self._form_status.setText(
@@ -387,9 +390,9 @@ class TrainPage(QWidget):
         )
 
     def _dataset_changed(self) -> None:
-        """Changing dataset changes the trainer: re-pick the tier list and ask
-        the worker to check this pair, not the previous one."""
-        self._adopt_presets(self._presets)
+        """Changing dataset changes the trainer: re-pick the tier list from the
+        full table and ask the worker to check this pair, not the previous one."""
+        self._adopt_presets(self._all_presets or self._presets)
         self._show_family_fields()
         self.preflight()
 
@@ -400,7 +403,7 @@ class TrainPage(QWidget):
                 self._dataset.setCurrentIndex(index)
                 return
 
-    def preflight(self) -> None:
+    def preflight(self, _recheck: bool = False) -> None:
         preset = str(self._preset.currentData() or "24g")
         dataset = self._dataset.currentData() or {}
         dataset_dir = str(dataset.get("path") or "") or None
@@ -413,7 +416,12 @@ class TrainPage(QWidget):
         self._preflight = check
         presets = check.get("presets")
         if isinstance(presets, dict) and presets:
-            self._adopt_presets(presets)
+            switched = self._adopt_presets(presets)
+            if switched and not _recheck:
+                # We asked about the tier we were showing, and the returned table
+                # then moved that selection (a dataset switch). Numbers about a
+                # preset we no longer display would be someone else's verdict.
+                return self.preflight(_recheck=True)
         lines: list[str] = []
         if check.get("ok"):
             lines.append(
@@ -429,19 +437,26 @@ class TrainPage(QWidget):
             )
         self._preflight_label.setText("<br>".join(lines))
 
-    def _adopt_presets(self, presets: dict[str, dict[str, Any]]) -> None:
+    def _adopt_presets(self, presets: dict[str, dict[str, Any]]) -> bool:
         """Build the VRAM picker from what the worker actually supports — for
         the model this dataset belongs to. A Music tier list under an H3 dataset
-        would be a trap with a number on it."""
+        would be a trap with a number on it.
+
+        Returns whether the *selected* preset changed, so the caller can tell a
+        fresh check apart from a verdict about a tier it is no longer showing.
+        """
+        if presets:
+            self._all_presets = presets
         family = self._family()
         rows = {
             name: preset
-            for name, preset in presets.items()
+            for name, preset in (presets or self._presets).items()
             if str(preset.get("family") or "music") == family
         }
         rows = rows or dict(_FALLBACK_PRESETS)
         if rows == self._presets:
-            return
+            return False
+        before = self._preset.currentData()
         self._presets = rows
         current = self._preset.currentData()
         self._preset.blockSignals(True)
@@ -456,6 +471,7 @@ class TrainPage(QWidget):
             self._preset.setCurrentIndex(self._preset.findData(current))
         self._preset.blockSignals(False)
         self._preset_changed()
+        return self._preset.currentData() != before
 
     def _preset_changed(self) -> None:
         preset = self._presets.get(str(self._preset.currentData() or ""), {})

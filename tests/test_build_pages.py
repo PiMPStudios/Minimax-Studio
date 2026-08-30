@@ -467,16 +467,23 @@ def test_preflight_problems_are_quoted_verbatim(app) -> None:
     assert "17 GB is free right now" in text
 
 
-def test_video_datasets_are_not_offered_for_training(app) -> None:
+def test_both_kinds_are_offered_and_labelled(app) -> None:
+    """S4 changed this promise: a video dataset is trainable, so the picker
+    names which trainer reads it instead of hiding it away."""
     worker = FakeBuildWorker(
-        datasets={
-            "summer": dict(DATASET),
-            "movies": {**DATASET, "id": "movies", "kind": "video"},
-        }
+        datasets={"summer": dict(DATASET), "movies": dict(VIDEO_DATASET)},
+        reports={"movies": dict(VIDEO_REPORT)},
     )
     page = TrainPage(worker)
-    assert page._dataset.count() == 1
-    assert "Summer — 3 clips · ready" in page._dataset.currentText()
+    labels = [page._dataset.itemText(i) for i in range(page._dataset.count())]
+    assert any(
+        text.startswith("Summer — 3 clips · ready") and "[H3]" not in text
+        for text in labels
+    ), labels
+    assert any(
+        text.startswith("Movies — 2 stills/clips · ready") and text.endswith("[H3]")
+        for text in labels
+    ), labels
 
 
 def test_the_picker_tells_2_problems_apart_from_never_checked(app) -> None:
@@ -705,19 +712,29 @@ def test_giving_up_av_mode_needs_no_confirmation(app, monkeypatch) -> None:
     assert worker.modes == [("movies", "video")]
 
 
+def _select_dataset(page, dataset_id: str) -> None:
+    for index in range(page._dataset.count()):
+        if (page._dataset.itemData(index) or {}).get("id") == dataset_id:
+            page._dataset.setCurrentIndex(index)
+            return
+    raise AssertionError(f"no {dataset_id} in the picker")
+
+
 def test_the_train_page_switches_tiers_with_the_dataset(app) -> None:
     worker = FakeBuildWorker(
         datasets={"summer": dict(DATASET), "movies": dict(VIDEO_DATASET)},
         reports={"movies": dict(VIDEO_REPORT)},
     )
     page = TrainPage(worker)
+    _select_dataset(page, "summer")
     assert [page._preset.itemText(i) for i in range(page._preset.count())] == [
         "24 GB — conservative LoRA · rank 16",
         "48 GB — room to breathe · rank 32",
     ]
-    for index in range(page._dataset.count()):
-        if (page._dataset.itemData(index) or {}).get("id") == "movies":
-            page._dataset.setCurrentIndex(index)
+    assert page._dataset_label.text() == "Music dataset"
+    assert not page._validation_duration.isHidden()
+
+    _select_dataset(page, "movies")
     assert [page._preset.itemData(i) for i in range(page._preset.count())] == [
         "h3-24g",
         "h3-80g",
@@ -727,6 +744,28 @@ def test_the_train_page_switches_tiers_with_the_dataset(app) -> None:
     assert page._validation_duration.isHidden()
     assert worker.preflights[-1][0] == "h3-24g"
     assert worker.preflights[-1][1] == "/data/datasets/movies"
+    # What is guaranteed, precisely: the first check of the page's life cannot
+    # know the tier table yet (only the worker has it), so it asks about the
+    # preset on screen and re-asks once the table moves the selection. What must
+    # never happen is a *stale verdict staying on screen*, and once the table is
+    # known, a family switch asks about the right pair the first time.
+    asked_about_movies = [preset for preset, path in worker.preflights if path == "/data/datasets/movies"]
+    assert asked_about_movies[-1] == "h3-24g"
+    assert asked_about_movies.count("h3-24g") == asked_about_movies.count("24g") + 1
+
+    before = len(worker.preflights)
+    _select_dataset(page, "summer")
+    _select_dataset(page, "movies")
+    assert worker.preflights[before:] == [
+        ("24g", "/data/datasets/summer"),
+        ("h3-24g", "/data/datasets/movies"),
+    ]
+
+    _select_dataset(page, "summer")
+    assert [page._preset.itemData(i) for i in range(page._preset.count())] == [
+        "24g",
+        "48g",
+    ]
 
 
 def test_the_h3_tiers_cannot_be_started_on_a_music_dataset(app, monkeypatch) -> None:
@@ -745,9 +784,7 @@ def test_an_h3_run_is_started_without_an_audio_length(app, monkeypatch) -> None:
     )
     page = TrainPage(worker)
     _Dialogs(monkeypatch, {"question": QMessageBox.StandardButton.Yes}, train_module)
-    for index in range(page._dataset.count()):
-        if (page._dataset.itemData(index) or {}).get("id") == "movies":
-            page._dataset.setCurrentIndex(index)
+    _select_dataset(page, "movies")
     page._name.setText("push-in lora")
     page._start_run()
     assert worker.started, [call[0] for call in worker.preflights]

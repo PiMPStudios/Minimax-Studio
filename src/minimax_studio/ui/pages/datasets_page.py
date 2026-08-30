@@ -351,8 +351,10 @@ class DatasetsPage(QWidget):
                 "Ready to train."
             )
         first = (bad[0]["problems"][0] if bad and bad[0].get("problems") else "see below")
+        # "entries" here, whatever the kind: the broken row can be a caption
+        # with no media behind it, which is neither a clip nor a still.
         return (
-            f"{len(bad)} of {max(counted, len(bad))} {noun}{plural} "
+            f"{len(bad)} of {max(counted, len(bad))} entries "
             f"have problems — first: {first}. Training will refuse this "
             "dataset until they are fixed."
         )
