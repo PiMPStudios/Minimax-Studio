@@ -59,14 +59,38 @@ def validation_status_short(row: dict[str, Any]) -> str:
     return f"{last.get('with_problems', '?')} problems"
 
 
+def _entry_label(entry: dict[str, Any]) -> str:
+    """The row name, plus what the validator measured — a still and a 6-second
+    clip are different commitments and the list should say so."""
+    label = str(entry.get("file"))
+    bits = []
+    if entry.get("width") and entry.get("height"):
+        bits.append(f"{entry['width']}×{entry['height']}")
+    if entry.get("seconds"):
+        bits.append(f"{float(entry['seconds']):.1f}s")
+    if entry.get("entry_kind") == "still":
+        bits.append("still")
+    if entry.get("has_audio"):
+        bits.append("audio")
+    return f"{label}  ·  {' · '.join(bits)}" if bits else label
+
+
 def _detail_text(row: dict[str, Any], detail: dict[str, Any]) -> str:
     folder = Path(str(detail.get("path") or ""))
     # Labels here are rich text, and dataset names are user input.
     name = html.escape(str(row.get("name")))
     notes = html.escape(str(row.get("notes") or "").strip())
+    kind = str(row.get("kind"))
+    entries = f"{row.get('clip_count', 0)} entries on disk"
+    mode_line = ""
+    if kind == "video":
+        # Stated, never implied: the mode changes what the trainer is asked for.
+        mode_line = (
+            f"  ·  target mode <b>{html.escape(str(detail.get('h3_target_mode') or 'video'))}</b>"
+        )
     lines = [
-        f"<b>{name}</b>  ·  {html.escape(str(row.get('kind')))} dataset",
-        f"{row.get('clip_count', 0)} clips on disk  · {validation_status_short(row)}",
+        f"<b>{name}</b>  ·  {html.escape(kind)} dataset{mode_line}",
+        f"{entries}  · {validation_status_short(row)}",
         f"Folder: {html.escape(str(folder))}",
     ]
     if notes:
@@ -102,9 +126,10 @@ class DatasetsPage(QWidget):
         subtitle = QLabel(
             "A dataset is a plain folder — <code>track.wav</code> plus a "
             "<code>track.txt</code> caption, and optionally "
-            "<code>track.lyrics</code>. Imports <b>copy</b> files in, so "
-            "cleaning up your originals never guts a dataset. Music only for "
-            "now; H3 training is the next slice. "
+            "<code>track.lyrics</code>. An H3 dataset is the same idea with "
+            "<code>shot.png</code> stills or short <code>shot.mp4</code> clips. "
+            "Imports <b>copy</b> files in, so cleaning up your originals never "
+            "guts a dataset. "
             "<span style='color:#ff9f0a'>Experimental.</span>"
         )
         subtitle.setObjectName("pageSubtitle")
@@ -129,6 +154,12 @@ class DatasetsPage(QWidget):
         self._train_btn.clicked.connect(
             lambda: self._selected and self.train_requested.emit(self._selected)
         )
+        self._mode_btn = QPushButton("Audio+video mode…")
+        self._mode_btn.setToolTip(
+            "H3 only. `av` trains the audio stream in the clips too: it costs "
+            "extra VRAM and disk, and every clip has to carry audio."
+        )
+        self._mode_btn.clicked.connect(self._toggle_target_mode)
         self._delete_btn = QPushButton("Delete")
         self._delete_btn.clicked.connect(self._delete)
         for button in (
@@ -137,6 +168,7 @@ class DatasetsPage(QWidget):
             self._from_history_btn,
             self._validate_btn,
             self._train_btn,
+            self._mode_btn,
             self._reveal_btn,
             self._delete_btn,
         ):
@@ -166,7 +198,7 @@ class DatasetsPage(QWidget):
         )
         right_row.addWidget(self._detail_label)
         self._tree = QTreeWidget()
-        self._tree.setHeaderLabels(["Clip", "Status"])
+        self._tree.setHeaderLabels(["Entry", "Status"])
         self._tree.setRootIsDecorated(False)
         self._tree.setAlternatingRowColors(True)
         self._tree.header().setSectionResizeMode(
@@ -227,15 +259,25 @@ class DatasetsPage(QWidget):
         ):
             button.setEnabled(have_selection)
         row = self._current_row()
-        # The H3 trainer lands in S4; a video dataset is a place to put clips
-        # today, but "Train with this" would only ever fail.
-        self._train_btn.setEnabled(bool(row) and row.get("kind") == "music")
-        if row and row.get("kind") != "music":
-            self._train_btn.setToolTip(
-                "H3 training arrives in PLAN-V2 S4 — Music LoRAs only for now."
+        # Both kinds can train now; what each one trains is the preset's job to
+        # refuse, and the Train page filters presets by this dataset's kind.
+        self._train_btn.setEnabled(bool(row))
+        self._train_btn.setToolTip("")
+        video = bool(row) and row.get("kind") == "video"
+        self._mode_btn.setVisible(video)
+        if video:
+            av = str(self._detail.get("h3_target_mode") or "video") == "av"
+            self._mode_btn.setText(
+                "Back to video-only mode" if av else "Audio+video (av) mode…"
             )
-        else:
-            self._train_btn.setToolTip("")
+            self._mode_btn.setToolTip(
+                "Give up av mode: the trainer stops reading the audio stream and "
+                "the run gets cheaper."
+                if av
+                else "Train the audio stream in the clips too. Costs extra VRAM "
+                "and disk, and every clip has to carry audio — the worker "
+                "refuses with the clip names if they do not."
+            )
 
     def _current_row(self) -> dict[str, Any] | None:
         if not self._selected:
@@ -262,6 +304,9 @@ class DatasetsPage(QWidget):
             self._detail_label.setText(f"Could not read this dataset: {exc}")
             return
         self._detail_label.setText(_detail_text(row, self._detail))
+        # The mode button's label comes from the manifest, which arrived a line
+        # ago — re-arm it now that the truth is in hand.
+        self._set_buttons_enabled(True)
         report = self._detail.get("validation") or {}
         rows = sorted(
             report.get("rows", []), key=lambda item: bool(item.get("ok"))
@@ -270,7 +315,7 @@ class DatasetsPage(QWidget):
             problems = entry.get("problems") or []
             item = QTreeWidgetItem(
                 [
-                    str(entry.get("file")),
+                    _entry_label(entry),
                     "✓ ready" if entry.get("ok") else "✗ " + "; ".join(problems),
                 ]
             )
@@ -283,20 +328,31 @@ class DatasetsPage(QWidget):
 
     def _status_line(self, row: dict[str, Any], report: dict[str, Any]) -> str:
         clips = int(row.get("clip_count") or 0)
+        noun = "entry" if row.get("kind") == "video" else "clip"
+        plural = "s" if clips != 1 else ""
         if not report:
             return (
-                f"{clips} clip{'s' if clips != 1 else ''}, never validated. "
+                f"{clips} {noun}{plural}, never validated. "
                 "Validate before training — it is free, the GPU is not."
             )
         bad = [entry for entry in report.get("rows", []) if not entry.get("ok")]
+        counted = report.get("checked", 0)
+        breakdown = ""
+        if row.get("kind") == "video":
+            breakdown = (
+                f" ({report.get('stills', 0)} still, "
+                f"{report.get('clips', 0)} clip)"
+            )
+            if report.get("target_mode") == "av":
+                breakdown += " · av mode: the run trains the audio too"
         if report.get("ok"):
             return (
-                f"Validated {report.get('checked', 0)} clips — all good. "
+                f"Validated {counted} {noun}{plural}{breakdown} — all good. "
                 "Ready to train."
             )
         first = (bad[0]["problems"][0] if bad and bad[0].get("problems") else "see below")
         return (
-            f"{len(bad)} of {max(report.get('checked', 0), len(bad))} entries "
+            f"{len(bad)} of {max(counted, len(bad))} {noun}{plural} "
             f"have problems — first: {first}. Training will refuse this "
             "dataset until they are fixed."
         )
@@ -413,6 +469,57 @@ class DatasetsPage(QWidget):
                 or "Nothing checked.",
             )
 
+    def _toggle_target_mode(self) -> None:
+        """`video` ⇄ `av` for an H3 dataset.
+
+        Going to `av` is confirmed, because it is the expensive direction: extra
+        VRAM, extra disk, and an audio stream the clips may not have. Going back
+        to `video` is never worth a dialog. The worker checks the set and names
+        the clips that made `av` impossible.
+        """
+        row = self._current_row()
+        if not row:
+            return
+        current = str(self._detail.get("h3_target_mode") or "video")
+        if current == "av":
+            self._apply_target_mode("video")
+            return
+        answer = QMessageBox.question(
+            self,
+            "Train the audio too (av mode)",
+            "Train the clips' audio stream alongside the frames?\n\n"
+            "This costs extra VRAM and disk and needs an audio stream in every "
+            "clip — a set with stills in it cannot use av mode at all. "
+            "Video-only training stays the default for a reason.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._apply_target_mode("av")
+
+    def _apply_target_mode(self, mode: str) -> None:
+        row = self._current_row()
+        if not row:
+            return
+        try:
+            updated = self._client.set_dataset_target_mode(str(row["id"]), mode)
+        except Exception as exc:
+            self._status.setText(
+                f"<span style='color:#ff453a'>{html.escape(str(exc))}</span>"
+            )
+            self._status.setTextFormat(Qt.TextFormat.RichText)
+            return
+        self._detail = {**self._detail, "h3_target_mode": mode}
+        self.refresh()
+        self._status.setText(
+            f"Target mode is <b>{mode}</b> now — "
+            + (
+                "the run will train the audio in every clip."
+                if mode == "av"
+                else f"{html.escape(str(updated.get('name') or 'this dataset'))} trains frames only."
+            )
+        )
+        self._status.setTextFormat(Qt.TextFormat.RichText)
+
     def _reveal_folder(self) -> None:
         path = str(self._detail.get("path") or "")
         if not path or not Path(path).is_dir():
@@ -456,7 +563,7 @@ class _NewDatasetDialog(QDialog):
         self._name.setPlaceholderText("summer sessions")
         self._kind = QComboBox()
         self._kind.addItem("Music — trains a LoRA today", "music")
-        self._kind.addItem("Video (H3) — collection only until S4", "video")
+        self._kind.addItem("Video (H3) — stills and short clips", "video")
         self._notes = QLineEdit()
         self._notes.setPlaceholderText("what this one is for")
         layout.addRow("Name", self._name)

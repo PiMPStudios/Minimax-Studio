@@ -65,13 +65,81 @@ PRESETS = {
         "vram_floor_gb": 24,
         "lora_rank": 16,
         "note": "int8 everywhere",
+        "family": "music",
+        "ram_torch": False,
+        "resolution": 512,
     },
     "48g": {
         "title": "48 GB — room to breathe",
         "vram_floor_gb": 48,
         "lora_rank": 32,
         "note": "bf16 transformer",
+        "family": "music",
+        "ram_torch": False,
+        "resolution": 512,
     },
+    "h3-24g": {
+        "title": "24 GB — H3 LoRA with RamTorch",
+        "vram_floor_gb": 24,
+        "lora_rank": 16,
+        "note": "RamTorch CPU-offload",
+        "family": "h3",
+        "ram_torch": True,
+        "resolution": 480,
+    },
+    "h3-80g": {
+        "title": "80 GB — H3 LoRA, full precision transformer",
+        "vram_floor_gb": 80,
+        "lora_rank": 32,
+        "note": "bf16 at 1080p",
+        "family": "h3",
+        "ram_torch": False,
+        "resolution": 1080,
+    },
+}
+
+VIDEO_DATASET = {
+    "id": "movies",
+    "name": "Movies",
+    "kind": "video",
+    "clip_count": 2,
+    "notes": "stills + one push-in",
+    "path": "/data/datasets/movies",
+    "h3_target_mode": "video",
+    "last_validation": {"ok": True, "checked": 2, "with_problems": 0},
+}
+VIDEO_REPORT = {
+    "ok": True,
+    "checked": 2,
+    "at": 1.0,
+    "kind": "video",
+    "stills": 1,
+    "clips": 1,
+    "target_mode": "video",
+    "av_ready": False,
+    "warnings": [],
+    "rows": [
+        {
+            "file": "cover.png",
+            "entry_kind": "still",
+            "ok": True,
+            "problems": [],
+            "width": 1280,
+            "height": 720,
+            "seconds": None,
+            "has_audio": False,
+        },
+        {
+            "file": "push.mp4",
+            "entry_kind": "clip",
+            "ok": True,
+            "problems": [],
+            "width": 1920,
+            "height": 1080,
+            "seconds": 4.2,
+            "has_audio": False,
+        },
+    ],
 }
 
 
@@ -94,6 +162,8 @@ class FakeBuildWorker:
         self.created: list[tuple[str, str, str]] = []
         self.loras: list[dict[str, str]] = []
         self.history: list[dict[str, Any]] = []
+        self.modes: list[tuple[str, str]] = []
+        self.preflights: list[tuple[str, str | None]] = []
         for key, value in overrides.items():
             setattr(self, key, value)
 
@@ -138,18 +208,36 @@ class FakeBuildWorker:
 
     # training
 
-    def train_preflight(self, preset: str = "24g") -> dict:
+    def set_dataset_target_mode(self, dataset_id: str, mode: str) -> dict[str, Any]:
+        self.modes.append((dataset_id, mode))
+        row = self.datasets[dataset_id]
+        if mode == "av" and not row.get("av_capable", True):
+            raise RuntimeError(
+                "av mode needs an audio stream in every clip, and 1 of 2 have "
+                "none (first: push.mp4). Use Video mode, or re-export the "
+                "clips with audio."
+            )
+        row["h3_target_mode"] = mode
+        return dict(row)
+
+    def train_preflight(
+        self, preset: str = "24g", dataset_dir: str | None = None
+    ) -> dict:
+        self.preflights.append((preset, dataset_dir))
         problems = [] if self.preflight_ok else list(self.preflight_problems) or [
             "SimpleTuner is not installed — run: pip install 'minimax-studio[train]'."
         ]
+        row = PRESETS.get(preset) or PRESETS["24g"]
         return {
             "ok": not problems,
             "preset": preset,
-            "vram_floor_gb": PRESETS[preset]["vram_floor_gb"],
+            "family": row["family"],
+            "vram_floor_gb": row["vram_floor_gb"],
             "free_vram_gb": 23.4,
             "presets": PRESETS,
             "problems": problems,
             "warnings": [],
+            "dataset_dir": dataset_dir,
             "detail": "Ready to train." if not problems else " ".join(problems),
         }
 
@@ -246,12 +334,21 @@ def test_a_dataset_name_cannot_inject_markup_into_its_label(app) -> None:
     assert text.count("<b>") == 1, "the only bold in that label is ours"
 
 
-def test_train_button_waits_for_the_h3_trainer(app) -> None:
-    clips = {"movies": {**DATASET, "id": "movies", "kind": "video"}}
+def test_both_trainers_are_offered_from_the_same_button(app) -> None:
+    """S4 arrived: a video dataset trains today, so the button that used to
+    apologise has to work — and the av control appears only where it means
+    something."""
+    clips = {"movies": dict(VIDEO_DATASET)}
     page = DatasetsPage(FakeBuildWorker(datasets=clips))
     page.select("movies")
-    assert not page._train_btn.isEnabled()
-    assert "S4" in page._train_btn.toolTip()
+    assert page._train_btn.isEnabled()
+    assert page._train_btn.toolTip() == ""
+    # isHidden(), not isVisible(): the page itself is never shown in a test.
+    assert not page._mode_btn.isHidden()
+
+    page = DatasetsPage(FakeBuildWorker())  # the default fake is a music dataset
+    assert page._train_btn.isEnabled()
+    assert page._mode_btn.isHidden()
 
 
 def test_train_button_hands_the_dataset_to_the_train_page(app) -> None:
@@ -537,3 +634,124 @@ def test_build_pages_name_their_buttons_consistently() -> None:
         for match in re.finditer(r"self\.(_[a-z0-9_]+)\s*=\s*QPushButton", inspect.getsource(module)):
             name = match.group(1)
             assert name.endswith("_btn"), f"{module.__name__}: button attribute {name} needs the _btn suffix"
+
+
+# --- H3 (PLAN-V2 S4, off-GPU half) ------------------------------------------
+
+
+def _video_page(monkeypatch, **worker_kwargs):
+    """A DatasetsPage holding one validated H3 dataset."""
+    worker = FakeBuildWorker(
+        datasets={"movies": dict(VIDEO_DATASET)},
+        reports={"movies": dict(VIDEO_REPORT)},
+        **worker_kwargs,
+    )
+    page = DatasetsPage(worker)
+    page.select("movies")
+    return page, worker
+
+
+def test_the_detail_says_which_mode_and_what_was_measured(app) -> None:
+    page, _worker = _video_page(None)
+    detail = page._detail_label.text()
+    assert "video dataset" in detail
+    assert "target mode <b>video</b>" in detail
+    # Measured facts, not just filenames: a still and a clip are different work.
+    rows = [page._tree.topLevelItem(i).text(0) for i in range(page._tree.topLevelItemCount())]
+    assert any("cover.png" in text and "1280×720" in text and "still" in text for text in rows)
+    assert any("push.mp4" in text and "4.2s" in text for text in rows)
+    status = page._status.text()
+    assert "(1 still, 1 clip)" in status and "Ready to train" in status
+
+
+def test_av_mode_is_confirmed_then_applied(app, monkeypatch) -> None:
+    page, worker = _video_page(monkeypatch)
+    dialogs = _Dialogs(
+        monkeypatch, {"question": QMessageBox.StandardButton.Yes}, datasets_module
+    )
+    page._mode_btn.click()
+    body = dialogs.last()[2]
+    assert "extra VRAM and disk" in body and "every clip" in body
+    assert worker.modes == [("movies", "av")]
+    assert "Target mode is <b>av</b>" in page._status.text()
+
+
+def test_saying_no_to_av_mode_changes_nothing(app, monkeypatch) -> None:
+    page, worker = _video_page(monkeypatch)
+    page._mode_btn.click()  # the autouse fixture answers No
+    assert worker.modes == []
+
+
+def test_av_refusal_from_the_worker_is_read_out_not_swallowed(app, monkeypatch) -> None:
+    page, worker = _video_page(monkeypatch)
+    worker.datasets["movies"]["av_capable"] = False
+    _Dialogs(monkeypatch, {"question": QMessageBox.StandardButton.Yes}, datasets_module)
+    page._mode_btn.click()
+    assert worker.modes == [("movies", "av")]  # asked; the worker said no
+    assert "push.mp4" in page._status.text()
+    assert "av mode needs an audio stream" in page._status.text()
+    assert worker.datasets["movies"]["h3_target_mode"] == "video"  # untouched
+
+
+def test_giving_up_av_mode_needs_no_confirmation(app, monkeypatch) -> None:
+    page, worker = _video_page(monkeypatch)
+    worker.datasets["movies"]["h3_target_mode"] = "av"
+    page.refresh()
+    page.select("movies")
+    assert page._mode_btn.text().startswith("Back to video-only")
+    dialogs = _Dialogs(monkeypatch, {}, datasets_module)
+    page._mode_btn.click()
+    assert dialogs.kinds() == []  # the cheap direction is not a question
+    assert worker.modes == [("movies", "video")]
+
+
+def test_the_train_page_switches_tiers_with_the_dataset(app) -> None:
+    worker = FakeBuildWorker(
+        datasets={"summer": dict(DATASET), "movies": dict(VIDEO_DATASET)},
+        reports={"movies": dict(VIDEO_REPORT)},
+    )
+    page = TrainPage(worker)
+    assert [page._preset.itemText(i) for i in range(page._preset.count())] == [
+        "24 GB — conservative LoRA · rank 16",
+        "48 GB — room to breathe · rank 32",
+    ]
+    for index in range(page._dataset.count()):
+        if (page._dataset.itemData(index) or {}).get("id") == "movies":
+            page._dataset.setCurrentIndex(index)
+    assert [page._preset.itemData(i) for i in range(page._preset.count())] == [
+        "h3-24g",
+        "h3-80g",
+    ]
+    assert page._dataset_label.text().startswith("H3 dataset")
+    # An H3 run has no audio length to promise, so the box is not there.
+    assert page._validation_duration.isHidden()
+    assert worker.preflights[-1][0] == "h3-24g"
+    assert worker.preflights[-1][1] == "/data/datasets/movies"
+
+
+def test_the_h3_tiers_cannot_be_started_on_a_music_dataset(app, monkeypatch) -> None:
+    """The picker filters, and the payload still goes through the worker's own
+    refusal — belt and braces, because the wrong pair wastes hours."""
+    page = TrainPage(FakeBuildWorker())
+    assert page._preset.currentData() == "24g"
+    assert not any("h3" in str(page._preset.itemData(i)) for i in range(page._preset.count()))
+    assert not page._validation_duration.isHidden()
+
+
+def test_an_h3_run_is_started_without_an_audio_length(app, monkeypatch) -> None:
+    worker = FakeBuildWorker(
+        datasets={"movies": dict(VIDEO_DATASET)},
+        reports={"movies": dict(VIDEO_REPORT)},
+    )
+    page = TrainPage(worker)
+    _Dialogs(monkeypatch, {"question": QMessageBox.StandardButton.Yes}, train_module)
+    for index in range(page._dataset.count()):
+        if (page._dataset.itemData(index) or {}).get("id") == "movies":
+            page._dataset.setCurrentIndex(index)
+    page._name.setText("push-in lora")
+    page._start_run()
+    assert worker.started, [call[0] for call in worker.preflights]
+    payload = worker.started[-1]
+    assert payload["preset"] == "h3-24g"
+    assert payload["dataset_dir"] == "/data/datasets/movies"
+    assert "duration" not in payload["validation"]

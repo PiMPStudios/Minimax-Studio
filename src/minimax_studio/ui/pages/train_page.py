@@ -108,8 +108,10 @@ class TrainPage(QWidget):
             "Studio generates the SimpleTuner config and runs it as its own "
             "process — <b>close Studio and the run keeps going</b>, and this "
             "page reattaches to it. "
-            "<span style='color:#ff9f0a'>Experimental:</span> Music 3 LoRAs "
-            "only, CUDA only, and a 24 GB card is the floor."
+            "<span style='color:#ff9f0a'>Experimental:</span> Music 3 and H3 "
+            "LoRAs, CUDA only, and a 24 GB card is the floor. The VRAM presets "
+            "change to match the dataset you pick — the two trainers never "
+            "share a run."
         )
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
@@ -126,8 +128,10 @@ class TrainPage(QWidget):
         form = QFormLayout(form_box)
         self._dataset = QComboBox()
         self._dataset.setToolTip(
-            "Only Music datasets appear — the H3 trainer arrives in PLAN-V2 S4."
+            "Music and H3 datasets both appear here. Picking one changes the "
+            "VRAM presets to the trainer that reads it."
         )
+        self._dataset.currentIndexChanged.connect(self._dataset_changed)
         self._name = QLineEdit()
         self._name.setPlaceholderText("my summer LoRA")
         self._preset = QComboBox()
@@ -151,14 +155,19 @@ class TrainPage(QWidget):
             "bright synth pop with clean vocal melody (default if blank)"
         )
         self._validation_prompt.setToolTip(
-            "SimpleTuner renders a clip with this prompt during the run, so "
-            "you hear progress instead of watching a loss number."
+            "SimpleTuner renders something with this prompt during the run, so "
+            "you see progress instead of watching a loss number."
         )
         self._validation_duration = QSpinBox()
         self._validation_duration.setRange(5, 60)
         self._validation_duration.setValue(15)
         self._validation_duration.setSuffix(" s")
-        form.addRow("Dataset", self._dataset)
+        self._validation_duration.setToolTip(
+            "How long the Music validation clip is. H3 validation samples stay "
+            "at SimpleTuner's own defaults — we do not guess a frame count."
+        )
+        self._dataset_label = QLabel("Music dataset")
+        form.addRow(self._dataset_label, self._dataset)
         form.addRow("Run name", self._name)
         form.addRow("VRAM preset", self._preset)
         form.addRow("Steps", self._steps)
@@ -311,7 +320,7 @@ class TrainPage(QWidget):
             rows = self._client.list_datasets()
         except Exception:
             return
-        trainable = [row for row in rows if row.get("kind") == "music"]
+        trainable = [row for row in rows if row.get("kind") in ("music", "video")]
         # Rebuilding a picker the user is using loses their selection, so only
         # do it when the list actually changed. (An empty list still has to
         # flow through: that is the "make a dataset first" state.)
@@ -319,6 +328,7 @@ class TrainPage(QWidget):
             row.get("id") for row in self._datasets
         ]:
             return
+        previous_kind = self._family()
         self._datasets = trainable
         current = self._dataset.currentData()
         self._dataset.blockSignals(True)
@@ -326,7 +336,17 @@ class TrainPage(QWidget):
         for row in trainable:
             # "2 problems" and "not validated yet" are different facts; the
             # picker must not blur them into one warning word.
-            label = f"{row.get('name')} — {row.get('clip_count', 0)} clips · {validation_status_short(row)}"
+            count = int(row.get("clip_count") or 0)
+            if row.get("kind") == "video":
+                label = (
+                    f"{row.get('name')} — {count} stills/clips · "
+                    f"{validation_status_short(row)} [H3]"
+                )
+            else:
+                label = (
+                    f"{row.get('name')} — {count} clips · "
+                    f"{validation_status_short(row)}"
+                )
 
             # The whole row as item data: the id is what validate takes, the
             # path is what training takes. Neither is ours to rebuild.
@@ -336,11 +356,42 @@ class TrainPage(QWidget):
         self._dataset.blockSignals(False)
         self._dataset.setEnabled(bool(trainable))
         self._start_btn.setEnabled(bool(trainable))
+        if self._family() != previous_kind:
+            self._adopt_presets(self._presets)
+        self._show_family_fields()
         if not trainable:
             self._form_status.setText(
-                "No Music dataset yet — make one on the Datasets page: import "
-                "5–20 clips you like and Validate."
+                "No dataset yet — make one on the Datasets page: import "
+                "5–20 clips for Music, or stills and short clips for H3, then "
+                "Validate."
             )
+
+    def _family(self) -> str:
+        """Which trainer the picked dataset is for. One place decides, so the
+        preset list, the form and the payload cannot disagree."""
+        row = self._dataset.currentData() or {}
+        return "h3" if str(row.get("kind")) == "video" else "music"
+
+    def _show_family_fields(self) -> None:
+        """An H3 run has no audio length to promise; hiding the box beats a
+        control that does nothing."""
+        music = self._family() == "music"
+        self._validation_duration.setVisible(music)
+        self._dataset_label.setText(
+            "Music dataset" if music else "H3 dataset (stills and short clips)"
+        )
+        self._validation_prompt.setPlaceholderText(
+            "bright synth pop with clean vocal melody (default if blank)"
+            if music
+            else "a steady camera push across a neon street at dusk (default if blank)"
+        )
+
+    def _dataset_changed(self) -> None:
+        """Changing dataset changes the trainer: re-pick the tier list and ask
+        the worker to check this pair, not the previous one."""
+        self._adopt_presets(self._presets)
+        self._show_family_fields()
+        self.preflight()
 
     def select_dataset(self, dataset_id: str) -> None:
         for index in range(self._dataset.count()):
@@ -351,8 +402,10 @@ class TrainPage(QWidget):
 
     def preflight(self) -> None:
         preset = str(self._preset.currentData() or "24g")
+        dataset = self._dataset.currentData() or {}
+        dataset_dir = str(dataset.get("path") or "") or None
         try:
-            check = self._client.train_preflight(preset)
+            check = self._client.train_preflight(preset, dataset_dir)
         except Exception as exc:
             self._preflight = {}
             self._preflight_label.setText(f"Could not reach the check: {exc}")
@@ -377,21 +430,30 @@ class TrainPage(QWidget):
         self._preflight_label.setText("<br>".join(lines))
 
     def _adopt_presets(self, presets: dict[str, dict[str, Any]]) -> None:
-        """Build the VRAM picker from what the worker actually supports."""
-        if presets == self._presets:
+        """Build the VRAM picker from what the worker actually supports — for
+        the model this dataset belongs to. A Music tier list under an H3 dataset
+        would be a trap with a number on it."""
+        family = self._family()
+        rows = {
+            name: preset
+            for name, preset in presets.items()
+            if str(preset.get("family") or "music") == family
+        }
+        rows = rows or dict(_FALLBACK_PRESETS)
+        if rows == self._presets:
             return
-        self._presets = presets
+        self._presets = rows
         current = self._preset.currentData()
         self._preset.blockSignals(True)
         self._preset.clear()
         for name, preset in sorted(
-            presets.items(), key=lambda item: item[1].get("vram_floor_gb") or 0
+            rows.items(), key=lambda item: item[1].get("vram_floor_gb") or 0
         ):
             self._preset.addItem(
                 f"{preset.get('title')} · rank {preset.get('lora_rank')}", name
             )
-        if current:
-            self._preset.setCurrentIndex(max(0, self._preset.findData(current)))
+        if current and self._preset.findData(current) >= 0:
+            self._preset.setCurrentIndex(self._preset.findData(current))
         self._preset.blockSignals(False)
         self._preset_changed()
 
@@ -477,13 +539,14 @@ class TrainPage(QWidget):
             QMessageBox.warning(
                 self,
                 "No dataset",
-                "Pick a Music dataset — make one on the Datasets page first.",
+                "Pick a dataset — make one on the Datasets page first. Music "
+                "takes clips; H3 takes stills or short clips.",
             )
             return
         name = self._name.text().strip() or "training run"
         preset = str(self._preset.currentData() or "24g")
         try:
-            check = self._client.train_preflight(preset)
+            check = self._client.train_preflight(preset, str(dataset_dir))
         except Exception as exc:
             QMessageBox.warning(self, "Could not check requirements", str(exc))
             return
@@ -524,6 +587,13 @@ class TrainPage(QWidget):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+        validation: dict[str, Any] = {
+            "prompt": self._validation_prompt.text().strip()
+        }
+        if self._family() == "music":
+            # An H3 run has no audio length to promise; sending one would be a
+            # key the trainer either ignores or rejects.
+            validation["duration"] = int(self._validation_duration.value())
         try:
             run = self._client.start_train_run(
                 {
@@ -532,10 +602,7 @@ class TrainPage(QWidget):
                     "preset": preset,
                     "steps": int(self._steps.value()),
                     "rank": int(self._rank.value()),
-                    "validation": {
-                        "prompt": self._validation_prompt.text().strip(),
-                        "duration": int(self._validation_duration.value()),
-                    },
+                    "validation": validation,
                 }
             )
         except Exception as exc:
