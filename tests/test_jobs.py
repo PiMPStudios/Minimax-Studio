@@ -2,6 +2,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from minimax_studio.worker.jobs import (
     JobRequest,
     cancel_job,
@@ -30,6 +32,45 @@ def test_stub_music_job_writes_history(studio_home: Path, monkeypatch) -> None:
     meta = json.loads((studio_home / "history" / job["id"] / "meta.json").read_text())
     assert meta["speed"] == "quality"
     assert "cfg" in meta
+    assert meta["assets"] == []
+    assert "ref_image_size" in meta
+
+
+def test_history_keeps_frame_assets(studio_home: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
+    assets = [{"role": "first_frame", "path": "/tmp/hero.png"}]
+    job = start_job(
+        JobRequest(
+            kind="music",
+            backend="stub",
+            prompt="with a frame",
+            assets=assets,
+            ref_image_size="768",
+        )
+    )
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        current = get_job(job["id"])
+        if current["status"] in {"done", "error"}:
+            break
+        time.sleep(0.05)
+    import json
+
+    meta = json.loads((studio_home / "history" / job["id"] / "meta.json").read_text())
+    assert meta["assets"] == assets
+    assert meta["ref_image_size"] == "768"
+
+
+def test_h3_api_refuses_an_asset_that_would_blow_the_body_cap(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from minimax_studio.worker.backends import h3_api
+
+    monkeypatch.setattr(h3_api, "MAX_API_ASSET_BYTES", 8)
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(b"x" * 32)
+    with pytest.raises(RuntimeError, match="64 MB"):
+        h3_api._file_data_url(str(path))
 
 
 def test_job_queue_runs_second_after_first(studio_home: Path, monkeypatch) -> None:

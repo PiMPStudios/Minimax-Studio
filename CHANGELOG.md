@@ -12,6 +12,84 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.35] — 2026-08-30
+
+### Fixed
+
+- **H3 training configs now match SimpleTuner 4.8.0.** 0.2.34 wrote
+  `model_family: minimax_h3`, flavour `h3`, `ram_torch`, and
+  `base_model_precision: int8-quanto`. None of those are keys the pinned
+  trainer reads. A 24 GB H3 run would have launched on the wrong family, a
+  made-up flavour, and no RamTorch offload. Studio now writes `minimaxh3`,
+  `convrot-int8` (or `fl2va` on the 80 GB tier), `ramtorch` +
+  `ramtorch_text_encoder` on 24 GB, `base_model_precision: no_change`,
+  `distillation_method: h3_drift`, `flow_schedule_shift: 12` /
+  `audio_flow_schedule_shift: 3`, and `resolution_type: pixel_area` — the
+  same block SimpleTuner's own example configs use.
+- **An installed H3 adapter is no longer listed as Music.** `record_trained`
+  used to hardcode `kind: music`, so Install adapter put an H3 LoRA in the
+  Audition loop and queued a 30 s song. Kind and base pack now follow the
+  run's family. Untracked files under `h3-comfy` / `minimax-h3` infer H3;
+  importing from a generic folder asks Music vs H3 (Video).
+- **Resume writes a checkpoint directory (or `latest`), not a `.safetensors`
+  path.** SimpleTuner will not resume from an exported adapter file. The Train
+  page confirms “newest checkpoint” (mtime, which is what the worker uses);
+  Storage… is the picker for a specific one.
+- **A hung trainer is `lost`, not `running` forever.** If the process is
+  alive but the log has been silent for 5 minutes, status is `lost`. It still
+  counts as live for GPU/storage; Cancel still works; log movement restores
+  `running`.
+- **Install adapter no longer overwrites the previous run's file.**
+  SimpleTuner's usual export is `pytorch_lora_weights.safetensors`; a second
+  install now prefixes the run name and never replaces an existing LoRA.
+- **Dataset and run ids cannot walk out of their folders.** `..` and
+  absolute ids are rejected; install/resume paths must resolve under the run
+  dir; import slugs the id.
+- **`av` mode is not ready until clips have been measured.** Unmeasured
+  files are a warning in video mode and a hard fail in av — training cannot
+  start without ever seeing audio. `set_h3_target_mode("av")` no longer
+  accuses unmeasured clips of having none.
+- **Music validator and trainer agree on duration.** Ready 90 s wavs were
+  skipped at discovery because the written backend capped at 60 s; it now
+  uses the same 300 s ceiling as the validator. Cheap preflight also sees
+  `.mp3`.
+- **Stills fingerprint.** An H3 stills-only dataset no longer hashes as
+  `clip_count: 0`.
+- **Generate History restores frames.** `assets` and `ref_image_size` are
+  persisted on the history row.
+- **2K is blocked on local backends.** Generate confirm now passes
+  `resolution`, so the 2K-on-local preflight actually runs.
+- **Comfy extra LoRAs keep their subfolder.** The graph no longer strips to
+  `Path.name` after resolve. Music Comfy stacks `LoraLoaderModelOnly` the
+  same way CUDA already did; the MiniMax Music API and MLX refuse LoRAs
+  instead of dropping them. Music Fast/FP16 DiT uses the name Comfy lists.
+- **A selected LoRA that fails to load fails the job**, with the filename in
+  the error, instead of generating the base model.
+- **Fast on official H3 prepends Turbo** (and Ref2VA Fast is 4 steps),
+  matching Comfy.
+- **MiniMax H3 API cancel actually cancels.** Queued tasks are DELETE'd
+  (`/v2/video_generation/{task_id}`). Reference files over ~45 MB are
+  refused before they blow the 64 MB body cap.
+- **Pack download Cancel stops the Hugging Face snapshot**, by running it in
+  a child process and killing the group.
+- **Blank lyrics on the Music API is not an instrumental.** Empty lyrics +
+  `lyrics_optimizer` writes lyrics from the prompt, which is what local
+  CUDA/Comfy already did. Cancel during that 180 s POST closes the HTTP
+  client.
+- **Build pages no longer freeze the window to poll.** Train, Datasets and
+  Adapters list off the GUI thread and keep the last view if the worker is
+  down. Generate's 500 ms `list_jobs` / `list_downloads` tick does the same
+  (one shared fetch, no extra `get_job`). Models `/packs` (the tree walk)
+  is also off-thread, still throttled to 2 s while that page is showing.
+
+### Changed
+
+- Help names both LoRA pickers, Music LoRAs on CUDA/Comfy only, and the
+  Music API's `lyrics_optimizer` behaviour.
+- The Train page's family-split VRAM fallback never offers a Music 24 GB
+  tier for an H3 dataset (or the reverse). Changing preset re-runs
+  preflight.
+
 ## [0.2.34] — 2026-08-29
 
 ### Added

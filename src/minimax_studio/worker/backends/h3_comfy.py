@@ -424,7 +424,7 @@ def build_h3_comfy_graph(
     for item in extra_loras or []:
         name = item.get("id") or item.get("path") or item.get("lora_name")
         if name:
-            stack.append((Path(str(name)).name, float(item.get("strength") or 1.0)))
+            stack.append((str(name), float(item.get("strength") or 1.0)))
     prev = ["unet", 0]
     for index, (name, strength) in enumerate(stack):
         key = "lora" if index == 0 else f"lora{index}"

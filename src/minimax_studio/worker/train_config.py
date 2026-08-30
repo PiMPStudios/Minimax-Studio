@@ -53,6 +53,10 @@ class TrainPreset:
     #: …and packs where any one will do (the H3 weights share one folder).
     packs_any: tuple[str, ...] = ()
     min_free_cache_gb: float = MIN_FREE_CACHE_GB
+    #: SimpleTuner ``model_flavour``. Music is ``music3``; H3 INT8 tiers are
+    #: ``convrot-int8`` and the 80 GB tier is official ``fl2va``. ``h3`` is not
+    #: a flavour the pinned trainer knows.
+    flavour: str = "music3"
 
 
 # Floors from SimpleTuner's own MiniMax Music 3 quickstart (24 GB minimum,
@@ -89,53 +93,59 @@ PRESETS: dict[str, TrainPreset] = {
         title="24 GB — H3 LoRA with RamTorch",
         vram_floor_gb=24,
         lora_rank=16,
-        base_model_precision="int8-quanto",
+        # Flavour already loads ConvRot INT8; quanto on top is the wrong 8-bit.
+        # SimpleTuner's own 24G example is ``base_model_precision: no_change``.
+        base_model_precision="no_change",
         text_encoder_precision="int8-quanto",
-        note="RamTorch CPU-offload, int8 everywhere, 480p buckets",
+        note="RamTorch CPU-offload, ConvRot INT8, 480p buckets",
         family="h3",
         ram_torch=True,
         resolution=480,
         packs_any=("h3-diffusers-fl2va", "h3-diffusers-ref2va"),
         min_free_cache_gb=40.0,
+        flavour="convrot-int8",
     ),
     "h3-32g": TrainPreset(
         name="h3-32g",
         title="32 GB — H3 LoRA",
         vram_floor_gb=32,
         lora_rank=16,
-        base_model_precision="int8-quanto",
+        base_model_precision="no_change",
         text_encoder_precision="int8-quanto",
-        note="int8 + gradient checkpointing, 768p buckets",
+        note="ConvRot INT8 + gradient checkpointing, 768p buckets",
         family="h3",
         resolution=768,
         packs_any=("h3-diffusers-fl2va", "h3-diffusers-ref2va"),
         min_free_cache_gb=40.0,
+        flavour="convrot-int8",
     ),
     "h3-48g": TrainPreset(
         name="h3-48g",
         title="48 GB — H3 LoRA, rank 32",
         vram_floor_gb=48,
         lora_rank=32,
-        base_model_precision="int8-quanto",
+        base_model_precision="no_change",
         text_encoder_precision="int8-quanto",
-        note="int8 at 768p, rank 32",
+        note="ConvRot INT8 at 768p, rank 32",
         family="h3",
         resolution=768,
         packs_any=("h3-diffusers-fl2va", "h3-diffusers-ref2va"),
         min_free_cache_gb=60.0,
+        flavour="convrot-int8",
     ),
     "h3-80g": TrainPreset(
         name="h3-80g",
         title="80 GB — H3 LoRA, full precision transformer",
         vram_floor_gb=80,
         lora_rank=32,
-        base_model_precision="bf16",
+        base_model_precision="no_change",
         text_encoder_precision="int8-quanto",
-        note="bf16 transformer at 1080p buckets",
+        note="official FL2VA bf16 transformer at 1080p buckets",
         family="h3",
         resolution=1080,
         packs_any=("h3-diffusers-fl2va", "h3-diffusers-ref2va"),
         min_free_cache_gb=80.0,
+        flavour="fl2va",
     ),
 }
 DEFAULT_PRESET = "24g"
@@ -145,7 +155,7 @@ DEFAULT_PRESET = "24g"
 #: surfaced by preflight so the user is told before the run, not after.
 H3_UNVERIFIED_KEYS = (
     "minimax_h3_target_mode",
-    "ram_torch",
+    "ramtorch",
     "resolution",
     "validation_prompt",
 )
@@ -180,12 +190,19 @@ def validate_video_dataset_dir(path: str | Path) -> list[str]:
 
 def validate_music_dataset_dir(path: str | Path) -> list[str]:
     """Cheap, honest checks only — the full validator is PLAN-V2 S1."""
+    from minimax_studio.worker.datasets import MEDIA_BY_KIND
+
     folder = Path(path)
     if not folder.is_dir():
         return [f"Dataset folder not found: {folder}"]
-    clips = sorted(folder.glob("*.wav")) + sorted(folder.glob("*.flac"))
+    exts = MEDIA_BY_KIND["music"]
+    clips = [
+        item
+        for item in sorted(folder.iterdir())
+        if item.suffix.lower() in exts and not item.name.startswith(".")
+    ]
     if not clips:
-        return [f"No audio files (*.wav) found in {folder}"]
+        return [f"No audio files ({', '.join(exts)}) found in {folder}"]
     errors: list[str] = []
     for clip in clips:
         if not clip.with_suffix(".txt").is_file():
@@ -311,28 +328,40 @@ def write_run_config(
     if preset.family == "h3":
         config: dict[str, Any] = {
             **common,
-            "model_family": "minimax_h3",
-            "model_flavour": "h3",
+            # SimpleTuner 4.8.0 registers the family as ``minimaxh3`` (see
+            # ``simpletuner train example=minimaxh3-fl2va-convrot-int8.peft-lora``).
+            # ``minimax_h3`` is not a family the pinned trainer knows.
+            "model_family": "minimaxh3",
+            "model_flavour": preset.flavour,
             "pretrained_model_name_or_path": str(root / "h3-diffusers"),
-            # The 24 GB tier only reaches H3 by keeping layers in RAM. Written
-            # when set, absent otherwise — an unexplained key is a mystery the
-            # log has to pay for.
-            **({"ram_torch": True} if preset.ram_torch else {}),
-            # SimpleTuner's H3 target mode, straight from the dataset manifest:
-            # "av" is a choice the user made (and the validator approved),
-            # "video" is the default. Stills ride the same mode — they are the
-            # frames a video dataset would have sampled.
+            # JSON keys match CLI flags: ``--ramtorch``, not ``ram_torch``.
+            # The 24 GB example also offloads the text encoder.
+            **(
+                {"ramtorch": True, "ramtorch_text_encoder": True}
+                if preset.ram_torch
+                else {}
+            ),
             "minimax_h3_target_mode": str(
                 dataset_spec.get("h3_target_mode") or "video"
             ),
-            # Video validation wants frames, not lyrics: `validation_prompt` is
-            # the one key common to every family, so that is what we send; how
-            # many frames to sample and with which sampler stays at SimpleTuner's
-            # defaults rather than our guesses.
-            #
-            # Drift distillation is SimpleTuner's own H3 safety net and stays on:
-            # no key is written here, because switching it off is the thing that
-            # has not been proved safe for the audio heads.
+            "resolution_type": "pixel_area",
+            "flow_schedule_shift": 12.0,
+            "audio_flow_schedule_shift": 3.0,
+            "validation_guidance": 1.0,
+            "validation_disable_unconditional": True,
+            # Official H3 LoRA examples all write this block. Leaving it out
+            # does not "leave the default on" — it trains without the audio-head
+            # safety net PLAN-V2 wanted kept.
+            "distillation_method": "h3_drift",
+            "distillation_config": {
+                "h3_drift": {
+                    "audio_weight": 1.0,
+                    "balance": "token",
+                    "loss_weight": 0.5,
+                    "sft_loss_weight": 1.0,
+                    "video_weight": 1.0,
+                }
+            },
         }
         backend_type = "image" if (
             dataset_spec.get("has_stills") and not dataset_spec.get("has_clips")
@@ -356,10 +385,14 @@ def write_run_config(
             "validation_disable_unconditional": True,
         }
         backend_type = "audio"
+        from minimax_studio.worker.datasets import MAX_SECONDS
+
         media_block: dict[str, Any] = {
             "bucket_strategy": "duration",
             "duration_interval": 3.0,
-            "max_duration_seconds": 60,
+            # Same cap the validator advertises — a "ready" 90 s clip must not
+            # be skipped silently at SimpleTuner discovery.
+            "max_duration_seconds": MAX_SECONDS,
             "lyrics_filename_format": "{filename}.lyrics",
         }
     backend: dict[str, Any] = {

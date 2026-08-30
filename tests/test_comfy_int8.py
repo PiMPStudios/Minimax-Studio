@@ -14,7 +14,11 @@ from minimax_studio.worker.backends.h3_comfy import (
     build_h3_comfy_graph,
     comfy_resolve_file,
 )
-from minimax_studio.worker.backends.music_comfy import DIT_INT8, build_music_comfy_graph
+from minimax_studio.worker.backends.music_comfy import (
+    DIT_FP16,
+    DIT_INT8,
+    build_music_comfy_graph,
+)
 from minimax_studio.worker.catalog import PACKS
 from minimax_studio.worker.jobs import JobRequest
 from minimax_studio.worker.model_paths import pack_status, parse_extra_model_paths
@@ -142,6 +146,21 @@ def test_comfy_graph_stacks_second_lora() -> None:
     assert graph["shift"]["inputs"]["model"] == ["lora1", 0]
 
 
+def test_comfy_graph_keeps_lora_subfolder_paths() -> None:
+    graph = build_h3_comfy_graph(
+        prompt="x",
+        width=960,
+        height=544,
+        length=73,
+        seed=2,
+        steps=8,
+        lora_name="h3-comfy/turbo.safetensors",
+        extra_loras=[{"id": "h3-comfy/style.safetensors", "strength": 0.6}],
+    )
+    assert graph["lora"]["inputs"]["lora_name"] == "h3-comfy/turbo.safetensors"
+    assert graph["lora1"]["inputs"]["lora_name"] == "h3-comfy/style.safetensors"
+
+
 def test_comfy_graph_ref2va_wires_autogrow() -> None:
     graph = build_h3_comfy_graph(
         prompt="Use <Picture 1> as identity",
@@ -223,6 +242,42 @@ def test_music_comfy_graph_core_nodes() -> None:
     assert graph["empty"]["inputs"]["seconds"] == ["encode", 1]
     assert graph["sample"]["class_type"] == "KSampler"
     assert graph["save"]["class_type"] == "SaveAudio"
+    assert graph["sample"]["inputs"]["model"] == ["unet", 0]
+
+
+def test_music_comfy_graph_stacks_loras() -> None:
+    graph = build_music_comfy_graph(
+        caption="lofi",
+        lyrics="[Verse]\nhi",
+        duration_s=30,
+        seed=1,
+        steps=30,
+        loras=[
+            {"id": "music3-comfy/summer.safetensors", "strength": 0.8},
+            {"id": "extra.safetensors", "strength": 0.5},
+        ],
+    )
+    assert graph["lora"]["inputs"]["lora_name"] == "music3-comfy/summer.safetensors"
+    assert graph["lora"]["inputs"]["strength_model"] == 0.8
+    assert graph["lora1"]["inputs"]["lora_name"] == "extra.safetensors"
+    assert graph["sample"]["inputs"]["model"] == ["lora1", 0]
+
+
+def test_pick_music_model_names_uses_resolved_fp16(monkeypatch) -> None:
+    from minimax_studio.worker.backends import music_comfy
+
+    def fake_resolve(_node: str, _slot: str, name: str) -> str | None:
+        if name == music_comfy.DIT_INT8:
+            return None
+        if name == music_comfy.DIT_FP16:
+            return "music3/" + DIT_FP16
+        return name
+
+    monkeypatch.setattr(music_comfy, "comfy_resolve_file", fake_resolve)
+    dit, clip, vae = music_comfy._pick_music_model_names()
+    assert dit == "music3/" + DIT_FP16
+    assert clip
+    assert vae
 
 
 def test_mac_h3_local_is_gated(monkeypatch, studio_home: Path) -> None:

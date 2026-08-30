@@ -244,7 +244,31 @@ class VideoPage(QWidget):
             self._state.backend,
             self._mode,
             self._state.speed,
+            self.resolution.currentText(),
         ):
+            return
+        if self._mode in {"i2va"} and not (
+            self.first_path.isVisible() and self.first_path.path
+        ):
+            QMessageBox.information(
+                self, "Frame needed", "Image-to-video needs a first frame."
+            )
+            return
+        if self._mode in {"l2va"} and not (
+            self.last_path.isVisible() and self.last_path.path
+        ):
+            QMessageBox.information(
+                self, "Frame needed", "Last-frame mode needs a last frame."
+            )
+            return
+        if self._mode == "fl2va" and not (
+            self.first_path.path and self.last_path.path
+        ):
+            QMessageBox.information(
+                self,
+                "Frames needed",
+                "First+last mode needs both frames.",
+            )
             return
         assets = []
         if self.first_path.isVisible() and self.first_path.path:

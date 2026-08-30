@@ -88,6 +88,38 @@ def test_trained_row_carries_the_provenance_a_filename_hides(
     assert row["name"] == "summer-lora", "one name for one file, on every page"
 
 
+def test_an_h3_run_installs_as_an_h3_adapter(
+    studio_home: Path, tmp_path: Path
+) -> None:
+    dataset = tmp_path / "stills"
+    dataset.mkdir()
+    (dataset / "a.png").write_bytes(b"\x00")
+    (dataset / "a.txt").write_text("a frame\n", encoding="utf-8")
+    source = tmp_path / "checkpoints" / "step-10" / "h3-lora.safetensors"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"\x00")
+    path = _lora_file(studio_home, "h3-lora.safetensors")
+    row = adapters.record_trained(
+        {
+            "id": "20260829-h3",
+            "name": "H3 stills",
+            "dataset_dir": str(dataset),
+            "family": "h3",
+            "dataset_kind": "video",
+            "preset": "h3-24g",
+            "steps": 200,
+            "rank": 16,
+        },
+        {"name": "h3-lora", "path": str(path)},
+        source,
+    )
+    assert row["kind"] == "h3"
+    assert row["base_pack"] == "h3-diffusers-fl2va"
+    listed = adapters.get_adapter(row["id"])
+    assert listed["can_audition"] is False
+    assert listed["dataset"]["clip_count"] == 1
+
+
 def test_fingerprint_follows_clips_not_mtimes(
     studio_home: Path, tmp_path: Path
 ) -> None:
@@ -151,7 +183,51 @@ def test_import_lora_records_that_we_did_not_train_it(
     listed = adapters.get_adapter("borrowed.safetensors")
     assert listed["source"] == "imported"
     assert listed["path"] == row["path"]
+    assert listed["kind"] == "music"
     assert listed["dataset"] == {} or not listed["dataset"].get("path")
+
+
+def test_untracked_file_in_an_h3_folder_is_not_a_music_adapter(
+    studio_home: Path,
+) -> None:
+    folder = Path(studio_home) / "models" / "h3-comfy" / "loras"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "shot.safetensors"
+    path.write_bytes(b"\x00safetensors-stub")
+    listed = adapters.get_adapter("shot.safetensors")
+    assert listed["source"] == "untracked"
+    assert listed["kind"] == "h3"
+    assert listed["can_audition"] is False
+    assert listed["path"] == str(path)
+
+
+def test_import_from_an_h3_folder_keeps_h3_kind(
+    studio_home: Path, tmp_path: Path
+) -> None:
+    from minimax_studio.worker.loras import import_lora
+
+    source = tmp_path / "h3-comfy" / "loras" / "face.safetensors"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"\x00safetensors-stub")
+    import_lora(str(source))
+    listed = adapters.get_adapter("face.safetensors")
+    assert listed["source"] == "imported"
+    assert listed["kind"] == "h3"
+    assert listed["can_audition"] is False
+
+
+def test_import_kind_argument_wins_over_a_generic_folder(
+    studio_home: Path, tmp_path: Path
+) -> None:
+    from minimax_studio.worker.loras import import_lora
+
+    source = tmp_path / "Downloads" / "face.safetensors"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"\x00safetensors-stub")
+    import_lora(str(source), kind="h3")
+    listed = adapters.get_adapter("face.safetensors")
+    assert listed["kind"] == "h3"
+    assert listed["can_audition"] is False
 
 
 # --- the audition loop ------------------------------------------------------

@@ -113,8 +113,10 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
                 "or switch Inspector Speed to Quality."
             )
         if not any("turbo" in (item.get("id") or "").lower() for item in loras):
-            loras.append({"id": turbo, "strength": 1.0})
-        if steps >= 16:
+            loras.insert(0, {"id": turbo, "strength": 1.0})
+        if request.mode == "ref2va" and steps >= 16:
+            steps = 4
+        elif steps >= 16:
             steps = 8
     num_frames = duration_to_frames(request.duration_s)
     width, height = resolve_dims(
@@ -298,8 +300,10 @@ def _apply_loras(pipe: Any, loras: list[dict[str, Any]]) -> None:
             pipe.load_lora_weights(path)
             names = []
             break
-        except Exception:
-            continue
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not load LoRA {Path(str(path)).name}: {exc}"
+            ) from exc
         names.append(name)
         weights.append(float(item.get("strength") or 1.0))
     setter = getattr(pipe, "set_adapters", None)

@@ -131,6 +131,7 @@ def _poll_task(
     first = True
     while time.monotonic() < deadline:
         if job_id and is_cancelled(job_id):
+            _cancel_remote_task(client, base, headers, task_id)
             raise CancelledError("Cancelled")
         if not first:
             time.sleep(5)
@@ -153,6 +154,9 @@ def _poll_task(
     raise RuntimeError("API task timed out after 20 minutes")
 
 
+# MiniMax's create body is 64 MB; Base64 leaves ~45 MB for the file itself.
+MAX_API_ASSET_BYTES = 45 * 1024 * 1024
+
 _MIME = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -171,6 +175,23 @@ _MIME = {
 }
 
 
+def _cancel_remote_task(
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    task_id: str,
+) -> None:
+    """Queued MiniMax tasks can be dropped with no charge. Running ones 4xx."""
+    try:
+        client.delete(
+            f"{base}/v2/video_generation/{task_id}",
+            headers=headers,
+            timeout=15.0,
+        )
+    except httpx.HTTPError:
+        pass
+
+
 def _file_data_url(path: str) -> str:
     file_path = Path(path)
     if not file_path.is_file():
@@ -181,5 +202,12 @@ def _file_data_url(path: str) -> str:
         # Never base64 arbitrary files just because a route accepted the path.
         raise RuntimeError(f"Unsupported asset type: {suffix or 'no extension'}")
     raw = file_path.read_bytes()
+    # MiniMax's create body is capped at 64 MB; Base64 expands ~4/3, plus JSON.
+    if len(raw) > MAX_API_ASSET_BYTES:
+        raise RuntimeError(
+            f"{file_path.name} is {len(raw) / (1024 * 1024):.0f} MB — the MiniMax "
+            "API request body is 64 MB, and Base64 leaves about 45 MB for the "
+            "file. Use a smaller clip, or generate locally."
+        )
     encoded = base64.b64encode(raw).decode("ascii")
     return f"data:{mime};base64,{encoded}"

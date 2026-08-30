@@ -84,7 +84,9 @@ def preflight(
         if kind == "music":
             result["detail"] += (
                 " The Music 3 endpoint takes prompt + lyrics only — Duration, "
-                "Seed, Steps and CFG shape local generation, not this call."
+                "Seed, Steps and CFG shape local generation, not this call. "
+                "Blank lyrics: it writes them from the prompt "
+                "(lyrics_optimizer), not an instrumental. LoRAs do not apply."
             )
     elif resolved == "mlx":
         result["detail"] = "Will generate via mlx-audio on Apple Silicon."

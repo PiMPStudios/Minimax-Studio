@@ -43,7 +43,7 @@ from minimax_studio.worker_client import WorkerClient
 # picker, so a Music dataset never offers you an mp4 to add.
 MEDIA_BY_KIND = {
     "music": (".wav", ".flac", ".mp3"),
-    "video": (".mp4", ".mov", ".webm"),
+    "video": (".mp4", ".mov", ".webm", ".png", ".jpg", ".jpeg", ".webp"),
 }
 _OK = QBrush(QColor("#32d74b"))
 _BAD = QBrush(QColor("#ff453a"))
@@ -118,6 +118,7 @@ class DatasetsPage(QWidget):
         self._rows: list[dict[str, Any]] = []
         self._detail: dict[str, Any] = {}
         self._selected: str | None = None
+        self._poll_thread = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
@@ -216,30 +217,93 @@ class DatasetsPage(QWidget):
 
     def refresh(self) -> None:
         try:
-            self._rows = self._client.list_datasets()
+            rows = self._client.list_datasets()
         except Exception:
+            self._status.setText("Could not list datasets — keeping the last list.")
+            return
+        self._apply_rows(rows)
+        self._show()
+
+    def poll(self) -> None:
+        """Timer path: list + detail off the GUI thread. Overlapping polls skip."""
+        selected = self._selected
+        from minimax_studio.ui.enhance import start_background
+
+        def work() -> tuple[list, object, str | None]:
+            rows = self._client.list_datasets()
+            detail = None
+            if selected:
+                try:
+                    detail = self._client.get_dataset(selected)
+                except Exception:
+                    detail = None
+            return rows, detail, selected
+
+        def done(payload: object) -> None:
+            if not isinstance(payload, tuple) or len(payload) != 3:
+                return
+            rows, detail, selected_id = payload
+            if not isinstance(rows, list):
+                return
+            self._apply_rows(rows)
+            if self._selected != selected_id:
+                self._show()
+            elif isinstance(detail, dict):
+                row = self._current_row()
+                if row:
+                    self._paint_detail(row, detail)
+            elif selected_id:
+                self._detail_label.setText(
+                    "Could not read this dataset — keeping the last view."
+                )
+
+        def fail() -> None:
+            self._status.setText("Could not list datasets — keeping the last list.")
+
+        start_background(self, work, done, fail, attr="_poll_thread")
+
+    def _list_signature(self, rows: list[dict[str, Any]]) -> list[tuple]:
+        return [
+            (
+                row.get("id"),
+                row.get("clip_count"),
+                row.get("kind"),
+                validation_status_short(row),
+            )
+            for row in rows
+        ]
+
+    def _apply_rows(self, rows: list[dict[str, Any]]) -> None:
+        if rows and self._list_signature(rows) == self._list_signature(self._rows):
+            self._rows = rows
             return
         wanted = self._selected
+        self._rows = rows
         self._list.blockSignals(True)
         self._list.clear()
         row_for_id: dict[str, int] = {}
         for row in self._rows:
             dataset_id = str(row.get("id"))
+            noun = "stills/clips" if row.get("kind") == "video" else "clips"
             item = QListWidgetItem(
-                f"{row.get('name')}\n{row.get('clip_count', 0)} clips · "
+                f"{row.get('name')}\n{row.get('clip_count', 0)} {noun} · "
                 f"{validation_status_short(row)}"
             )
             item.setData(Qt.ItemDataRole.UserRole, dataset_id)
             self._list.addItem(item)
             row_for_id[dataset_id] = self._list.count() - 1
-        self._list.blockSignals(False)
         if wanted and wanted in row_for_id:
             self._list.setCurrentRow(row_for_id[wanted])
+            self._selected = wanted
         elif self._list.count():
             self._list.setCurrentRow(0)
+            first = self._list.item(0)
+            self._selected = (
+                first.data(Qt.ItemDataRole.UserRole) if first else None
+            )
         else:
             self._selected = None
-            self._show()
+        self._list.blockSignals(False)
         self._set_buttons_enabled(bool(self._rows))
 
     def select(self, dataset_id: str) -> None:
@@ -298,20 +362,25 @@ class DatasetsPage(QWidget):
             self._status.setText("No datasets yet — make one to start.")
             return
         try:
-            self._detail = self._client.get_dataset(str(row["id"]))
+            detail = self._client.get_dataset(str(row["id"]))
         except Exception as exc:
             self._detail = {}
             self._detail_label.setText(f"Could not read this dataset: {exc}")
             return
-        self._detail_label.setText(_detail_text(row, self._detail))
+        self._paint_detail(row, detail)
+
+    def _paint_detail(self, row: dict[str, Any], detail: dict[str, Any]) -> None:
+        self._detail = detail
+        self._detail_label.setText(_detail_text(row, detail))
         # The mode button's label comes from the manifest, which arrived a line
         # ago — re-arm it now that the truth is in hand.
         self._set_buttons_enabled(True)
-        report = self._detail.get("validation") or {}
-        rows = sorted(
+        report = detail.get("validation") or {}
+        self._tree.clear()
+        entries = sorted(
             report.get("rows", []), key=lambda item: bool(item.get("ok"))
         )
-        for entry in rows:
+        for entry in entries:
             problems = entry.get("problems") or []
             item = QTreeWidgetItem(
                 [
@@ -345,19 +414,26 @@ class DatasetsPage(QWidget):
             )
             if report.get("target_mode") == "av":
                 breakdown += " · av mode: the run trains the audio too"
+        warnings = [str(item) for item in (report.get("warnings") or []) if item]
         if report.get("ok"):
-            return (
+            ready = (
                 f"Validated {counted} {noun}{plural}{breakdown} — all good. "
                 "Ready to train."
             )
+            if warnings:
+                ready += " " + warnings[-1]
+            return ready
         first = (bad[0]["problems"][0] if bad and bad[0].get("problems") else "see below")
         # "entries" here, whatever the kind: the broken row can be a caption
         # with no media behind it, which is neither a clip nor a still.
-        return (
+        line = (
             f"{len(bad)} of {max(counted, len(bad))} entries "
             f"have problems — first: {first}. Training will refuse this "
             "dataset until they are fixed."
         )
+        if warnings:
+            line += " " + warnings[-1]
+        return line
 
     # --- actions ------------------------------------------------------------
 
@@ -405,7 +481,7 @@ class DatasetsPage(QWidget):
         self._status.setText(
             f"Copied {copied} clip{'s' if copied != 1 else ''} from "
             f"{Path(folder).name}{note}."
-            + (" Missing captions are listed below." if missing > captions else "")
+            + (" Missing captions are listed below." if missing > 0 else "")
         )
 
     def _add_from_history(self) -> None:

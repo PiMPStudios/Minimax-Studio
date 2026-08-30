@@ -288,6 +288,8 @@ def _run_job(job_id: str, request: JobRequest) -> None:
                 "attention": request.attention,
                 "resolution": request.resolution,
                 "loras": request.loras,
+                "assets": request.assets,
+                "ref_image_size": request.ref_image_size,
                 "audition": request.audition or None,
                 "output_path": result["output_path"],
                 "media_type": result.get("media_type", "audio"),

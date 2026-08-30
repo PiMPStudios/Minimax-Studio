@@ -353,12 +353,13 @@ def loras() -> list[dict[str, object]]:
 
 class LoraImportIn(BaseModel):
     path: str
+    kind: str | None = None
 
 
 @app.post("/loras/import")
 def lora_import(body: LoraImportIn) -> dict[str, object]:
     try:
-        return import_lora(body.path)
+        return import_lora(body.path, kind=body.kind)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -567,7 +568,10 @@ def dataset_detail(dataset_id: str) -> dict[str, object]:
     report = None
     report_path = folder / "validation.json"
     if report_path.is_file():
-        report = json.loads(report_path.read_text(encoding="utf-8"))
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            report = None
     return {
         **manifest,
         # Always derive the path from where it was found, so datasets created

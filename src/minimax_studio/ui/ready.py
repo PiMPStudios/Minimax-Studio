@@ -2,9 +2,34 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QInputDialog, QMessageBox, QWidget
 
 from minimax_studio.worker_client import WorkerClient
+
+_LORA_FAMILY_LABELS = ("Music", "H3 (Video)")
+
+
+def ask_lora_family(parent: QWidget, source_path: str) -> str | None:
+    """Music vs H3 for a hand-imported adapter. Cancel returns None.
+
+    Folders named ``h3-comfy`` / ``minimax-h3`` already say H3, so we don't ask.
+    """
+    from minimax_studio.worker.adapters import kind_from_path
+
+    if kind_from_path(source_path) == "h3":
+        return "h3"
+    label, ok = QInputDialog.getItem(
+        parent,
+        "Import LoRA",
+        "Which generator is this adapter for?\n"
+        "Audition is Music-only; an H3 file loaded as Music would queue a song.",
+        _LORA_FAMILY_LABELS,
+        0,
+        False,
+    )
+    if not ok:
+        return None
+    return "h3" if str(label).startswith("H3") else "music"
 
 
 def classify_preflight(check: dict[str, Any]) -> str:
@@ -22,9 +47,10 @@ def confirm_generate(
     backend: str,
     mode: str = "t2va",
     speed: str = "quality",
+    resolution: str = "768P",
 ) -> bool:
     try:
-        check = client.preflight(kind, backend, mode, speed)
+        check = client.preflight(kind, backend, mode, speed, resolution)
     except Exception as exc:
         QMessageBox.warning(parent, "Worker unreachable", str(exc))
         return False

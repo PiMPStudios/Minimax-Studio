@@ -48,6 +48,10 @@ prompt as <code>&lt;Picture 1&gt;</code> / <code>&lt;Video 1&gt;</code> /
 <code>PathchSageAttentionKJ</code>). Official diffusers still uses PyTorch attention.</p>
 <p>MiniMax-Music3 INT8 works the same way: if those files are in a Comfy models
 folder and ComfyUI is running, Generate Music can submit to it.</p>
+<p>Music LoRAs load on CUDA and ComfyUI. The MiniMax Music API and MLX cannot
+apply them — Generate refuses rather than dropping the adapter. Blank lyrics
+on the API is not an instrumental: the endpoint writes lyrics from the prompt
+(<code>lyrics_optimizer</code>).</p>
 <p>Inspector <b>CUDA GPU</b> is for in-process diffusers only. ComfyUI uses the
 device it was launched with (<code>--default-device</code>). Generate runs a
 preflight check and will tell you if ComfyUI or PyTorch is missing.</p>
@@ -100,7 +104,8 @@ the pinned <code>simpletuner</code> as <b>its own process</b>: closing Studio
 does not stop a run, and the page reattaches to it from the run folder.
 Cancel signals the process group; checkpoints already written stay, and a run
 resumes from the last one. <b>Install adapter</b> copies the newest checkpoint
-into the LoRA folder, ready in the Generate Music picker (try ~0.8 strength).</p>
+into the LoRA folder — Music adapters in the Generate Music picker (try ~0.8
+strength), H3 adapters in Generate Video.</p>
 <p>A long run is <b>Storage…</b> on the Train page, and it names the gigabytes
 before anything goes. <b>Prune checkpoints</b> keeps the newest N <i>plus</i>
 every checkpoint you installed as an adapter; <b>Clear caches</b> frees the VAE

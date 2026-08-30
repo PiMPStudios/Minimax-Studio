@@ -204,7 +204,7 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 > dialogue footage waits for proof it doesn't wreck the audio heads), the four
 > SimpleTuner tiers exist (`h3-24g` with RamTorch, `h3-32g`, `h3-48g`, `h3-80g`)
 > each with its own VRAM and cache floor, and an H3 run writes
-> `model_family: minimax_h3` + `minimax_h3_target_mode` with `ram_torch` only
+> `model_family: minimaxh3` + `minimax_h3_target_mode` with `ramtorch` only
 > where it pays. `av` is a checkbox, validated: every clip needs audio, stills
 > are incompatible with it, and the refusal names the clips. The preset list
 > filters by the dataset's kind and the mismatch is refused twice (in the config
@@ -212,11 +212,12 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 > and crediting the wrong provenance is exactly what this app exists to prevent.
 > `dataset_spec` (kind, stills/clips, mode) is stored in `state.json`, so a
 > resume writes the same kind of config even if the dataset folder moved.
-> Drift distillation is **not written**, because switching it off is the part
-> nobody has proved safe.
+> Drift distillation **is written** (`distillation_method: h3_drift`) — that is
+> how SimpleTuner's own H3 LoRA examples turn the audio-head safety net on;
+> omitting the key leaves it off.
 >
 > **Still to prove:** everything that needs the card. `minimax_h3_target_mode`,
-> `ram_torch` and the resolution buckets are listed in
+> `ramtorch` and the resolution buckets are listed in
 > `train_config.H3_UNVERIFIED_KEYS` and announced by preflight on every H3
 > preset — that warning retires when SimpleTuner's own output confirms them
 > (S0 steps 3–5). Unchanged from before: H3 adapter **audition** (the still
@@ -229,8 +230,8 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 - Presets map free-VRAM → SimpleTuner tier (24G RamTorch / 32G / 48G / 80G);
   below floor = blocked with the number named, per product style
 - Stills/short clips only; "train on clips with dialogue" waits for proof it
-  doesn't wreck the audio heads (SimpleTuner's drift-distillation default is
-  our safety net, keep it on)
+  doesn't wreck the audio heads (SimpleTuner's `h3_drift` block is the safety
+  net — written, matching the official examples)
 
 ### S5 — Long-run hardening
 

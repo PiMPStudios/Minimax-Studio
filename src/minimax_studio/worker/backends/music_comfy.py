@@ -15,6 +15,7 @@ from minimax_studio.worker.backends.h3_comfy import (
     comfy_missing_message,
     comfy_reachable,
     comfy_resolve_file,
+    comfy_resolve_many,
 )
 from minimax_studio.worker.jobs import JobRequest, update_job
 from minimax_studio.worker.runtime import runtime
@@ -47,10 +48,35 @@ def comfy_music_files_missing() -> list[str]:
 
 def _pick_music_model_names() -> tuple[str, str, str]:
     """Resolve (dit, clip, vae) names exactly as Comfy lists them."""
-    dit = comfy_resolve_file("UNETLoader", "unet_name", DIT_INT8) or DIT_FP16
+    dit = comfy_resolve_file("UNETLoader", "unet_name", DIT_INT8) or comfy_resolve_file(
+        "UNETLoader", "unet_name", DIT_FP16
+    )
     clip = comfy_resolve_file("CLIPLoader", "clip_name", CLIP_INT8) or CLIP_INT8
     vae = comfy_resolve_file("VAELoader", "vae_name", VAE_NAME) or VAE_NAME
-    return dit, clip, vae
+    return dit or DIT_INT8, clip, vae
+
+
+def _resolve_music_loras(loras: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Map picker paths to names Comfy lists, and fail if a selected LoRA is missing."""
+    wanted: list[str] = []
+    out: list[dict[str, Any]] = []
+    for item in loras:
+        path = item.get("id") or item.get("path")
+        if not path:
+            continue
+        name = Path(str(path)).name
+        wanted.append(name)
+        out.append({"id": name, "strength": float(item.get("strength") or 1.0)})
+    if not wanted:
+        return []
+    resolved, missing = comfy_resolve_many(
+        [("LoraLoaderModelOnly", "lora_name", wanted)]
+    )
+    if missing:
+        raise RuntimeError(comfy_missing_message(missing))
+    for item in out:
+        item["id"] = resolved.get(item["id"], item["id"])
+    return out
 
 
 def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
@@ -74,7 +100,8 @@ def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
     if missing:
         raise RuntimeError(comfy_missing_message(missing))
     dit, clip_name, vae_name = _pick_music_model_names()
-    graph = build_music_comfy_graph(
+    loras = _resolve_music_loras(request.loras or [])
+    graph_kw = dict(
         caption=caption,
         lyrics=lyrics,
         duration_s=duration,
@@ -84,24 +111,17 @@ def generate_music_comfy(job_id: str, request: JobRequest) -> dict[str, Any]:
         dit_name=dit,
         clip_name=clip_name,
         vae_name=vae_name,
+        loras=loras,
         prefix=f"minimax_studio/{job_id}",
     )
+    graph = build_music_comfy_graph(**graph_kw)
     update_job(job_id, message="Queued Music 3 on ComfyUI", progress=0.2)
     with httpx.Client(timeout=30.0) as client:
         submitted = _submit_graph(client, graph, client_id=job_id)
         if submitted.status_code >= 400 and DIT_INT8 in (submitted.text or ""):
-            graph = build_music_comfy_graph(
-                caption=caption,
-                lyrics=lyrics,
-                duration_s=duration,
-                seed=seed,
-                steps=steps,
-                cfg=cfg,
-                dit_name=DIT_FP16,
-                clip_name=clip_name,
-                vae_name=vae_name,
-                prefix=f"minimax_studio/{job_id}",
-            )
+            fp16 = comfy_resolve_file("UNETLoader", "unet_name", DIT_FP16) or DIT_FP16
+            graph_kw["dit_name"] = fp16
+            graph = build_music_comfy_graph(**graph_kw)
             submitted = _submit_graph(client, graph, client_id=job_id)
         if submitted.status_code >= 400:
             detail = submitted.text
@@ -143,9 +163,10 @@ def build_music_comfy_graph(
     dit_name: str = DIT_INT8,
     clip_name: str = CLIP_INT8,
     vae_name: str = VAE_NAME,
+    loras: list[dict[str, Any]] | None = None,
     prefix: str = "minimax_studio/music",
 ) -> dict[str, Any]:
-    return {
+    graph: dict[str, Any] = {
         "unet": {
             "class_type": "UNETLoader",
             "inputs": {"unet_name": dit_name, "weight_dtype": "default"},
@@ -212,6 +233,24 @@ def build_music_comfy_graph(
             },
         },
     }
+    prev: list[Any] = ["unet", 0]
+    for index, item in enumerate(loras or []):
+        name = item.get("id") or item.get("path") or item.get("lora_name")
+        if not name:
+            continue
+        key = "lora" if index == 0 else f"lora{index}"
+        graph[key] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": prev,
+                "lora_name": str(name),
+                "strength_model": float(item.get("strength") or 1.0),
+            },
+        }
+        prev = [key, 0]
+    if prev != ["unet", 0]:
+        graph["sample"]["inputs"]["model"] = prev
+    return graph
 
 
 def _write_wav(dest: Path, payload: bytes, filename: str) -> None:

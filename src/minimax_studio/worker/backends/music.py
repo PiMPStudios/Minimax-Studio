@@ -20,9 +20,17 @@ def generate_music(job_id: str, request: JobRequest) -> dict[str, Any]:
     dest.mkdir(parents=True, exist_ok=True)
     wav_path = dest / "audio.wav"
     if backend == "stub":
-        update_job(job_id, message="Writing stub tone", progress=0.5)
+        message = "Writing stub tone"
+        if request.loras:
+            message = "Writing stub tone (stub skips LoRAs)"
+        update_job(job_id, message=message, progress=0.5)
         _write_stub(wav_path, min(float(request.duration_s), 1.0))
         return {"output_path": str(wav_path), "backend": "stub", "media_type": "audio"}
+    if backend in {"api", "mlx"} and request.loras:
+        raise RuntimeError(
+            "LoRAs only load on CUDA and ComfyUI — this job resolved to "
+            f"{backend}. Clear the LoRA picker, or switch Inspector Backend."
+        )
     if backend == "api":
         from minimax_studio.worker.backends.music_api import generate_music_api
 

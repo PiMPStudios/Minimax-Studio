@@ -40,7 +40,22 @@ CLIP_SUFFIXES = {
     ".mp4",
     ".mov",
     ".webm",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
 }
+
+# Folder names that mean this file is an H3 adapter, not Music.
+_H3_LORA_FOLDERS = {"h3-comfy", "minimax-h3"}
+
+
+def kind_from_path(path: str | Path) -> str:
+    """Infer adapter family from the folders a .safetensors lives in."""
+    parts = {part.lower() for part in Path(path).parts}
+    if parts & _H3_LORA_FOLDERS:
+        return "h3"
+    return "music"
 
 
 def registry_path() -> Path:
@@ -175,7 +190,8 @@ def list_adapters() -> list[dict[str, Any]]:
                 "on_disk": True,
             }
         )
-        row.setdefault("kind", "music")
+        if not row.get("kind"):
+            row["kind"] = kind_from_path(str(lora.get("path") or ""))
         row.setdefault("source", "untracked")
         out.append(_decorate(row))
     for key, row in by_file.items():
@@ -215,11 +231,14 @@ def _decorate(row: dict[str, Any]) -> dict[str, Any]:
 def record_imported(lora_row: dict[str, Any]) -> dict[str, Any]:
     """A hand-imported file: we know its name and that we did not train it."""
     file_name = Path(str(lora_row.get("path") or "")).name
+    kind = str(lora_row.get("kind") or "") or kind_from_path(
+        str(lora_row.get("source_path") or lora_row.get("path") or "")
+    )
     return record(
         {
             "file": file_name,
             "name": lora_row.get("name") or Path(file_name).stem,
-            "kind": "music",
+            "kind": kind,
             "source": "imported",
             "path": lora_row.get("path"),
         }
@@ -234,15 +253,23 @@ def record_trained(
     from minimax_studio.worker.train_config import SIMPLETUNER_PIN
 
     file_name = Path(str(lora_row.get("path") or checkpoint)).name
+    family = str(run_state.get("family") or "")
+    kind = (
+        "h3"
+        if family == "h3" or str(run_state.get("dataset_kind") or "") == "video"
+        else "music"
+    )
     return record(
         {
             "file": file_name,
             # The picker shows the file stem; so does this page. One name.
             "name": Path(file_name).stem,
-            "kind": "music",
+            "kind": kind,
             "source": "trained",
             "path": lora_row.get("path") or str(checkpoint),
-            "base_pack": "music3-cuda",
+            "base_pack": (
+                "h3-diffusers-fl2va" if kind == "h3" else "music3-cuda"
+            ),
             "trainer": f"simpletuner {SIMPLETUNER_PIN}",
             "run_id": run_state.get("id"),
             "run_name": run_state.get("name"),

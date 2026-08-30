@@ -115,8 +115,11 @@ class WorkerClient:
     def list_loras(self) -> list[dict[str, Any]]:
         return self._get_list("/loras")
 
-    def import_lora(self, path: str) -> dict[str, Any]:
-        return self._post("/loras/import", {"path": path})
+    def import_lora(self, path: str, kind: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"path": path}
+        if kind:
+            payload["kind"] = kind
+        return self._post("/loras/import", payload)
 
     def enhance(self, kind: str, text: str, extra: str = "") -> dict[str, Any]:
         return self._post(

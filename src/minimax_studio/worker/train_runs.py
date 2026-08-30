@@ -31,6 +31,11 @@ from minimax_studio.worker.train_config import (
 # Runs launched by a previous worker only ever appear via state.json + pid.
 _PROCS: dict[str, subprocess.Popen] = {}
 
+# PLAN-V2: log mtime is the heartbeat. A pid that lives while the log is
+# silent for this long is "lost" — still holding the GPU, not making progress.
+LOST_HEARTBEAT_S = 300.0
+_LIVE_STATUSES = {"running", "queued", "lost"}
+
 # Storage walks can mean thousands of cache files, so its report is cached and
 # invalidated by anything that deletes — never polled by the UI's 2 s tick.
 _STORAGE_TTL_S = 15.0
@@ -184,11 +189,18 @@ def live_runs() -> list[dict[str, Any]]:
     card. Warn rather than block — cancelling someone's three-hour run should
     stay their decision, not a side effect of pressing Generate.
     """
-    return [row for row in list_runs() if row.get("status") in {"running", "queued"}]
+    return [row for row in list_runs() if row.get("status") in _LIVE_STATUSES]
+
+
+def _require_id(value: str, what: str) -> str:
+    name = str(value or "")
+    if not name or Path(name).name != name or name in {".", ".."}:
+        raise RuntimeError(f"No {what} '{value}'.")
+    return name
 
 
 def get_run(run_id: str) -> tuple[Path, dict[str, Any]]:
-    run_dir = runs_root() / run_id
+    run_dir = runs_root() / _require_id(run_id, "training run")
     state = _read_state(run_dir)
     if not state:
         raise RuntimeError(f"No training run '{run_id}'.")
@@ -197,7 +209,7 @@ def get_run(run_id: str) -> tuple[Path, dict[str, Any]]:
 
 def cancel_run(run_id: str) -> dict[str, Any]:
     run_dir, state = get_run(run_id)
-    if state["status"] != "running":
+    if state["status"] not in {"running", "lost"}:
         return state
     state["cancel_requested"] = True
     _write_state(run_dir, state)
@@ -251,7 +263,7 @@ def progress(run_id: str) -> dict[str, Any]:
     if out["step"] is not None and total:
         out["percent"] = min(1.0, out["step"] / float(total))
     out["checkpoints"] = [
-        str(path.relative_to(run_dir))
+        path.relative_to(run_dir).as_posix()
         for path in sorted((run_dir / "checkpoints").rglob("*.safetensors"))
     ]
     return out
@@ -267,6 +279,20 @@ def install_adapter(run_id: str, path: str | None = None) -> dict[str, Any]:
         source = Path(path)
         if not source.is_absolute():
             source = run_dir / path
+        try:
+            resolved = source.resolve()
+        except OSError:
+            resolved = source
+        if (
+            not resolved.is_file()
+            or resolved.suffix.lower() != ".safetensors"
+            or run_dir.resolve() not in resolved.parents
+        ):
+            raise RuntimeError(
+                f"“{path}” is not a checkpoint of this run — pick a "
+                ".safetensors inside the run folder."
+            )
+        source = resolved
     else:
         candidates = sorted(
             (run_dir / "checkpoints").rglob("*.safetensors"),
@@ -277,7 +303,17 @@ def install_adapter(run_id: str, path: str | None = None) -> dict[str, Any]:
                 "No .safetensors checkpoint in this run yet — check the log."
             )
         source = candidates[-1]
-    row = import_lora(str(source))
+    # SimpleTuner's default export is often ``pytorch_lora_weights.safetensors``.
+    # Two runs must not install on top of each other; the run name is the
+    # disambiguator, and import_lora still de-collides if that name is taken.
+    dest_name = f"{_slug(str(state.get('name') or run_id))}-{source.name}"
+    family = str(state.get("family") or "")
+    lora_kind = (
+        "h3"
+        if family == "h3" or str(state.get("dataset_kind") or "") == "video"
+        else "music"
+    )
+    row = import_lora(str(source), dest_name=dest_name, kind=lora_kind)
     # import_lora filed it as "imported"; this run is the real provenance, and
     # the upsert keys on the file name, so the row is upgraded, not duplicated.
     adapter = adapters.record_trained(state, row, source)
@@ -409,7 +445,7 @@ def storage_report() -> dict[str, Any]:
 
 def _refuse_if_running(run_id: str, action: str) -> tuple[Path, dict[str, Any]]:
     run_dir, state = get_run(run_id)
-    if state.get("status") in {"running", "queued"}:
+    if state.get("status") in _LIVE_STATUSES:
         raise RuntimeError(
             f"Run “{state.get('name')}” is still training (pid "
             f"{state.get('pid')}) — not {action} files under it while it lives. "
@@ -535,6 +571,20 @@ def prune_checkpoints(
     }
 
 
+def _resume_checkpoint_arg(run_dir: Path, safetensors: Path) -> str:
+    """SimpleTuner resumes from a checkpoint *directory* (or ``latest``), not
+    from an exported LoRA file. ``--init_lora`` is the safetensors-only path
+    and cannot combine with ``resume_from_checkpoint``."""
+    parent = safetensors.parent
+    checkpoints = run_dir / "checkpoints"
+    try:
+        if parent.resolve() == checkpoints.resolve():
+            return str(safetensors)
+    except OSError:
+        pass
+    return str(parent)
+
+
 def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
     """Continue a finished, failed or cancelled run from one of its checkpoints.
 
@@ -551,7 +601,7 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
         if (
             not source.is_file()
             or source.suffix.lower() != ".safetensors"
-            or run_dir not in source.parents
+            or run_dir.resolve() not in source.resolve().parents
         ):
             # Weights from another run would train the wrong base and credit the
             # wrong provenance, so this stays a hard no — with the alternative.
@@ -563,7 +613,10 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
                     else " — this run has not written one to checkpoints/ yet."
                 )
             )
+        resume_from = _resume_checkpoint_arg(run_dir, source)
     elif rows:
+        # SimpleTuner's own token: newest complete checkpoint under output_dir.
+        resume_from = "latest"
         source = Path(rows[0]["abs"])
     else:
         raise RuntimeError(
@@ -583,7 +636,7 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
         preset_name=str(state.get("preset") or DEFAULT_PRESET),
         steps=int(state.get("steps") or 1000),
         rank=state.get("rank"),
-        resume_from_checkpoint=source,
+        resume_from_checkpoint=resume_from,
         dataset_spec=state.get("dataset_spec") or None,
     )
     log = open(run_dir / "train.log", "ab")
@@ -606,7 +659,7 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
             "exit_code": None,
             "finished_at": None,
             "cancel_requested": False,
-            "resumed_from": str(source),
+            "resumed_from": str(resume_from),
             "resume_count": int(state.get("resume_count") or 0) + 1,
         }
     )
@@ -677,8 +730,13 @@ def import_run(folder: str | Path) -> dict[str, Any]:
             f"{source} is not a Studio training run — no state.json inside. "
             "Import the run folder itself, not the checkpoints folder inside it."
         )
-    run_id = str(state["id"])
-    target = runs_root() / run_id
+    run_id = _require_id(str(state["id"]), "training run")
+    target = (runs_root() / run_id).resolve()
+    root = runs_root().resolve()
+    if target.parent != root:
+        raise RuntimeError(
+            f"Run “{run_id}” is not a name Studio will import under {root}."
+        )
     if target.exists():
         raise RuntimeError(
             f"Run “{run_id}” is already in {runs_root()}. Delete the copy "
@@ -736,8 +794,34 @@ def _pid_alive(pid: int) -> bool:
         ctypes.windll.kernel32.CloseHandle(handle)
 
 
+def _log_beat(run_dir: Path, state: dict[str, Any]) -> float:
+    """Newest of log mtime and start time — a run that has not written yet
+    is not lost, it is still starting."""
+    beat = float(state.get("started_at") or 0)
+    log = run_dir / "train.log"
+    try:
+        if log.is_file():
+            beat = max(beat, log.stat().st_mtime)
+    except OSError:
+        pass
+    return beat
+
+
+def _maybe_lost(run_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
+    silent = time.time() - _log_beat(run_dir, state)
+    if silent <= LOST_HEARTBEAT_S:
+        if state.get("status") == "lost":
+            state["status"] = "running"
+            _write_state(run_dir, state)
+        return state
+    if state.get("status") != "lost":
+        state["status"] = "lost"
+        _write_state(run_dir, state)
+    return state
+
+
 def _refresh(run_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
-    if state.get("status") != "running":
+    if state.get("status") not in {"running", "lost"}:
         return state
     run_id = str(state.get("id"))
     proc = _PROCS.get(run_id)
@@ -746,13 +830,13 @@ def _refresh(run_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         # We launched it: poll() reaps zombies and yields the real exit code.
         code = proc.poll()
         if code is None:
-            return state
+            return _maybe_lost(run_dir, state)
         _PROCS.pop(run_id, None)
     else:
         # No handle (worker restarted): pid liveness is all we have.
         pid = int(state.get("pid") or 0)
         if pid and _pid_alive(pid):
-            return state
+            return _maybe_lost(run_dir, state)
         if state.get("exit_code") is None:
             state["status"] = (
                 "cancelled" if state.get("cancel_requested") else "ended-unknown"
@@ -761,10 +845,12 @@ def _refresh(run_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
             _write_state(run_dir, state)
             return state
         code = int(state["exit_code"])
-    if code == 0:
-        state["status"] = "completed"
-    elif state.get("cancel_requested"):
+    # Cancel wins over a clean exit: SimpleTuner often SIGTERM-exits 0, and
+    # calling that "completed" would install a half-trained adapter as a success.
+    if state.get("cancel_requested"):
         state["status"] = "cancelled"
+    elif code == 0:
+        state["status"] = "completed"
     else:
         state["status"] = "failed"
     state["exit_code"] = code
@@ -778,9 +864,10 @@ def _read_state(run_dir: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _write_state(run_dir: Path, state: dict[str, Any]) -> None:

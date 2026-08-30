@@ -23,6 +23,7 @@ class ModelsPage(QWidget):
         super().__init__()
         self._client = client
         self._cards: dict[str, _PackCard] = {}
+        self._poll_thread = None
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
         title = QLabel("Models")
@@ -52,6 +53,29 @@ class ModelsPage(QWidget):
             downloads = {item["pack_id"]: item for item in self._client.list_downloads()}
         except Exception:
             return
+        self._apply(packs, downloads)
+
+    def poll(self) -> None:
+        """Timer path: pack list off the GUI thread. Overlapping polls skip."""
+        from minimax_studio.ui.enhance import start_background
+
+        def work() -> tuple[list, dict]:
+            packs = self._client.list_packs()
+            downloads = {
+                item["pack_id"]: item for item in self._client.list_downloads()
+            }
+            return packs, downloads
+
+        def done(payload: object) -> None:
+            if not isinstance(payload, tuple) or len(payload) != 2:
+                return
+            packs, downloads = payload
+            if isinstance(packs, list) and isinstance(downloads, dict):
+                self._apply(packs, downloads)
+
+        start_background(self, work, done, attr="_poll_thread")
+
+    def _apply(self, packs: list[dict[str, Any]], downloads: dict[str, Any]) -> None:
         known = {pack["id"] for pack in packs}
         for pack_id, card in list(self._cards.items()):
             if pack_id not in known:

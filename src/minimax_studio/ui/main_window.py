@@ -64,6 +64,9 @@ class MainWindow(QMainWindow):
         self._config = config
         self._state = StudioState()
         self._route_thread: QThread | None = None
+        self._jobs_thread = None
+        self._jobs_snapshot: list[dict[str, Any]] = []
+        self._downloads_snapshot: list[dict[str, Any]] = []
         self._route_ticks = 0
         self._models_ticks = 0
         self._build_ticks = 0
@@ -304,7 +307,7 @@ class MainWindow(QMainWindow):
         self._timer.timeout.connect(self._tick)
         self._timer.start()
         QTimer.singleShot(0, self._refresh_route)
-        QTimer.singleShot(0, self._refresh_job_status)
+        QTimer.singleShot(0, self._poll_jobs)
 
     def show_page(self, key: str) -> None:
         row = next(i for i, item in enumerate(self._nav_keys) if item == key)
@@ -426,8 +429,13 @@ class MainWindow(QMainWindow):
         )
         if not chosen:
             return
+        from minimax_studio.ui.ready import ask_lora_family
+
+        kind = ask_lora_family(self, chosen)
+        if kind is None:
+            return
         try:
-            self._client.import_lora(chosen)
+            self._client.import_lora(chosen, kind=kind)
         except Exception:
             return
         self.refresh_loras()
@@ -513,24 +521,56 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _poll_jobs(self) -> None:
+        """list_jobs + list_downloads off the GUI thread. Overlapping polls skip."""
+        from minimax_studio.ui.enhance import start_background
+
+        def work() -> tuple[list, list]:
+            try:
+                jobs = self._client.list_jobs()
+            except Exception:
+                jobs = []
+            try:
+                downloads = self._client.list_downloads()
+            except Exception:
+                downloads = []
+            return jobs if isinstance(jobs, list) else [], (
+                downloads if isinstance(downloads, list) else []
+            )
+
+        def done(payload: object) -> None:
+            if not isinstance(payload, tuple) or len(payload) != 2:
+                return
+            jobs, downloads = payload
+            if not isinstance(jobs, list):
+                jobs = []
+            if not isinstance(downloads, list):
+                downloads = []
+            self._jobs_snapshot = jobs
+            self._downloads_snapshot = downloads
+            self._music.poll(jobs)
+            self._video.poll(jobs)
+            self._refresh_job_status(jobs)
+            self._refresh_download_status(downloads)
+
+        start_background(self, work, done, attr="_jobs_thread")
+
     def _tick(self) -> None:
-        # One list_jobs per tick shared by both pages and the status bar —
-        # this runs every 500 ms, so extra round-trips here add up.
-        try:
-            jobs = self._client.list_jobs()
-        except Exception:
-            jobs = []
-        self._music.poll(jobs)
-        self._video.poll(jobs)
-        self._refresh_job_status(jobs)
-        self._refresh_download_status()
+        # One list_jobs+list_downloads per tick, off the GUI thread, shared by
+        # both generate pages and the status bar. Apply happens when the
+        # fetch returns, so a stuck worker cannot freeze the window.
+        self._poll_jobs()
         row = self._nav.currentRow()
         key_now = self._nav_keys[row] if 0 <= row < len(self._nav_keys) else None
         if key_now == "models":
             self._models_ticks += 1
             if self._models_ticks >= 4:  # /packs walks model trees — 2 s is enough
                 self._models_ticks = 0
-                self._models.refresh()
+                poll = getattr(self._models, "poll", None)
+                if callable(poll):
+                    poll()
+                else:
+                    self._models.refresh()
         else:
             self._models_ticks = 0
         # Build pages poll the run dirs (a detached trainer has no in-process
@@ -539,7 +579,12 @@ class MainWindow(QMainWindow):
             self._build_ticks += 1
             if self._build_ticks >= 4:
                 self._build_ticks = 0
-                self._pages[key_now].refresh()
+                page = self._pages[key_now]
+                poll = getattr(page, "poll", None)
+                if callable(poll):
+                    poll()
+                else:
+                    page.refresh()
         else:
             self._build_ticks = 0
         self._route_ticks += 1
@@ -556,10 +601,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_job_status(self, jobs: list[dict] | None = None) -> None:
         if jobs is None:
-            try:
-                jobs = self._client.list_jobs()
-            except Exception:
-                jobs = []
+            jobs = self._jobs_snapshot
         running = next(
             (
                 item
@@ -602,7 +644,6 @@ class MainWindow(QMainWindow):
             self._status_cancel.setEnabled(
                 status != "cancelling" and bool(self._active_job_id)
             )
-        self._refresh_download_status()
 
     def _refresh_train_status(self) -> None:
         try:
@@ -620,11 +661,11 @@ class MainWindow(QMainWindow):
             f"{run.get('steps')} steps{more} — Ctrl+Shift+T"
         )
 
-    def _refresh_download_status(self) -> None:
-        try:
-            downloads = self._client.list_downloads()
-        except Exception:
-            downloads = []
+    def _refresh_download_status(
+        self, downloads: list[dict[str, Any]] | None = None
+    ) -> None:
+        if downloads is None:
+            downloads = self._downloads_snapshot
         active_dl = next(
             (
                 item
@@ -651,7 +692,7 @@ class MainWindow(QMainWindow):
             self._client.cancel_job(job_id)
         except Exception:
             return
-        self._refresh_job_status()
+        self._poll_jobs()
 
     def _open_folder(self, path: str | None) -> None:
         from PySide6.QtWidgets import QMessageBox

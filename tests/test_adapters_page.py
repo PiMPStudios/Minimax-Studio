@@ -77,6 +77,7 @@ class FakeAdapterWorker:
         self.auditioned: list[tuple[str, str, float]] = []
         self.forgotten: list[str] = []
         self.imported: list[str] = []
+        self.import_kinds: list[str | None] = []
         for key, value in overrides.items():
             setattr(self, key, value)
 
@@ -106,8 +107,9 @@ class FakeAdapterWorker:
         self.rows = [row for row in self.rows if row["id"] != adapter_id]
         return {"ok": True}
 
-    def import_lora(self, path: str) -> dict[str, Any]:
+    def import_lora(self, path: str, kind: str | None = None) -> dict[str, Any]:
         self.imported.append(path)
+        self.import_kinds.append(kind)
         return {"id": "new.safetensors", "name": "new", "path": "/models/loras/new.safetensors"}
 
 
@@ -154,6 +156,20 @@ def _select(page: AdaptersPage, adapter_id: str) -> None:
             page._tree.setCurrentItem(item)
             return
     raise AssertionError(f"{adapter_id} is not in the list")
+
+
+def test_adapter_list_survives_a_failed_refresh(app) -> None:
+    worker = FakeAdapterWorker()
+    page = AdaptersPage(worker)
+    assert page._tree.topLevelItemCount() == 3
+
+    def boom() -> list:
+        raise RuntimeError("worker down")
+
+    worker.list_adapters = boom  # type: ignore[method-assign]
+    page.refresh()
+    assert page._tree.topLevelItemCount() == 3
+    assert "keeping the last list" in page._status.text()
 
 
 def test_every_loadable_lora_is_listed_with_its_origin(app) -> None:
@@ -265,7 +281,9 @@ def test_import_bring_its_own_provenance_label(app, monkeypatch) -> None:
         "getOpenFileName",
         staticmethod(lambda *args, **kwargs: ("/home/me/cool.safetensors", "")),
     )
+    monkeypatch.setattr(adapters_module, "ask_lora_family", lambda *a, **k: "music")
     page = AdaptersPage(worker)
     page._import_btn.click()
     assert worker.imported == ["/home/me/cool.safetensors"]
+    assert worker.import_kinds == ["music"]
     assert "listed as imported" in page._status.text()

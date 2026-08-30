@@ -43,7 +43,7 @@ from PySide6.QtWidgets import (
 from minimax_studio.ui.reveal import reveal_path
 from minimax_studio.worker_client import WorkerClient
 
-_LIVE = {"running", "queued"}
+_LIVE = {"running", "queued", "lost"}
 _KEPT = QBrush(QColor("#32d74b"))
 _DIM = QBrush(QColor("#8e8e93"))
 

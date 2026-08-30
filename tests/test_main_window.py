@@ -221,12 +221,19 @@ def test_presets_filter(tmp_path) -> None:
 
 
 def _drain_window(app, window) -> None:
-    """Stop the tick timer and join any route-preflight thread the window
+    """Stop the tick timer and join any background thread the window
     started, so pytest teardown never sees a running QThread."""
     window._timer.stop()
     app.processEvents()
-    if window._route_thread is not None:
-        window._route_thread.wait(3000)
+    for attr in ("_route_thread", "_jobs_thread"):
+        thread = getattr(window, attr, None)
+        if thread is not None:
+            try:
+                thread.wait(3000)
+            except RuntimeError:
+                pass
+    app.processEvents()
+    app.processEvents()
 
 
 def test_tick_shares_one_jobs_snapshot_and_avoids_get_job(tmp_path) -> None:
@@ -258,11 +265,13 @@ def test_tick_shares_one_jobs_snapshot_and_avoids_get_job(tmp_path) -> None:
     client = CountingClient()
     config = AppConfig(output_dir=str(tmp_path), models_dir=str(tmp_path / "models"))
     window = MainWindow(client, config)  # type: ignore[arg-type]
+    _drain_window(app, window)
     window._music._job_id = "live1"
 
     client.list_jobs_calls = 0
     client.get_job_calls = 0
     window._tick()
+    _drain_window(app, window)
 
     # status bar + music queue + video queue + music live job all come from
     # ONE list_jobs call, and no per-page get_job fires.
@@ -271,7 +280,6 @@ def test_tick_shares_one_jobs_snapshot_and_avoids_get_job(tmp_path) -> None:
     assert "music running 50%" in window._status_job.text()
     assert window._music._bar.value() == 50
     assert "Sampling" in window._music._status.text()
-    _drain_window(app, window)
 
 
 def test_tick_throttles_models_refresh(tmp_path, monkeypatch) -> None:
@@ -284,7 +292,7 @@ def test_tick_throttles_models_refresh(tmp_path, monkeypatch) -> None:
     refreshes = {"n": 0}
     monkeypatch.setattr(
         window._models,
-        "refresh",
+        "poll",
         lambda: refreshes.__setitem__("n", refreshes["n"] + 1),
     )
     window.show_page("models")

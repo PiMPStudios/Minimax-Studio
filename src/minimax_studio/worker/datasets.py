@@ -116,8 +116,15 @@ def list_datasets() -> list[dict[str, Any]]:
     return rows
 
 
+def _require_id(dataset_id: str) -> str:
+    name = str(dataset_id or "")
+    if not name or Path(name).name != name or name in {".", ".."}:
+        raise RuntimeError(f"No dataset '{dataset_id}'.")
+    return name
+
+
 def get_dataset(dataset_id: str) -> tuple[Path, dict[str, Any]]:
-    folder = datasets_root() / dataset_id
+    folder = datasets_root() / _require_id(dataset_id)
     manifest = _read_manifest(folder)
     if not manifest:
         raise RuntimeError(f"No dataset '{dataset_id}'.")
@@ -130,11 +137,12 @@ def delete_dataset(dataset_id: str) -> None:
 
 
 def list_entries(folder: Path) -> list[dict[str, Any]]:
-    media = (
-        set(MEDIA_BY_KIND["music"])
-        | set(MEDIA_BY_KIND["video"])
-        | {".wav", ".flac", ".mp3", ".mp4", ".mov", ".webm"}
-    )
+    manifest = _read_manifest(folder) or {}
+    kind = manifest.get("kind")
+    if kind in MEDIA_BY_KIND:
+        media = set(MEDIA_BY_KIND[kind])
+    else:
+        media = set(MEDIA_BY_KIND["music"]) | set(MEDIA_BY_KIND["video"])
     rows = []
     for path in sorted(folder.iterdir()):
         if path.suffix.lower() not in media or path.name.startswith("."):
@@ -192,16 +200,18 @@ def import_folder(dataset_id: str, folder: str) -> dict[str, Any]:
     copied: list[str] = []
     captions = 0
     for item in sorted(source.iterdir()):
-        if item.suffix.lower() not in extensions:
+        if not item.is_file() or item.suffix.lower() not in extensions:
             continue
         target = _free_name(dest, item.name)
         shutil.copy2(item, target)
         copied.append(target.name)
-        for sibling_ext in (".txt", ".lyrics"):
-            sibling = item.with_suffix(sibling_ext)
-            if sibling.is_file():
-                shutil.copy2(sibling, target.with_suffix(sibling_ext))
-                captions += 1
+        txt = item.with_suffix(".txt")
+        if txt.is_file():
+            shutil.copy2(txt, target.with_suffix(".txt"))
+            captions += 1
+        lyrics = item.with_suffix(".lyrics")
+        if lyrics.is_file():
+            shutil.copy2(lyrics, target.with_suffix(".lyrics"))
     return {"copied": copied, "captions": captions}
 
 
@@ -267,21 +277,26 @@ def probe_audio(path: Path) -> dict[str, Any]:
         raise RuntimeError("install ffmpeg/ffprobe to probe " + path.suffix)
     import subprocess
 
-    proc = subprocess.run(
-        [
-            *ffprobe,
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=20,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                *ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except subprocess.SubprocessError as exc:
+        raise RuntimeError(f"unreadable audio ({path.suffix})") from exc
+    if proc.returncode != 0:
+        raise RuntimeError(f"unreadable audio ({path.suffix})")
     try:
         seconds = float(proc.stdout.strip())
     except ValueError as exc:
@@ -303,30 +318,35 @@ def probe_video(path: Path) -> dict[str, Any]:
     import json as _json
     import subprocess
 
-    proc = subprocess.run(
-        [
-            *ffprobe,
-            "-v",
-            "error",
-            "-show_entries",
-            "stream=codec_type,width,height,duration",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "json",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                *ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type,width,height,duration",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.SubprocessError as exc:
+        raise RuntimeError(f"unreadable media ({path.suffix})") from exc
+    if proc.returncode != 0:
+        raise RuntimeError(f"unreadable media ({path.suffix})")
     try:
         payload = _json.loads(proc.stdout or "{}")
     except _json.JSONDecodeError as exc:
         raise RuntimeError(f"unreadable media ({path.suffix})") from exc
     streams = payload.get("streams") or []
     video = next((row for row in streams if row.get("codec_type") == "video"), None)
-    if video is None and path.suffix.lower() in CLIP_EXTS:
+    if video is None:
         raise RuntimeError(f"no video stream in {path.name}")
     seconds: float | None = None
     for source in (video or {}), (payload.get("format") or {}):
@@ -422,7 +442,11 @@ def _validate_music_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any
                     f"{seconds:.1f}s is over the {MAX_SECONDS:.0f}s cap"
                 )
         except (RuntimeError, wave.Error, OSError) as exc:
-            problems.append(f"cannot read audio: {exc}")
+            message = str(exc)
+            if "install ffmpeg/ffprobe" in message:
+                report["warnings"].append(f"{path.name}: {exc}")
+            else:
+                problems.append(f"cannot read audio: {exc}")
         rows.append(
             {
                 "file": path.name,
@@ -462,6 +486,7 @@ def _validate_video_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any
         "clips": 0,
         "with_audio": 0,
         "av_ready": False,
+        "unmeasured": 0,
     }
     rows: list[dict[str, Any]] = report["rows"]
     media_exts = set(MEDIA_BY_KIND["video"])
@@ -487,8 +512,12 @@ def _validate_video_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any
         try:
             info = probe_video(path)
         except (RuntimeError, OSError) as exc:
-            unmeasured += 1
-            report["warnings"].append(f"{path.name}: {exc}")
+            message = str(exc)
+            if "install ffmpeg/ffprobe" in message or "unreadable media" in message:
+                unmeasured += 1
+                report["warnings"].append(f"{path.name}: {exc}")
+            else:
+                problems.append(str(exc))
         else:
             width, height = info.get("width"), info.get("height")
             entry["width"], entry["height"] = width, height
@@ -531,6 +560,7 @@ def _validate_video_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any
                 ],
             }
         )
+    report["unmeasured"] = unmeasured
     if unmeasured:
         report["warnings"].append(
             f"{unmeasured} of {report['checked']} file(s) could not be measured "
@@ -544,6 +574,20 @@ def _validate_video_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any
         and not unmeasured
     )
     report["ok"] = report["checked"] > 0 and all(row["ok"] for row in rows)
+    if mode == "av" and unmeasured and report["ok"]:
+        # Captions can be fine while audio was never seen — av must not look ready.
+        rows.append(
+            {
+                "file": "(dataset)",
+                "ok": False,
+                "problems": [
+                    f"av mode needs an audio stream in every clip, but "
+                    f"{unmeasured} of {report['checked']} file(s) could not be "
+                    "measured (install ffmpeg/ffprobe)."
+                ],
+            }
+        )
+        report["ok"] = False
     if report["checked"] == 0:
         rows.append(
             {
@@ -575,6 +619,14 @@ def set_h3_target_mode(dataset_id: str, mode: str) -> dict[str, Any]:
     if mode == "av":
         report = _validate_video_dir(folder, manifest)
         if not report["av_ready"]:
+            if report.get("unmeasured"):
+                raise RuntimeError(
+                    f"av mode needs an audio stream in every clip, but "
+                    f"{report['unmeasured']} of {report['checked']} file(s) "
+                    "could not be measured (install ffmpeg/ffprobe) — that is "
+                    "not the same as them having none. Use Video mode, or "
+                    "install ffmpeg and try again."
+                )
             silent = [
                 row["file"]
                 for row in report["rows"]
@@ -632,9 +684,10 @@ def _read_manifest(folder: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _write_manifest(folder: Path, manifest: dict[str, Any]) -> None:

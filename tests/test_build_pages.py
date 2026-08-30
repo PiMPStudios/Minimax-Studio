@@ -300,6 +300,20 @@ def test_lists_datasets_with_validation_state(app) -> None:
     assert texts == ["Scraps\n2 clips · 2 problems", "Summer\n3 clips · ready"]
 
 
+def test_dataset_list_survives_a_failed_refresh(app) -> None:
+    worker = FakeBuildWorker(datasets={"summer": dict(DATASET)})
+    page = DatasetsPage(worker)
+    assert page._list.count() == 1
+
+    def boom() -> list:
+        raise RuntimeError("worker down")
+
+    worker.list_datasets = boom  # type: ignore[method-assign]
+    page.refresh()
+    assert page._list.count() == 1
+    assert "keeping the last list" in page._status.text()
+
+
 def test_broken_clips_come_first_and_name_the_problem(app) -> None:
     page = DatasetsPage(
         FakeBuildWorker(
@@ -499,6 +513,22 @@ def test_no_dataset_explains_what_to_do_instead(app) -> None:
     assert not page._dataset.isEnabled()
     assert not page._start_btn.isEnabled()
     assert "Datasets page" in page._form_status.text()
+
+
+def test_train_run_list_survives_a_failed_refresh(app) -> None:
+    worker = FakeBuildWorker(
+        runs=[{"id": "run-1", "name": "Summer", "status": "running", "steps": 1000}]
+    )
+    page = TrainPage(worker)
+    assert page._runs_tree.topLevelItemCount() == 1
+
+    def boom() -> list:
+        raise RuntimeError("worker down")
+
+    worker.list_train_runs = boom  # type: ignore[method-assign]
+    page.refresh()
+    assert page._runs_tree.topLevelItemCount() == 1
+    assert "keeping the last list" in page._run_status.text()
 
 
 def test_start_refuses_while_preflight_is_failing(app, monkeypatch) -> None:
@@ -744,14 +774,11 @@ def test_the_train_page_switches_tiers_with_the_dataset(app) -> None:
     assert page._validation_duration.isHidden()
     assert worker.preflights[-1][0] == "h3-24g"
     assert worker.preflights[-1][1] == "/data/datasets/movies"
-    # What is guaranteed, precisely: the first check of the page's life cannot
-    # know the tier table yet (only the worker has it), so it asks about the
-    # preset on screen and re-asks once the table moves the selection. What must
-    # never happen is a *stale verdict staying on screen*, and once the table is
-    # known, a family switch asks about the right pair the first time.
+    # An H3 dataset must never be checked against a Music tier, even before the
+    # worker's table arrives — the fallback list is family-split for that.
     asked_about_movies = [preset for preset, path in worker.preflights if path == "/data/datasets/movies"]
     assert asked_about_movies[-1] == "h3-24g"
-    assert asked_about_movies.count("h3-24g") == asked_about_movies.count("24g") + 1
+    assert "24g" not in asked_about_movies
 
     before = len(worker.preflights)
     _select_dataset(page, "summer")

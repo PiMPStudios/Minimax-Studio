@@ -47,7 +47,7 @@ from minimax_studio.worker_client import WorkerClient
 _BAD = QBrush(QColor("#ff453a"))
 _WARN = QBrush(QColor("#ff9f0a"))
 _OK = QBrush(QColor("#32d74b"))
-_LIVE = {"running", "queued"}
+_LIVE = {"running", "queued", "lost"}
 
 # Fallback only: the real list arrives from /train/preflight so the picker can
 # never advertise a preset the worker would refuse.
@@ -57,7 +57,15 @@ _FALLBACK_PRESETS = {
         "vram_floor_gb": 24,
         "lora_rank": 16,
         "note": "int8 everywhere + gradient checkpointing",
-    }
+        "family": "music",
+    },
+    "h3-24g": {
+        "title": "24 GB — H3 LoRA with RamTorch",
+        "vram_floor_gb": 24,
+        "lora_rank": 16,
+        "note": "RamTorch CPU-offload, ConvRot INT8, 480p buckets",
+        "family": "h3",
+    },
 }
 
 
@@ -97,11 +105,16 @@ class TrainPage(QWidget):
         self._runs: list[dict[str, Any]] = []
         self._selected_run: str | None = None
         self._detail: dict[str, Any] = {}
-        self._presets: dict[str, dict[str, Any]] = dict(_FALLBACK_PRESETS)
+        self._presets: dict[str, dict[str, Any]] = {
+            name: row
+            for name, row in _FALLBACK_PRESETS.items()
+            if str(row.get("family") or "music") == "music"
+        }
         # The whole table as the worker described it, kept apart from the
         # filtered view above: filtering a filtered list loses the other family.
         self._all_presets: dict[str, dict[str, Any]] = {}
         self._preflight: dict[str, Any] = {}
+        self._poll_thread = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
@@ -239,7 +252,7 @@ class TrainPage(QWidget):
         self._install_btn = QPushButton("Install adapter")
         self._install_btn.setToolTip(
             "Copy the newest checkpoint into the LoRA folder so the Generate "
-            "Music picker can load it."
+            "Music or Generate Video picker can load it."
         )
         self._install_btn.clicked.connect(self._install_adapter)
         self._folder_btn = QPushButton("Open folder")
@@ -283,9 +296,71 @@ class TrainPage(QWidget):
     def refresh(self) -> None:
         self._load_datasets()
         try:
-            self._runs = self._client.list_train_runs()
+            runs = self._client.list_train_runs()
         except Exception:
-            self._runs = []
+            self._run_status.setText("Could not list runs — keeping the last list.")
+            return
+        self._apply_runs(runs)
+        self._show_run()
+
+    def poll(self) -> None:
+        """Timer path: list + log tail off the GUI thread. Overlapping polls skip."""
+        selected = self._selected_run
+        from minimax_studio.ui.enhance import start_background
+
+        def work() -> tuple[list, object, object]:
+            runs = self._client.list_train_runs()
+            datasets = None
+            try:
+                datasets = self._client.list_datasets()
+            except Exception:
+                datasets = None
+            detail = None
+            if selected:
+                try:
+                    detail = self._client.get_train_run(selected, tail=80)
+                except Exception:
+                    detail = None
+            return runs, detail, datasets
+
+        def done(payload: object) -> None:
+            if not isinstance(payload, tuple) or len(payload) != 3:
+                return
+            runs, detail, datasets = payload
+            if isinstance(datasets, list):
+                self._load_datasets(datasets)
+            if isinstance(runs, list):
+                self._apply_runs(runs)
+            if self._selected_run != selected:
+                self._show_run()
+            elif isinstance(detail, dict):
+                self._paint_run(detail)
+            elif selected:
+                self._run_status.setText(
+                    "Could not read this run — keeping the last log."
+                )
+                for button in (
+                    self._cancel_btn,
+                    self._install_btn,
+                    self._resume_btn,
+                    self._storage_btn,
+                ):
+                    button.setEnabled(False)
+
+        def fail() -> None:
+            self._run_status.setText("Could not list runs — keeping the last list.")
+
+        start_background(self, work, done, fail, attr="_poll_thread")
+
+    def _apply_runs(self, runs: list[dict[str, Any]]) -> None:
+        signature = [(row.get("id"), row.get("status")) for row in runs]
+        previous = [(row.get("id"), row.get("status")) for row in self._runs]
+        self._runs = runs
+        if (
+            signature == previous
+            and self._runs_tree.topLevelItemCount() == len(runs)
+        ):
+            return
         wanted = self._selected_run
         self._runs_tree.blockSignals(True)
         self._runs_tree.clear()
@@ -309,27 +384,39 @@ class TrainPage(QWidget):
                 item.setForeground(1, _BAD)
             self._runs_tree.addTopLevelItem(item)
             items[str(run.get("id"))] = item
-        self._runs_tree.blockSignals(False)
         if wanted and wanted in items:
             self._runs_tree.setCurrentItem(items[wanted])
+            self._selected_run = wanted
         elif self._runs_tree.topLevelItemCount():
-            self._runs_tree.setCurrentItem(self._runs_tree.topLevelItem(0))
+            first = self._runs_tree.topLevelItem(0)
+            self._runs_tree.setCurrentItem(first)
+            self._selected_run = first.data(0, Qt.ItemDataRole.UserRole)
         else:
             self._selected_run = None
-            self._show_run()
+        self._runs_tree.blockSignals(False)
+        if not self._runs:
+            self._paint_empty()
 
-    def _load_datasets(self) -> None:
-        try:
-            rows = self._client.list_datasets()
-        except Exception:
-            return
+    def _load_datasets(self, rows: list[dict[str, Any]] | None = None) -> None:
+        if rows is None:
+            try:
+                rows = self._client.list_datasets()
+            except Exception:
+                return
         trainable = [row for row in rows if row.get("kind") in ("music", "video")]
         # Rebuilding a picker the user is using loses their selection, so only
         # do it when the list actually changed. (An empty list still has to
         # flow through: that is the "make a dataset first" state.)
-        if trainable and [row.get("id") for row in trainable] == [
-            row.get("id") for row in self._datasets
-        ]:
+        signature = [
+            (row.get("id"), row.get("clip_count"), validation_status_short(row))
+            for row in trainable
+        ]
+        previous = [
+            (row.get("id"), row.get("clip_count"), validation_status_short(row))
+            for row in self._datasets
+        ]
+        if trainable and signature == previous:
+            self._datasets = trainable
             return
         previous_kind = self._family()
         self._datasets = trainable
@@ -453,7 +540,12 @@ class TrainPage(QWidget):
             for name, preset in (presets or self._presets).items()
             if str(preset.get("family") or "music") == family
         }
-        rows = rows or dict(_FALLBACK_PRESETS)
+        if not rows:
+            rows = {
+                name: preset
+                for name, preset in _FALLBACK_PRESETS.items()
+                if str(preset.get("family") or "music") == family
+            } or dict(_FALLBACK_PRESETS)
         if rows == self._presets:
             return False
         before = self._preset.currentData()
@@ -470,14 +562,18 @@ class TrainPage(QWidget):
         if current and self._preset.findData(current) >= 0:
             self._preset.setCurrentIndex(self._preset.findData(current))
         self._preset.blockSignals(False)
-        self._preset_changed()
+        self._sync_rank_from_preset()
         return self._preset.currentData() != before
 
-    def _preset_changed(self) -> None:
+    def _sync_rank_from_preset(self) -> None:
         preset = self._presets.get(str(self._preset.currentData() or ""), {})
         rank = preset.get("lora_rank")
         if rank:
             self._rank.setValue(int(rank))
+
+    def _preset_changed(self) -> None:
+        self._sync_rank_from_preset()
+        self.preflight()
 
     def _percent(self, step: int | None, total: int) -> int:
         if not total:
@@ -491,27 +587,41 @@ class TrainPage(QWidget):
         self._selected_run = item.data(0, Qt.ItemDataRole.UserRole) if item else None
         self._show_run()
 
+    def _paint_empty(self) -> None:
+        self._log.setPlainText("")
+        self._progress.setValue(0)
+        self._run_status.setText("Select a run to see its log.")
+        self._detail = {}
+        for button in (
+            self._cancel_btn,
+            self._install_btn,
+            self._folder_btn,
+            self._resume_btn,
+            self._storage_btn,
+        ):
+            button.setEnabled(False)
+
     def _show_run(self) -> None:
         run_id = self._selected_run
         if not run_id:
-            self._log.setPlainText("")
-            self._progress.setValue(0)
-            self._run_status.setText("Select a run to see its log.")
-            self._detail = {}
-            for button in (
-                self._cancel_btn,
-                self._install_btn,
-                self._folder_btn,
-                self._resume_btn,
-                self._storage_btn,
-            ):
-                button.setEnabled(False)
+            self._paint_empty()
             return
         try:
             detail = self._client.get_train_run(run_id, tail=80)
         except Exception as exc:
             self._run_status.setText(f"Could not read this run: {exc}")
+            for button in (
+                self._cancel_btn,
+                self._install_btn,
+                self._resume_btn,
+                self._storage_btn,
+            ):
+                button.setEnabled(False)
+            self._folder_btn.setEnabled(bool((self._detail or {}).get("path")))
             return
+        self._paint_run(detail)
+
+    def _paint_run(self, detail: dict[str, Any]) -> None:
         self._detail = detail
         self._log.setPlainText("\n".join(detail.get("log_tail") or []))
         progress = detail.get("progress") or {}
@@ -660,12 +770,21 @@ class TrainPage(QWidget):
             QMessageBox.warning(self, "Install failed", str(exc))
             return
         self.adapter_installed.emit()
+        family = str(self._detail.get("family") or "")
+        if family == "h3":
+            where = (
+                "Pick it in the LoRA dropdown on Generate Video. "
+                "One-click audition is Music-only for now."
+            )
+        else:
+            where = (
+                "Pick it in the LoRA dropdown on Generate Music — around 0.8 "
+                "strength is a good first audition."
+            )
         QMessageBox.information(
             self,
             "Adapter installed",
-            f"“{row.get('name')}” is in the LoRA folder now. Pick it in the "
-            "LoRA dropdown on Generate Music — around 0.8 strength is a good "
-            "first audition.",
+            f"“{row.get('name')}” is in the LoRA folder now. {where}",
         )
 
     def _open_folder(self) -> None:
@@ -687,14 +806,13 @@ class TrainPage(QWidget):
         run_id = self._selected_run
         if not run_id:
             return
-        checkpoints = (self._detail.get("progress") or {}).get("checkpoints") or []
-        newest = checkpoints[-1] if checkpoints else "its newest checkpoint"
         answer = QMessageBox.question(
             self,
             "Resume training",
-            f"Continue “{self._detail.get('name')}” from {newest}?\n\n"
+            f"Continue “{self._detail.get('name')}” from its newest checkpoint?\n\n"
             "Same run folder, same caches — a new trainer process starts and "
-            "the log keeps going. Nothing is re-trained from scratch.",
+            "the log keeps going. Nothing is re-trained from scratch. "
+            "Storage… can resume from a specific checkpoint instead.",
         )
         if answer != QMessageBox.StandardButton.Yes:
             return

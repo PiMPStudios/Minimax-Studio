@@ -73,6 +73,14 @@ def test_validate_dataset_needs_audio_and_captions(tmp_path: Path) -> None:
     assert any("second.wav" in e and "second.txt" in e for e in errors)
 
 
+def test_cheap_music_check_sees_mp3(tmp_path: Path) -> None:
+    folder = tmp_path / "mp3s"
+    folder.mkdir()
+    (folder / "song.mp3").write_bytes(b"ID3")
+    (folder / "song.txt").write_text("caption", encoding="utf-8")
+    assert validate_music_dataset_dir(folder) == []
+
+
 def test_write_run_config_contract(studio_home: Path, tmp_path: Path) -> None:
     clips = _dataset(tmp_path)
     run_dir = tmp_path / "run-1"
@@ -100,6 +108,7 @@ def test_write_run_config_contract(studio_home: Path, tmp_path: Path) -> None:
     assert backends[0]["instance_data_dir"] == str(clips.resolve())
     assert backends[0]["caption_strategy"] == "textfile"
     assert backends[0]["audio"]["lyrics_filename_format"] == "{filename}.lyrics"
+    assert backends[0]["audio"]["max_duration_seconds"] == 300.0
 
 
 def _normalised(path: str, run_dir: Path):

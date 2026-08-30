@@ -131,6 +131,8 @@ def test_the_h3_tiers_are_the_four_simpletuner_names() -> None:
     # Only the 24 GB tier pays for RamTorch, and only it says so in its title.
     assert [name for name, row in h3.items() if row.ram_torch] == ["h3-24g"]
     assert "RamTorch" in h3["h3-24g"].title
+    assert h3["h3-24g"].flavour == "convrot-int8"
+    assert h3["h3-80g"].flavour == "fl2va"
     assert {row.packs_any for row in h3.values()} == {
         ("h3-diffusers-fl2va", "h3-diffusers-ref2va")
     }
@@ -162,20 +164,23 @@ def test_an_h3_run_writes_the_video_config(h3_env, tmp_path) -> None:
         },
     )
     config = _written_config(run_dir, "r1")
-    assert config["model_family"] == "minimax_h3"
-    assert config["model_flavour"] == "h3"
+    assert config["model_family"] == "minimaxh3"
+    assert config["model_flavour"] == "convrot-int8"
     assert config["pretrained_model_name_or_path"].endswith("h3-diffusers")
-    assert config["ram_torch"] is True
+    assert config["ramtorch"] is True
+    assert config["ramtorch_text_encoder"] is True
+    assert "ram_torch" not in config
+    assert config["base_model_precision"] == "no_change"
     assert config["resolution"] == 480
+    assert config["resolution_type"] == "pixel_area"
+    assert config["flow_schedule_shift"] == 12.0
     assert config["minimax_h3_target_mode"] == "video"
     assert config["max_train_steps"] == 200
+    assert config["distillation_method"] == "h3_drift"
     # Music-only keys must not leak into an H3 run — that is how a wrong model
     # turns a config review into a guessing game.
-    for key in ("validation_lyrics", "validation_audio_duration", "vae_batch_size"):
+    for key in ("validation_lyrics", "validation_audio_duration"):
         assert key not in config
-    # Drift distillation stays SimpleTuner's default: we do not write it, and we
-    # do not switch it off.
-    assert not any("drift" in key for key in config)
 
     backends = json.loads(
         (run_dir / "config" / "r1" / "multidatabackend.json").read_text()
@@ -204,7 +209,8 @@ def test_clips_use_the_video_backend_and_carry_the_chosen_mode(h3_env, tmp_path)
         (h3_env / "runs" / "r2" / "config" / "r2" / "multidatabackend.json").read_text()
     )
     assert config["minimax_h3_target_mode"] == "av"
-    assert "ram_torch" not in config  # only the 24 GB tier pays for it
+    assert "ramtorch" not in config  # only the 24 GB tier pays for it
+    assert config["model_flavour"] == "convrot-int8"
     assert config["resolution"] == 768
     assert backends[0]["dataset_type"] == "video"
 
@@ -312,7 +318,7 @@ def test_an_h3_run_is_launched_with_its_own_kind_recorded(h3_env, tmp_path) -> N
     run_dir = train_runs.runs_root() / state["id"]
     assert state["dataset_kind"] == "video" and state["family"] == "h3"
     assert state["dataset_spec"]["has_clips"] is True
-    assert _written_config(run_dir, state["id"])["model_family"] == "minimax_h3"
+    assert _written_config(run_dir, state["id"])["model_family"] == "minimaxh3"
 
 
 def test_resume_reuses_the_recorded_spec(h3_env, tmp_path) -> None:
@@ -329,8 +335,8 @@ def test_resume_reuses_the_recorded_spec(h3_env, tmp_path) -> None:
     resumed = train_runs.resume_run(state["id"])
     assert resumed["resume_count"] == 1
     config = _written_config(run_dir, state["id"])
-    assert config["model_family"] == "minimax_h3"
-    assert config["resume_from_checkpoint"] == str(checkpoint)
+    assert config["model_family"] == "minimaxh3"
+    assert config["resume_from_checkpoint"] == "latest"
 
 
 # --- dataset_spec ------------------------------------------------------------
@@ -356,6 +362,21 @@ def test_a_loose_folder_has_its_kind_inferred(h3_env, tmp_path) -> None:
     assert datasets.dataset_spec(empty)["kind"] == "music"
 
 
+def test_the_80g_tier_writes_official_fl2va_flavour(h3_env, tmp_path) -> None:
+    _h3_weights()
+    train_config.write_run_config(
+        h3_env / "runs" / "r80",
+        "r80",
+        _video_folder(tmp_path, stills=1),
+        preset_name="h3-80g",
+        dataset_spec={"kind": "video", "has_stills": True, "has_clips": False},
+    )
+    config = _written_config(h3_env / "runs" / "r80", "r80")
+    assert config["model_flavour"] == "fl2va"
+    assert config["base_model_precision"] == "no_change"
+    assert "ramtorch" not in config
+
+
 def test_music_configs_keep_their_old_shape(h3_env, tmp_path) -> None:
     """The refactor that added H3 must not disturb the config that already
     trains — this is the golden test for the Music side."""
@@ -375,6 +396,7 @@ def test_music_configs_keep_their_old_shape(h3_env, tmp_path) -> None:
     assert config["validation_audio_duration"] == 15
     assert backends[0]["dataset_type"] == "audio"
     assert backends[0]["audio"]["duration_interval"] == 3.0
+    assert backends[0]["audio"]["max_duration_seconds"] == 300.0
 
 
 # --- routes ------------------------------------------------------------------
@@ -414,4 +436,4 @@ def test_target_mode_route_refuses_with_a_reason(h3_env) -> None:
         f"/datasets/{manifest['id']}/target-mode", json={"mode": "av"}
     )
     assert refusal.status_code == 409
-    assert "no ffmpeg/ffprobe" in refusal.json()["detail"] or "have none" in refusal.json()["detail"]
+    assert "could not be measured" in refusal.json()["detail"]

@@ -71,7 +71,7 @@ def test_import_folder_copies_media_with_captions(datasets_env: Path, tmp_path: 
 
     result = datasets.import_folder(manifest["id"], source)
     assert sorted(result["copied"]) == ["b.wav", "song a.wav"]
-    assert result["captions"] == 2  # .txt and .lyrics both travelled
+    assert result["captions"] == 1  # clips that brought a .txt; lyrics still copy
 
     folder, _ = datasets.get_dataset(manifest["id"])
     assert (folder / "song a.wav").is_file()  # copies: source stays intact
@@ -474,3 +474,59 @@ def test_a_video_dataset_gates_training_the_same_way(ffprobe, datasets_env: Path
     (folder / "cover_1280x720.txt").unlink()
     with pytest.raises(RuntimeError, match="not ready to train"):
         datasets.assert_trainable(folder)
+
+
+def test_av_without_ffprobe_does_not_accuse_the_clips(
+    monkeypatch, datasets_env: Path
+) -> None:
+    monkeypatch.setattr(datasets, "ffprobe_command", lambda: None)
+    _folder, manifest = _video_dataset(
+        "unmeasured-av", {"shot_1280x720_t4s.mp4": "a shot"}
+    )
+    with pytest.raises(RuntimeError, match="could not be measured"):
+        datasets.set_h3_target_mode(manifest["id"], "av")
+
+
+def test_video_entries_do_not_list_a_stray_wav(datasets_env: Path) -> None:
+    manifest = datasets.create_dataset("shots", "video")
+    folder, _ = datasets.get_dataset(manifest["id"])
+    (folder / "cover.png").write_bytes(b"\x00")
+    (folder / "oops.wav").write_bytes(b"RIFF")
+    names = [row["file"] for row in datasets.list_entries(folder)]
+    assert names == ["cover.png"]
+
+
+def test_dataset_ids_cannot_walk_out_of_the_root(datasets_env: Path) -> None:
+    with pytest.raises(RuntimeError, match="No dataset"):
+        datasets.get_dataset("..")
+    with pytest.raises(RuntimeError, match="No dataset"):
+        datasets.get_dataset("foo/bar")
+
+
+def test_av_mode_is_not_ready_when_clips_were_never_measured(
+    monkeypatch, datasets_env: Path
+) -> None:
+    monkeypatch.setattr(datasets, "ffprobe_command", lambda: None)
+    folder, manifest = _video_dataset(
+        "av-unmeasured", {"shot_1280x720_t4s.mp4": "a shot"}
+    )
+    manifest = dict(manifest)
+    manifest["h3_target_mode"] = "av"
+    datasets._write_manifest(folder, manifest)
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is False
+    assert any("could not be measured" in str(row.get("problems")) for row in report["rows"])
+
+
+def test_music_without_ffprobe_warns_on_mp3_instead_of_accusing(
+    monkeypatch, datasets_env: Path
+) -> None:
+    monkeypatch.setattr(datasets, "ffprobe_command", lambda: None)
+    manifest = datasets.create_dataset("mp3s", "music")
+    folder, _ = datasets.get_dataset(manifest["id"])
+    (folder / "song.mp3").write_bytes(b"ID3")
+    (folder / "song.txt").write_text("caption", encoding="utf-8")
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is True
+    assert report["rows"][0]["ok"] is True
+    assert any("ffmpeg/ffprobe" in warning for warning in report["warnings"])

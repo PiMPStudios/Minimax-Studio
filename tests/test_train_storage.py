@@ -328,11 +328,11 @@ def test_resume_continues_the_same_run_in_the_same_folder(runs_home):
     assert resumed["path"] == run["path"]
     assert resumed["status"] == "running" and resumed["pid"] > 0
     assert resumed["resume_count"] == 1
-    assert resumed["resumed_from"] == str(best)
+    assert resumed["resumed_from"] == "latest"
     config = json.loads(
         (Path(run["path"]) / "config" / run["id"] / "config.json").read_text()
     )
-    assert config["resume_from_checkpoint"] == str(best)
+    assert config["resume_from_checkpoint"] == "latest"
     assert config["max_train_steps"] == 800  # resuming is not restarting smaller
     assert (Path(run["path"]) / "cache").is_dir()  # the cache is why it's fast
 
@@ -343,7 +343,7 @@ def test_resume_takes_a_chosen_checkpoint_not_just_the_newest(runs_home):
     older = _checkpoint(run, 100, age_s=400)
     _install(run, older)
     resumed = train_runs.resume_run(run["id"], f"checkpoints/step-100/{older.name}")
-    assert resumed["resumed_from"] == str(older)
+    assert resumed["resumed_from"] == str(older.parent)
 
 
 def test_resume_without_a_checkpoint_names_the_run_instead_of_asserting(runs_home):
@@ -446,6 +446,19 @@ def test_import_says_which_folder_it_wanted(tmp_path, monkeypatch):
     (wrong / "lora-500.safetensors").write_bytes(b"\0")
     with pytest.raises(RuntimeError, match="no state.json"):
         train_runs.import_run(wrong)
+
+
+def test_import_refuses_an_id_that_walks_out_of_the_runs_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("MINIMAX_STUDIO_TRAIN_RUNS", str(tmp_path / "runs"))
+    (tmp_path / "runs").mkdir()
+    folder = tmp_path / "export"
+    folder.mkdir()
+    (folder / "state.json").write_text(
+        json.dumps({"id": "..", "name": "nope", "status": "finished"}),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="No training run"):
+        train_runs.import_run(folder)
 
 
 # --- routes ------------------------------------------------------------------

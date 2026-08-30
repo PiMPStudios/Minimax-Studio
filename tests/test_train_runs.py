@@ -6,6 +6,7 @@ same stdout, same checkpoints/ output. The real-metal check lives in PLAN-V2 S0.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -115,6 +116,25 @@ def test_install_adapter_lands_in_picker(trainer_stub: Path, studio_home: Path) 
     assert Path(row["path"]).is_file()
     assert row["path"].startswith(str(runtime.config.models_root() / "loras"))
     assert any(item["path"] == row["path"] for item in list_loras())
+    assert Path(row["path"]).name.startswith("installable-")
+
+
+def test_two_runs_do_not_install_over_the_same_lora_filename(
+    trainer_stub: Path, studio_home: Path
+) -> None:
+    from minimax_studio.worker.loras import list_loras
+
+    first = train_runs.start_run("alpha", _dataset(trainer_stub), "24g")
+    _wait_status(first["id"], "completed")
+    second = train_runs.start_run("beta", _dataset(trainer_stub), "24g")
+    _wait_status(second["id"], "completed")
+    a = train_runs.install_adapter(first["id"])
+    b = train_runs.install_adapter(second["id"])
+    assert Path(a["path"]).name != Path(b["path"]).name
+    assert Path(a["path"]).is_file() and Path(b["path"]).is_file()
+    assert Path(a["path"]).read_bytes() == Path(b["path"]).read_bytes()
+    names = {Path(item["path"]).name for item in list_loras()}
+    assert Path(a["path"]).name in names and Path(b["path"]).name in names
 
 
 def test_cancel_stops_the_whole_group(trainer_stub: Path, monkeypatch) -> None:
@@ -124,7 +144,59 @@ def test_cancel_stops_the_whole_group(trainer_stub: Path, monkeypatch) -> None:
     final = train_runs.cancel_run(state["id"])
     assert final["cancel_requested"] is True
     done = _wait_status(state["id"], "cancelled")
-    assert done["exit_code"] not in (0, None)
+    assert done["exit_code"] not in (None,)
+
+
+def test_cancel_is_still_cancelled_when_the_trainer_exits_zero(
+    trainer_stub: Path, monkeypatch
+) -> None:
+    """SimpleTuner often SIGTERM-exits 0. That is not a successful training run."""
+    script = trainer_stub / "clean_cancel.py"
+    script.write_text(
+        "import signal, sys, time\n"
+        "if '--version' in sys.argv:\n"
+        "    print('simpletuner 4.8.0'); sys.exit(0)\n"
+        "signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))\n"
+        "print('ready', flush=True)\n"
+        "time.sleep(120)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        "MINIMAX_STUDIO_SIMPLETUNER_BIN",
+        f'"{sys.executable}" "{script}"',
+    )
+    state = train_runs.start_run("clean-cancel", _dataset(trainer_stub), "24g")
+    _wait_status(state["id"], "running", timeout=5)
+    log = train_runs.runs_root() / state["id"] / "train.log"
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if log.is_file() and b"ready" in log.read_bytes():
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("trainer never printed ready")
+    train_runs.cancel_run(state["id"])
+    done = _wait_status(state["id"], "cancelled")
+    assert done["exit_code"] == 0
+    assert done["status"] == "cancelled"
+
+
+def test_a_silent_live_run_is_marked_lost(trainer_stub: Path, monkeypatch) -> None:
+    monkeypatch.setenv("STUB_TRAINER_MODE", "sleep")
+    monkeypatch.setattr(train_runs, "LOST_HEARTBEAT_S", 0.05)
+    state = train_runs.start_run("hung", _dataset(trainer_stub), "24g")
+    _wait_status(state["id"], "running", timeout=5)
+    run_dir = train_runs.runs_root() / state["id"]
+    old = time.time() - 10
+    payload = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+    payload["started_at"] = old
+    (run_dir / "state.json").write_text(json.dumps(payload), encoding="utf-8")
+    os.utime(run_dir / "train.log", (old, old))
+    lost = _wait_status(state["id"], "lost", timeout=5)
+    assert lost["status"] == "lost"
+    assert state["id"] in {row["id"] for row in train_runs.live_runs()}
+    train_runs.cancel_run(state["id"])
+    _wait_status(state["id"], "cancelled")
 
 
 def test_reattach_after_worker_restart(trainer_stub: Path) -> None:
@@ -224,3 +296,27 @@ def test_live_run_warns_generate_preflight(
         # that is how a test job turns into a hung one.
         train_runs.cancel_run(state["id"])
         _wait_status(state["id"], "cancelled")
+
+
+def test_install_adapter_refuses_a_file_outside_the_run(
+    trainer_stub: Path, tmp_path: Path
+) -> None:
+    state = train_runs.start_run("installable", _dataset(trainer_stub), "24g")
+    _wait_status(state["id"], "completed")
+    outsider = tmp_path / "not-this-run.safetensors"
+    outsider.write_bytes(b"\x00")
+    with pytest.raises(RuntimeError, match="not a checkpoint of this run"):
+        train_runs.install_adapter(state["id"], str(outsider))
+
+
+def test_run_ids_cannot_walk_out_of_the_root(trainer_stub: Path) -> None:
+    with pytest.raises(RuntimeError, match="No training run"):
+        train_runs.get_run("..")
+
+
+def test_progress_checkpoint_paths_are_posix(trainer_stub: Path) -> None:
+    state = train_runs.start_run("posix", _dataset(trainer_stub), "24g")
+    _wait_status(state["id"], "completed")
+    for path in train_runs.progress(state["id"])["checkpoints"]:
+        assert "\\" not in path
+        assert "/" in path or path.endswith(".safetensors")

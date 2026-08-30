@@ -447,7 +447,12 @@ def test_resume_says_which_checkpoint_it_will_use(app, worker, monkeypatch) -> N
     )
     page = _page(app, worker)
     page._resume_run()
-    assert "checkpoints/step-800/lora.safetensors" in dialogs.last()[2]
+    # The worker resumes `latest` (mtime), not the lexicographic last path, so
+    # the box must not name a specific file — Storage… is that picker.
+    body = dialogs.last()[2]
+    assert "newest checkpoint" in body
+    assert "Storage" in body
+    assert "step-800" not in body
     assert worker.resumed == [("run-1", None)]
     assert "resume #2" in page._form_status.text()
     assert "pid 909" in page._form_status.text()

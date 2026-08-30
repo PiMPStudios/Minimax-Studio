@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from minimax_studio.ui.ready import ask_lora_family
 from minimax_studio.ui.reveal import reveal_path
 from minimax_studio.worker_client import WorkerClient
 
@@ -117,6 +118,7 @@ class AdaptersPage(QWidget):
         self._rows: list[dict[str, Any]] = []
         self._visible: list[dict[str, Any]] = []
         self._selected: str | None = None
+        self._poll_thread = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
@@ -207,10 +209,45 @@ class AdaptersPage(QWidget):
 
     def refresh(self) -> None:
         try:
-            self._rows = self._client.list_adapters()
+            rows = self._client.list_adapters()
         except Exception:
+            self._status.setText("Could not list adapters — keeping the last list.")
             return
+        self._rows = rows
         self._rebuild_rows()
+
+    def poll(self) -> None:
+        """Timer path: list adapters off the GUI thread. Overlapping polls skip."""
+        from minimax_studio.ui.enhance import start_background
+
+        def done(payload: object) -> None:
+            if not isinstance(payload, list):
+                return
+            signature = self._rows_signature(payload)
+            previous = self._rows_signature(self._rows)
+            self._rows = payload
+            if signature != previous:
+                self._rebuild_rows()
+
+        def fail() -> None:
+            self._status.setText("Could not list adapters — keeping the last list.")
+
+        start_background(
+            self, self._client.list_adapters, done, fail, attr="_poll_thread"
+        )
+
+    def _rows_signature(self, rows: list[dict[str, Any]]) -> list[tuple]:
+        return [
+            (
+                row.get("id"),
+                row.get("source"),
+                row.get("kind"),
+                row.get("on_disk"),
+                row.get("can_audition"),
+                row.get("created_at"),
+            )
+            for row in rows
+        ]
 
     def _rebuild_rows(self) -> None:
         wanted = self._selected
@@ -350,8 +387,11 @@ class AdaptersPage(QWidget):
         )
         if not path:
             return
+        kind = ask_lora_family(self, path)
+        if kind is None:
+            return
         try:
-            row = self._client.import_lora(path)
+            row = self._client.import_lora(path, kind=kind)
         except Exception as exc:
             QMessageBox.warning(self, "Import failed", str(exc))
             return

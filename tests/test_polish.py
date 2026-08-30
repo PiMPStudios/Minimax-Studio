@@ -64,6 +64,8 @@ def test_preflight_music_api_names_dropped_params(
     assert result["ok"] is True
     for param in ("Duration", "Seed", "Steps", "CFG"):
         assert param in result["detail"]
+    assert "lyrics_optimizer" in result["detail"]
+    assert "LoRAs do not apply" in result["detail"]
 
 
 def test_guard_resolution_fails_loudly_off_api() -> None:

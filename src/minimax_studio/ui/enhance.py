@@ -18,6 +18,69 @@ def on_main(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+def start_background(
+    parent: QObject,
+    work: Callable[[], Any],
+    on_done: Callable[[Any], None],
+    on_fail: Callable[[], None] | None = None,
+    attr: str = "_bg_thread",
+) -> bool:
+    """Run ``work()`` off the GUI thread. Skip if ``attr`` is already running.
+
+    Returns True if a thread was started. ``on_done`` / ``on_fail`` are
+    marshalled onto the GUI thread.
+    """
+    existing = getattr(parent, attr, None)
+    if existing is not None:
+        try:
+            if existing.isRunning():
+                return False
+        except RuntimeError:
+            setattr(parent, attr, None)
+
+    class Worker(QObject):
+        finished = Signal(object)
+        failed = Signal()
+
+        def run(inner_self) -> None:
+            try:
+                inner_self.finished.emit(work())
+            except Exception:
+                inner_self.failed.emit()
+
+    thread = QThread(parent)
+    worker = Worker()
+    worker.moveToThread(thread)
+    thread.started.connect(worker.run)
+
+    def done(payload: object) -> None:
+        on_done(payload)
+        thread.quit()
+
+    def fail() -> None:
+        if on_fail is not None:
+            on_fail()
+        thread.quit()
+
+    worker.finished.connect(on_main(done))
+    worker.failed.connect(on_main(fail))
+    worker.finished.connect(thread.quit)
+    worker.failed.connect(thread.quit)
+    worker.finished.connect(worker.deleteLater)
+    worker.failed.connect(worker.deleteLater)
+
+    def _reset() -> None:
+        setattr(parent, attr, None)
+
+    thread.finished.connect(_reset)
+    thread.finished.connect(thread.deleteLater)
+    # Signal connections hold only a weak reference to the worker.
+    thread._worker = worker
+    setattr(parent, attr, thread)
+    thread.start()
+    return True
+
+
 class EnhanceWorker(QObject):
     finished = Signal(str)
     failed = Signal(str)

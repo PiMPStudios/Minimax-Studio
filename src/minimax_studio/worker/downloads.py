@@ -15,6 +15,10 @@ from minimax_studio.worker.runtime import runtime
 SnapshotFn = Callable[..., str]
 
 
+class _DownloadCancelled(Exception):
+    """Stop requested while the Hugging Face snapshot process was still running."""
+
+
 def pack_status(pack: Pack, models_root: Path) -> dict[str, Any]:
     extra = None
     try:
@@ -142,14 +146,17 @@ def _run_download(
     watcher.start()
     _update(job_id, status="running", message=f"Fetching {pack.repo_id}")
     try:
-        fn = snapshot or _hf_snapshot
-        fn(
-            repo_id=pack.repo_id,
-            local_dir=str(dest),
-            token=runtime.config.hf_token or None,
-            allow_patterns=list(pack.allow_patterns) if pack.allow_patterns else None,
-            ignore_patterns=list(pack.ignore_patterns) if pack.ignore_patterns else None,
-        )
+        kwargs = {
+            "repo_id": pack.repo_id,
+            "local_dir": str(dest),
+            "token": runtime.config.hf_token or None,
+            "allow_patterns": list(pack.allow_patterns) if pack.allow_patterns else None,
+            "ignore_patterns": list(pack.ignore_patterns) if pack.ignore_patterns else None,
+        }
+        if snapshot is not None:
+            snapshot(**kwargs)
+        else:
+            _cancellable_hf_snapshot(job_id, **kwargs)
         if _stopped(job_id):
             _update(job_id, status="cancelled", message="Cancelled")
             return
@@ -169,7 +176,13 @@ def _run_download(
             bytes=dir_bytes(dest),
             error=None,
         )
+    except _DownloadCancelled:
+        _update(job_id, status="cancelled", message="Cancelled")
+        return
     except Exception as exc:
+        if _stopped(job_id):
+            _update(job_id, status="cancelled", message="Cancelled")
+            return
         _update(job_id, status="error", message="Download failed", error=str(exc))
     finally:
         stop.set()
@@ -181,6 +194,75 @@ def _run_download(
 def _watch_size(job_id: str, dest: Path, stop: threading.Event) -> None:
     while not stop.wait(0.4):
         _update(job_id, bytes=dir_bytes(dest))
+
+
+def _cancellable_hf_snapshot(job_id: str, **kwargs: Any) -> str:
+    """``snapshot_download`` has no cancel hook; run it in a child we can kill."""
+    import json
+    import os
+    import signal
+    import subprocess
+    import sys
+
+    payload = {key: value for key, value in kwargs.items() if value is not None}
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import json,sys; from huggingface_hub import snapshot_download; "
+            "snapshot_download(**json.load(sys.stdin))",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    assert proc.stdin is not None
+    proc.stdin.write(json.dumps(payload).encode("utf-8"))
+    proc.stdin.close()
+    try:
+        while proc.poll() is None:
+            if _stopped(job_id):
+                _kill_snapshot(proc)
+                raise _DownloadCancelled()
+            try:
+                proc.wait(timeout=0.4)
+            except subprocess.TimeoutExpired:
+                continue
+        if proc.returncode not in (0, None):
+            if _stopped(job_id):
+                raise _DownloadCancelled()
+            err = (proc.stderr.read() if proc.stderr else b"")[:400]
+            raise RuntimeError(
+                f"download process failed: {err.decode('utf-8', 'replace')}"
+            )
+    finally:
+        if proc.poll() is None:
+            _kill_snapshot(proc)
+    return str(kwargs.get("local_dir") or "")
+
+
+def _kill_snapshot(proc: Any) -> None:
+    import os
+    import signal
+    import subprocess
+
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True,
+                timeout=8,
+            )
+        else:
+            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait(timeout=2)
+    except (ProcessLookupError, PermissionError, OSError, subprocess.SubprocessError):
+        pass
 
 
 def _hf_snapshot(
