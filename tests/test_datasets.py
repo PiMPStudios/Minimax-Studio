@@ -266,9 +266,11 @@ def test_dataset_api_roundtrip(datasets_env: Path, tmp_path: Path) -> None:
 #: Filename protocol, so a test reads as a claim about media rather than about
 #: JSON: `1280x720` sets the pixel size, `t4s` the duration, `audio` an
 #: audio stream. Everything else is a plain video/still with no streams.
+#: The basename, never the whole path — see
+#: test_the_probe_stub_measures_the_file_not_the_folder_it_sits_in.
 FFPROBE_STUB = '''
-import json, re, sys
-name = sys.argv[-1].lower()
+import json, os, re, sys
+name = os.path.basename(sys.argv[-1]).lower()
 dims = re.search(r"(\\d+)x(\\d+)", name)
 dur = re.search(r"t(\\d+(?:\\.\\d+)?)s", name)
 streams = []
@@ -308,6 +310,24 @@ def _video_dataset(name: str = "stills", files: dict[str, str] | None = None) ->
                 caption, encoding="utf-8"
             )
     return folder, manifest
+
+
+def test_the_probe_stub_measures_the_file_not_the_folder_it_sits_in(
+    ffprobe, studio_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A macOS scratch dir is `/private/var/folders/17/<hash with an x>/T/…`, which
+    contains digits-x-digits. Reading pixel size out of the *whole path* made the
+    stub hand back the temp folder as the image size — `17×95674 is under the 256
+    px floor`, on macOS only, with every Linux run green. So the folder name is
+    part of the test, on every platform."""
+    monkeypatch.setenv(
+        "MINIMAX_STUDIO_DATASETS", str(tmp_path / "17" / "9x95674" / "datasets")
+    )
+    _folder, manifest = _video_dataset("campaign", {"cover_1280x720.png": "neon shot"})
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is True, report["rows"]
+    (row,) = [item for item in report["rows"] if item["file"] == "cover_1280x720.png"]
+    assert (row["width"], row["height"]) == (1280, 720)
 
 
 def test_stills_and_short_clips_validate_clean(ffprobe, datasets_env: Path) -> None:
