@@ -206,6 +206,52 @@ class WorkerClient:
         query = f"?path={_seg(path)}" if path else ""
         return self._post(f"/train/runs/{_seg(run_id)}/install{query}", {})
 
+    # --- Long-run hardening (PLAN-V2 S5) ------------------------------------
+    #
+    # Storage calls are opened from a dialog, never polled: measuring a VAE cache
+    # means walking thousands of files, and the worker caches what it measured.
+
+    def train_storage(self) -> dict[str, Any]:
+        return self._get("/train/storage", timeout=120.0)
+
+    def train_run_storage(self, run_id: str) -> dict[str, Any]:
+        return self._get(f"/train/runs/{_seg(run_id)}/storage", timeout=120.0)
+
+    def resume_train_run(self, run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
+        return self._post(
+            f"/train/runs/{_seg(run_id)}/resume", {"checkpoint": checkpoint}, timeout=120.0
+        )
+
+    def clear_train_cache(self, run_id: str) -> dict[str, Any]:
+        return self._post(f"/train/runs/{_seg(run_id)}/cache/clear", {}, timeout=120.0)
+
+    def prune_train_checkpoints(
+        self, run_id: str, keep: int = 3, dry_run: bool = False
+    ) -> dict[str, Any]:
+        # dry_run answers “how much would this free?” with the same code that
+        # then frees it — so the number in the confirmation is the real one.
+        return self._post(
+            f"/train/runs/{_seg(run_id)}/prune",
+            {"keep": int(keep), "dry_run": bool(dry_run)},
+            timeout=300.0,
+        )
+
+    def export_train_run(
+        self, run_id: str, dest: str, include_cache: bool = False
+    ) -> dict[str, Any]:
+        # Copying tens of GB is a minute-scale request; nothing else here waits this long.
+        return self._post(
+            f"/train/runs/{_seg(run_id)}/export",
+            {"dest": dest, "include_cache": bool(include_cache)},
+            timeout=3600.0,
+        )
+
+    def import_train_run(self, folder: str) -> dict[str, Any]:
+        return self._post("/train/runs/import", {"folder": folder}, timeout=3600.0)
+
+    def delete_train_run(self, run_id: str) -> dict[str, Any]:
+        return self._delete(f"/train/runs/{_seg(run_id)}")
+
     # --- Adapters (PLAN-V2 S3) ----------------------------------------------
 
     def list_adapters(self) -> list[dict[str, Any]]:

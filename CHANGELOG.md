@@ -12,6 +12,55 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.33] — 2026-08-29
+
+### Added
+
+- **Storage — the disk half of a long run (PLAN-V2 S5).** A run that goes well
+  is tens of gigabytes and SimpleTuner has no reason to tidy up after itself, so
+  the Train page gained a **Storage…** dialog that names the numbers *before*
+  anything is deleted: checkpoints, caches, the whole run, and the gigabytes free
+  on that volume. **Prune checkpoints** keeps the newest N **plus every
+  checkpoint you installed as an adapter** — there is no eval score in
+  SimpleTuner's stdout, so "best" means *the one you chose to keep*, and the
+  dialog says that instead of inventing a metric. The number in that
+  confirmation comes from a **dry run** over the same code path that then does
+  the deleting, and a pruned step takes its **whole folder** — weights plus
+  SimpleTuner's optimiser state — so the gigabytes promised are the gigabytes
+  freed. **Clear caches** frees the VAE
+  and text-embedding caches (derived data: the next run rebuilds them, slowly).
+  **Delete run folder** reports what it frees, and never touches installed
+  adapters — those are copies.
+- **Resume from checkpoint.** A stopped, cancelled or 4 a.m.-failed run continues
+  in its **own** folder: `resume_from_checkpoint` goes into the same config, the
+  caches stay warm, the log keeps appending, `resume_count` ticks up. The
+  **Resume from checkpoint** button takes the newest; the Storage dialog's
+  **Resume from selected** takes whichever checkpoint you highlight. Only a
+  `.safetensors` that lives inside that run is accepted — weights from another run
+  would train the wrong base and credit the wrong provenance.
+- **Export / Import a run.** Export copies state, config, checkpoints and the log
+  with an `EXPORT.json` manifest (file count, bytes, whether caches came along)
+  and **leaves the caches behind** — they are most of the bytes and the receiving
+  machine recomputes them anyway. Import takes that folder back into the list
+  with its history, and refuses to merge onto an id that is already here rather
+  than mixing two runs' checkpoints.
+- **Nothing destructive while a run is live.** Prune, clear, delete and resume
+  are refused twice over: the buttons are disabled with the reason in the
+  tooltip, and the worker refuses again with the pid inside the sentence. On
+  Windows a running trainer holds those files open, so "cleanup" there is not
+  freed disk — it is a half-deleted run.
+- New worker API: `/train/storage`, `/train/runs/{id}/storage`,
+  `…/prune`, `…/cache/clear`, `…/resume`, `…/export`, `POST /train/runs/import`,
+  `DELETE /train/runs/{id}`. Storage reports are cached ~15 s and invalidated by
+  every deletion — walking a VAE cache means thousands of files, which has no
+  business in a 2-second poll.
+
+### Fixed
+
+- The modal-box harness in the tests moved to `tests/dialogs.py` and now stands
+  in for `QFileDialog` as well, so the pages that ask for a folder are testable
+  without a hung CI runner.
+
 ## [0.2.32] — 2026-08-29
 
 ### Added

@@ -14,6 +14,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from typing import Any
 
 import pytest
+
+# A modal in a test is a hung CI runner: every box answers itself. Shared with
+# the Storage dialog tests.
+from dialogs import Dialogs as _Dialogs
 from PySide6.QtWidgets import QMessageBox
 
 from minimax_studio.ui.pages import adapters_page as adapters_module
@@ -177,55 +181,12 @@ class FakeBuildWorker:
         return {"id": "a.safetensors", "name": "a", "path": "/models/loras/a.safetensors"}
 
 
-class _Dialogs:
-    """Stand in for the modal boxes: record what was asked, answer what the
-    test says. Replaces the name in the page module (Shiboken classes do not
-    take attributes), so the page's own ``QMessageBox`` import is what changes.
-    """
-
-    def __init__(self, monkeypatch, answers: dict[str, Any], *modules) -> None:
-        self.calls: list[tuple[str, str, str]] = []
-        self._answers = answers
-        shim = _MessageBoxShim(self)
-        for module in modules:
-            monkeypatch.setattr(module, "QMessageBox", shim)
-
-    def record(self, kind: str, args: tuple) -> None:
-        title = str(args[1]) if len(args) > 1 else ""
-        body = str(args[2]) if len(args) > 2 else ""
-        self.calls.append((kind, title, body))
-
-    def answer(self, kind: str) -> Any:
-        return self._answers.get(kind, 0)
-
-    def kinds(self) -> list[str]:
-        return [call[0] for call in self.calls]
-
-    def last(self) -> tuple[str, str, str]:
-        return self.calls[-1]
-
-
-class _MessageBoxShim:
-    def __init__(self, dialogs: _Dialogs) -> None:
-        self._dialogs = dialogs
-        self.StandardButton = QMessageBox.StandardButton
-        self.Yes = QMessageBox.StandardButton.Yes
-
-    def warning(self, *args, **kwargs):
-        self._dialogs.record("warning", args)
-
-    def information(self, *args, **kwargs):
-        self._dialogs.record("information", args)
-
-    def question(self, *args, **kwargs):
-        self._dialogs.record("question", args)
-        return self._dialogs.answer("question")
 
 
 @pytest.fixture(autouse=True)
 def no_modals(monkeypatch):
-    """A modal in a test is a hung CI runner: answer every box, No by default.
-    Tests that want the Yes path install their own _Dialogs on top."""
+    """Answer every box, No by default. Tests that want the Yes path install
+    their own _Dialogs on top of this one."""
     return _Dialogs(
         monkeypatch, {"question": QMessageBox.StandardButton.No}, datasets_module, train_module
     )

@@ -30,6 +30,17 @@ from minimax_studio.worker.train_config import (
 # Runs launched by a previous worker only ever appear via state.json + pid.
 _PROCS: dict[str, subprocess.Popen] = {}
 
+# Storage walks can mean thousands of cache files, so its report is cached and
+# invalidated by anything that deletes — never polled by the UI's 2 s tick.
+_STORAGE_TTL_S = 15.0
+_STORAGE_CACHE: dict[str, Any] | None = None
+_STORAGE_CACHE_AT = 0.0
+
+
+def _invalidate_storage_cache() -> None:
+    global _STORAGE_CACHE
+    _STORAGE_CACHE = None
+
 STEP_RE = re.compile(r"(?<![a-z_])steps?[:=\s]+(\d+)", re.IGNORECASE)
 LOSS_RE = re.compile(r"(?<![a-z_])loss[:=\s]+([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?\d+)?)")
 
@@ -247,6 +258,423 @@ def install_adapter(run_id: str, path: str | None = None) -> dict[str, Any]:
     row["trained_run"] = run_id
     row["adapter"] = adapter
     return row
+
+
+# --- Long-run hardening (PLAN-V2 S5) ----------------------------------------
+#
+# A run that goes well writes tens of GB: checkpoints every N steps plus a VAE
+# and text-embed cache. Nothing in SimpleTuner cleans that up after itself, so
+# the app does — with the numbers named before anything is deleted, and never
+# while the process is still holding those files open (on Windows that is the
+# difference between freeing disk and a half-deleted run).
+
+
+def _folder_bytes(path: Path) -> int:
+    if not path.is_dir():
+        return 0
+    total = 0
+    for item in path.rglob("*"):
+        try:
+            if item.is_file():
+                total += item.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def checkpoint_rows(run_id: str) -> list[dict[str, Any]]:
+    """Every .safetensors this run wrote, newest first, with what retention
+    actually needs: size, when it landed, and whether it was **installed**.
+
+    An adapter the user chose to keep is the only "best checkpoint" signal this
+    contract has — there is no eval score in SimpleTuner's stdout for us to
+    rank by, so newest-N plus whatever you kept is the honest policy, and it is
+    written down rather than invented.
+    """
+    run_dir, _state = get_run(run_id)
+    root = run_dir / "checkpoints"
+    if not root.is_dir():
+        return []
+    from minimax_studio.worker import adapters
+
+    registry = adapters.load_registry()
+    installed_names = {str(row.get("file", "")).lower() for row in registry}
+    installed_sources = {str(row.get("checkpoint", "")) for row in registry}
+    rows = []
+    for path in sorted(
+        root.rglob("*.safetensors"), key=lambda item: item.stat().st_mtime, reverse=True
+    ):
+        rows.append(
+            {
+                "path": str(path.relative_to(run_dir)),
+                "abs": str(path),
+                "bytes": path.stat().st_size,
+                "written_at": path.stat().st_mtime,
+                "installed": (
+                    path.name.lower() in installed_names
+                    or str(path) in installed_sources
+                ),
+            }
+        )
+    return rows
+
+
+def storage(run_id: str) -> dict[str, Any]:
+    """One run's footprint, on demand — walking a cache is not a 2-second-poll
+    kind of operation."""
+    import shutil
+
+    run_dir, state = get_run(run_id)
+    cache = _folder_bytes(run_dir / "cache")
+    checkpoints = _folder_bytes(run_dir / "checkpoints")
+    return {
+        "id": run_id,
+        "name": state.get("name"),
+        "status": state.get("status"),
+        "path": str(run_dir),
+        "cache_bytes": cache,
+        "checkpoint_bytes": checkpoints,
+        "bytes": cache + checkpoints,
+        "free_gb": round(shutil.disk_usage(run_dir).free / (1024**3), 1),
+        "checkpoints": checkpoint_rows(run_id),
+    }
+
+
+def storage_report() -> dict[str, Any]:
+    """Across all runs, for the storage dialog. Cached: the dialog is opened,
+    not polled, and the walk is the expensive part."""
+    import shutil
+
+    global _STORAGE_CACHE, _STORAGE_CACHE_AT
+    root = runs_root()
+    now = time.monotonic()
+    if _STORAGE_CACHE is not None and now - _STORAGE_CACHE_AT < _STORAGE_TTL_S:
+        return _STORAGE_CACHE
+    rows = []
+    children = sorted(root.iterdir(), reverse=True) if root.is_dir() else []
+    for child in children:
+        state = _read_state(child)
+        if not state:
+            continue
+        cache = _folder_bytes(child / "cache")
+        checkpoints = _folder_bytes(child / "checkpoints")
+        rows.append(
+            {
+                "id": state.get("id") or child.name,
+                "name": state.get("name") or child.name,
+                "status": state.get("status"),
+                "cache_bytes": cache,
+                "checkpoint_bytes": checkpoints,
+                "bytes": cache + checkpoints,
+            }
+        )
+    report = {
+        "runs_root": str(root),
+        "free_gb": round(shutil.disk_usage(root).free / (1024**3), 1),
+        "total_bytes": sum(row["bytes"] for row in rows),
+        "runs": rows,
+    }
+    _STORAGE_CACHE, _STORAGE_CACHE_AT = report, now
+    return report
+
+
+def _refuse_if_running(run_id: str, action: str) -> tuple[Path, dict[str, Any]]:
+    run_dir, state = get_run(run_id)
+    if state.get("status") in {"running", "queued"}:
+        raise RuntimeError(
+            f"Run “{state.get('name')}” is still training (pid "
+            f"{state.get('pid')}) — not {action} files under it while it lives. "
+            "Cancel it or wait for the step to finish."
+        )
+    return run_dir, state
+
+
+def clear_cache(run_id: str) -> dict[str, Any]:
+    """Delete the VAE and text-embed caches. Derived data: the next run
+    rebuilds them — slowly, but correctly."""
+    import shutil
+
+    run_dir, _state = _refuse_if_running(run_id, "clearing")
+    cache = run_dir / "cache"
+    if not cache.is_dir():
+        return {"freed_bytes": 0, "cleared": False}
+    freed = _folder_bytes(cache)
+    shutil.rmtree(cache)
+    _invalidate_storage_cache()
+    return {"freed_bytes": freed, "cleared": True}
+
+
+def _prune_plan(
+    rows: list[dict[str, Any]], keep: int, run_dir: Path
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Decide what retention would do, without touching the disk.
+
+    Returns ``(survivors, doomed)`` where each doomed entry carries the absolute
+    path to remove, the run-relative path to show, the bytes that removal frees,
+    and whether the whole step folder goes or only one weight file. The dialog
+    asks its question with these numbers, so the figure in the confirmation is
+    the figure in the result.
+    """
+    keep = max(1, int(keep))
+    survivors = rows[:keep] + [row for row in rows[keep:] if row["installed"]]
+    keep_abs = {row["abs"] for row in survivors}
+    kept_dirs = {str(Path(row["abs"]).parent) for row in survivors}
+    doomed: list[dict[str, Any]] = []
+    seen_dirs: set[str] = set()
+    for row in rows:
+        if row["abs"] in keep_abs:
+            continue
+        folder = str(Path(row["abs"]).parent)
+        if folder in seen_dirs:
+            continue
+        seen_dirs.add(folder)
+        if folder not in kept_dirs:
+            # The weights plus whatever else that step wrote (accelerator state).
+            doomed.append(
+                {
+                    "abs": folder,
+                    "path": str(Path(folder).relative_to(run_dir)),
+                    "whole_folder": True,
+                    "bytes": _folder_bytes(Path(folder)),
+                }
+            )
+        else:
+            doomed.append(
+                {
+                    "abs": row["abs"],
+                    "path": row["path"],
+                    "whole_folder": False,
+                    "bytes": int(row["bytes"]),
+                }
+            )
+    return survivors, doomed
+
+
+def prune_checkpoints(
+    run_id: str, keep: int = 3, dry_run: bool = False
+) -> dict[str, Any]:
+    """Keep the newest ``keep`` checkpoints plus every installed one.
+
+    ``keep`` is clamped to at least 1 — an empty run folder is not disk relief,
+    it is a lost weekend. Installed adapters are never touched.
+
+    A pruned checkpoint takes its **whole step folder** with it, not just the
+    ``.safetensors``: SimpleTuner leaves accelerator/optimiser state beside the
+    weights, and deleting only the weights would free a tenth of what the dialog
+    promised while leaving the folder behind. When two checkpoints share one
+    folder and only one is doomed, the folder stays and just that file goes.
+
+    ``dry_run`` answers "what would this free?" with the same code path that then
+    does it — the dialog needs the number before the deletion, not after.
+    """
+    import shutil
+
+    run_dir, _state = _refuse_if_running(run_id, "pruning")
+    rows = checkpoint_rows(run_id)
+    if not rows:
+        return {"kept": [], "removed": [], "freed_bytes": 0, "dry_run": dry_run}
+    survivors, doomed = _prune_plan(rows, keep, run_dir)
+    removed: list[str] = []
+    freed = 0
+    if not dry_run:
+        for entry in doomed:
+            target = Path(entry["abs"])
+            try:
+                if entry["whole_folder"]:
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+            except OSError:
+                continue
+            removed.append(entry["path"])
+            freed += int(entry["bytes"])
+        # Whatever step folders a single-file removal left empty go too.
+        checkpoints = run_dir / "checkpoints"
+        if checkpoints.is_dir():
+            for folder in sorted(checkpoints.rglob("*"), reverse=True):
+                try:
+                    if folder.is_dir() and not any(folder.iterdir()):
+                        folder.rmdir()
+                except OSError:
+                    continue
+        _invalidate_storage_cache()
+    return {
+        "kept": [row["path"] for row in survivors],
+        "removed": removed if not dry_run else [entry["path"] for entry in doomed],
+        "freed_bytes": sum(int(entry["bytes"]) for entry in doomed) if dry_run else freed,
+        "dry_run": bool(dry_run),
+    }
+
+
+def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
+    """Continue a finished, failed or cancelled run from one of its checkpoints.
+
+    Same run dir, same caches, new process: the weights, the log and the
+    provenance keep one home instead of a second folder pretending to be a new
+    project.
+    """
+    run_dir, state = _refuse_if_running(run_id, "resuming")
+    rows = checkpoint_rows(run_id)
+    if checkpoint:
+        source = Path(str(checkpoint))
+        if not source.is_absolute():
+            source = run_dir / str(checkpoint)
+        if (
+            not source.is_file()
+            or source.suffix.lower() != ".safetensors"
+            or run_dir not in source.parents
+        ):
+            # Weights from another run would train the wrong base and credit the
+            # wrong provenance, so this stays a hard no — with the alternative.
+            raise RuntimeError(
+                f"“{checkpoint}” is not a checkpoint of this run"
+                + (
+                    f" — pick one of {', '.join(row['path'] for row in rows[:3])}."
+                    if rows
+                    else " — this run has not written one to checkpoints/ yet."
+                )
+            )
+    elif rows:
+        source = Path(rows[0]["abs"])
+    else:
+        raise RuntimeError(
+            f"Run “{state.get('name')}” has no checkpoint to resume from — "
+            "nothing reached checkpoints/ in this run."
+        )
+    prefix = simpletuner_command_prefix()
+    if not prefix:
+        raise RuntimeError(
+            "SimpleTuner is not installed — resuming needs the pinned [train] "
+            "extra on Python 3.12."
+        )
+    write_run_config(
+        run_dir,
+        run_id,
+        state.get("dataset_dir") or "",
+        preset_name=str(state.get("preset") or DEFAULT_PRESET),
+        steps=int(state.get("steps") or 1000),
+        rank=state.get("rank"),
+        resume_from_checkpoint=source,
+    )
+    log = open(run_dir / "train.log", "ab")
+    try:
+        proc = subprocess.Popen(
+            [*prefix, "train", f"env={run_id}"],
+            cwd=run_dir,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    finally:
+        log.close()
+    state.update(
+        {
+            "status": "running",
+            "pid": proc.pid,
+            "started_at": time.time(),
+            "exit_code": None,
+            "finished_at": None,
+            "cancel_requested": False,
+            "resumed_from": str(source),
+            "resume_count": int(state.get("resume_count") or 0) + 1,
+        }
+    )
+    _write_state(run_dir, state)
+    _PROCS[run_id] = proc
+    return {**state, "path": str(run_dir)}
+
+
+def export_run(
+    run_id: str, dest: str | Path, include_cache: bool = False
+) -> dict[str, Any]:
+    """Copy a run out — archive it, or move it to the machine with the GPU.
+
+    Caches stay behind by default: they are most of the bytes and the first
+    thing a receiving run recomputes anyway.
+    """
+    import shutil
+
+    run_dir, state = get_run(run_id)
+    target = Path(str(dest)).expanduser() / run_id
+    if target.exists():
+        raise RuntimeError(
+            f"{target} already exists — move or delete it first; Studio will "
+            "not overwrite a folder it did not write."
+        )
+    target.mkdir(parents=True)
+    copied = 0
+    total = 0
+    for item in sorted(run_dir.rglob("*")):
+        if not item.is_file():
+            continue
+        relative = item.relative_to(run_dir)
+        if not include_cache and "cache" in relative.parts:
+            continue
+        into = target / relative
+        into.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(item, into)
+        copied += 1
+        total += item.stat().st_size
+    manifest = {
+        "version": 1,
+        "id": run_id,
+        "name": state.get("name"),
+        "exported_at": time.time(),
+        "files": copied,
+        "bytes": total,
+        "cache_included": bool(include_cache),
+    }
+    (target / "EXPORT.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return {"path": str(target), "files": copied, "bytes": total, "id": run_id}
+
+
+def import_run(folder: str | Path) -> dict[str, Any]:
+    """Bring an exported run folder back into the list.
+
+    The only requirement is ``state.json`` — that file is what makes a folder a
+    Studio run. An id already present is refused rather than merged: mixing two
+    runs' checkpoints is how provenance becomes fiction.
+    """
+    import shutil
+
+    source = Path(str(folder)).expanduser()
+    state = _read_state(source)
+    if not state or not state.get("id"):
+        raise RuntimeError(
+            f"{source} is not a Studio training run — no state.json inside. "
+            "Import the run folder itself, not the checkpoints folder inside it."
+        )
+    run_id = str(state["id"])
+    target = runs_root() / run_id
+    if target.exists():
+        raise RuntimeError(
+            f"Run “{run_id}” is already in {runs_root()}. Delete the copy "
+            "here first (its Storage dialog can) — importing would mix two "
+            "runs' checkpoints."
+        )
+    shutil.copytree(source, target)
+    _invalidate_storage_cache()
+    state["imported_at"] = time.time()
+    _write_state(target, state)
+    return {**state, "path": str(target)}
+
+
+def delete_run(run_id: str) -> dict[str, Any]:
+    """Delete a finished run's folder, reporting what that freed.
+
+    Installed adapters are *copies* in the LoRA folder, so this never breaks
+    the picker or the registry.
+    """
+    import shutil
+
+    run_dir, _state = _refuse_if_running(run_id, "deleting")
+    freed = _folder_bytes(run_dir)
+    shutil.rmtree(run_dir)
+    _invalidate_storage_cache()
+    return {"id": run_id, "freed_bytes": freed}
 
 
 def _pid_alive(pid: int) -> bool:

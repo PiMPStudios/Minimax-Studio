@@ -120,12 +120,19 @@ def write_run_config(
     rank: int | None = None,
     learning_rate: float = 5e-5,
     validation: dict[str, Any] | None = None,
+    resume_from_checkpoint: str | Path | None = None,
 ) -> dict[str, str]:
     """Write SimpleTuner's two JSON files for one detached run.
 
     Layout is what `simpletuner train env=<run_id>` expects when launched with
     cwd=run_dir. Everything SimpleTuner may ever write stays under run_dir:
     checkpoints and both caches included.
+
+    ``resume_from_checkpoint`` continues a finished or killed run from one of
+    its own checkpoints — same run dir, so the weights and the cache stay put
+    and the history keeps one home. Like every other key here, the name is part
+    of the pinned contract and gets verified against real SimpleTuner output in
+    S0 steps 3–5; a wrong key fails loudly at launch, not silently as a fresh run.
     """
     if preset_name not in PRESETS:
         raise RuntimeError(
@@ -161,6 +168,12 @@ def write_run_config(
         "train_batch_size": 1,
         "vae_batch_size": 1,
         "max_train_steps": int(steps),
+        # Only present when resuming, so a fresh run's config is unchanged.
+        **(
+            {"resume_from_checkpoint": str(resume_from_checkpoint)}
+            if resume_from_checkpoint
+            else {}
+        ),
         "validation_prompt": str(
             validation.get("prompt")
             or "bright synth pop with clean vocal melody and crisp percussion"

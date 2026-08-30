@@ -645,3 +645,107 @@ def adapter_forget(adapter_id: str) -> dict[str, object]:
     except RuntimeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True, "id": adapter_id}
+
+
+# --- Long-run hardening (PLAN-V2 S5) ----------------------------------------
+
+
+class PruneIn(BaseModel):
+    keep: int = 3
+    dry_run: bool = False
+
+
+class ResumeIn(BaseModel):
+    checkpoint: str | None = None
+
+
+class ExportIn(BaseModel):
+    dest: str
+    include_cache: bool = False
+
+
+class ImportIn(BaseModel):
+    folder: str
+
+
+@app.get("/train/storage")
+def train_storage() -> dict[str, object]:
+    """Disk across every run — opened from the Storage dialog, never polled:
+    walking a VAE cache can mean thousands of files."""
+    from minimax_studio.worker import train_runs
+
+    return train_runs.storage_report()
+
+
+@app.get("/train/runs/{run_id}/storage")
+def train_run_storage(run_id: str) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.storage(run_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/train/runs/{run_id}/cache/clear")
+def train_run_cache_clear(run_id: str) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.clear_cache(run_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/train/runs/{run_id}/prune")
+def train_run_prune(run_id: str, body: PruneIn) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.prune_checkpoints(
+            run_id, keep=body.keep, dry_run=body.dry_run
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/train/runs/{run_id}/resume")
+def train_run_resume(run_id: str, body: ResumeIn) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.resume_run(run_id, body.checkpoint)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/train/runs/{run_id}/export")
+def train_run_export(run_id: str, body: ExportIn) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.export_run(run_id, body.dest, body.include_cache)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/train/runs/import")
+def train_run_import(body: ImportIn) -> dict[str, object]:
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.import_run(body.folder)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/train/runs/{run_id}")
+def train_run_delete(run_id: str) -> dict[str, object]:
+    """Delete a finished run's folder. Installed adapters are copies in the
+    LoRA folder, so the picker and the registry keep working."""
+    from minimax_studio.worker import train_runs
+
+    try:
+        return train_runs.delete_run(run_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -77,7 +77,11 @@ Then download the **Music 3 Training Encoder** pack on Models. **Datasets**
 `track.lyrics`) or pulls good generations out of History; **Train LoRA**
 (Ctrl+Shift+T) checks VRAM, packs, active jobs and cache disk by name, then
 launches the trainer as **its own process** — closing Studio does not stop a
-run, and the page reattaches to it. **Adapters** (Ctrl+Shift+A) records where
+run, and the page reattaches to it. **Storage…** on that page names the
+bytes before anything goes: prune old checkpoints (whatever you installed as an
+adapter is always kept), clear the VAE/text caches, **resume** a stopped run
+from any checkpoint it wrote, or **export** the run to another disk — caches
+excluded, since the next run rebuilds them. **Adapters** (Ctrl+Shift+A) records where
 every LoRA came from and **auditions** it: one 30-second render at 0.8 strength
 with the caption it trained on, badged in History. Music 3 + CUDA only, 24 GB
 VRAM floor. See [`docs/PLAN-V2.md`](docs/PLAN-V2.md).

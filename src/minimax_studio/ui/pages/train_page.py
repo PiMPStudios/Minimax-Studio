@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import html
 import time
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -38,6 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from minimax_studio.ui.pages.datasets_page import validation_status_short
+from minimax_studio.ui.pages.storage_dialog import StorageDialog
 from minimax_studio.ui.reveal import reveal_path
 from minimax_studio.worker_client import WorkerClient
 
@@ -84,6 +87,8 @@ def _run_line(run: dict[str, Any]) -> tuple[str, str, str]:
 class TrainPage(QWidget):
     #: an adapter was copied into the LoRA folder — refresh the picker
     adapter_installed = Signal()
+    #: a run folder was deleted from the Storage dialog
+    run_deleted = Signal()
 
     def __init__(self, client: WorkerClient) -> None:
         super().__init__()
@@ -91,6 +96,7 @@ class TrainPage(QWidget):
         self._datasets: list[dict[str, Any]] = []
         self._runs: list[dict[str, Any]] = []
         self._selected_run: str | None = None
+        self._detail: dict[str, Any] = {}
         self._presets: dict[str, dict[str, Any]] = dict(_FALLBACK_PRESETS)
         self._preflight: dict[str, Any] = {}
 
@@ -226,8 +232,29 @@ class TrainPage(QWidget):
         self._install_btn.clicked.connect(self._install_adapter)
         self._folder_btn = QPushButton("Open folder")
         self._folder_btn.clicked.connect(self._open_folder)
+        self._resume_btn = QPushButton("Resume from checkpoint")
+        self._resume_btn.setToolTip(
+            "Continue this run from its newest checkpoint — same folder, same "
+            "caches, new process. For the run that died at 4 a.m."
+        )
+        self._resume_btn.clicked.connect(self._resume_run)
+        self._storage_btn = QPushButton("Storage…")
+        self._storage_btn.setToolTip(
+            "What this run is using, and what can safely be freed: prune old "
+            "checkpoints, clear caches, export the run, delete the folder."
+        )
+        self._storage_btn.clicked.connect(self._open_storage)
+        self._import_btn = QPushButton("Import run folder")
+        self._import_btn.setToolTip(
+            "Pick up a run folder Studio exported — or one copied off another "
+            "machine — and put it back in the list with its history."
+        )
+        self._import_btn.clicked.connect(self._import_run)
         row.addWidget(self._install_btn)
         row.addWidget(self._cancel_btn)
+        row.addWidget(self._resume_btn)
+        row.addWidget(self._storage_btn)
+        row.addWidget(self._import_btn)
         row.addWidget(self._folder_btn)
         row.addStretch(1)
         runs_layout.addLayout(row)
@@ -392,7 +419,14 @@ class TrainPage(QWidget):
             self._log.setPlainText("")
             self._progress.setValue(0)
             self._run_status.setText("Select a run to see its log.")
-            for button in (self._cancel_btn, self._install_btn, self._folder_btn):
+            self._detail = {}
+            for button in (
+                self._cancel_btn,
+                self._install_btn,
+                self._folder_btn,
+                self._resume_btn,
+                self._storage_btn,
+            ):
                 button.setEnabled(False)
             return
         try:
@@ -400,6 +434,7 @@ class TrainPage(QWidget):
         except Exception as exc:
             self._run_status.setText(f"Could not read this run: {exc}")
             return
+        self._detail = detail
         self._log.setPlainText("\n".join(detail.get("log_tail") or []))
         progress = detail.get("progress") or {}
         total = int(progress.get("total_steps") or detail.get("steps") or 0)
@@ -427,6 +462,10 @@ class TrainPage(QWidget):
         self._cancel_btn.setEnabled(status in _LIVE and not detail.get("cancel_requested"))
         self._install_btn.setEnabled(bool(checkpoints))
         self._folder_btn.setEnabled(bool(detail.get("path")))
+        # Resume is for the run that stopped, not the one that is going: two
+        # trainers on one folder corrupt the checkpoint series, not the log.
+        self._resume_btn.setEnabled(bool(checkpoints) and status not in _LIVE)
+        self._storage_btn.setEnabled(bool(detail.get("path")))
 
     # --- actions ------------------------------------------------------------
 
@@ -560,3 +599,64 @@ class TrainPage(QWidget):
             reveal_path(path)
         except OSError as exc:
             QMessageBox.warning(self, "Open folder failed", str(exc))
+
+    def _resume_run(self) -> None:
+        run_id = self._selected_run
+        if not run_id:
+            return
+        checkpoints = (self._detail.get("progress") or {}).get("checkpoints") or []
+        newest = checkpoints[-1] if checkpoints else "its newest checkpoint"
+        answer = QMessageBox.question(
+            self,
+            "Resume training",
+            f"Continue “{self._detail.get('name')}” from {newest}?\n\n"
+            "Same run folder, same caches — a new trainer process starts and "
+            "the log keeps going. Nothing is re-trained from scratch.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            run = self._client.resume_train_run(run_id)
+        except Exception as exc:
+            QMessageBox.warning(self, "Resume failed", str(exc))
+            return
+        self._form_status.setText(
+            f"Resumed “{run.get('name')}” from "
+            f"{Path(str(run.get('resumed_from') or '')).name} as pid "
+            f"{run.get('pid')} (resume #{run.get('resume_count')})."
+        )
+        self.refresh()
+
+    def _open_storage(self) -> None:
+        run_id = self._selected_run
+        if not run_id:
+            return
+        run = next((row for row in self._runs if row.get("id") == run_id), None) or {}
+        dialog = StorageDialog(self._client, run, self)
+        dialog.run_deleted.connect(self._run_was_deleted)
+        dialog.exec()
+        # Sizes changed even if nothing was deleted (a prune, an export).
+        self.refresh()
+
+    def _run_was_deleted(self) -> None:
+        self._selected_run = None
+        self._detail = {}
+        self.run_deleted.emit()
+        self.refresh()
+
+    def _import_run(self) -> None:
+        folder = QFileDialog.getExistingDirectory(
+            self, "Import a Studio run folder", str(Path.home())
+        )
+        if not folder:
+            return
+        try:
+            run = self._client.import_train_run(folder)
+        except Exception as exc:
+            QMessageBox.warning(self, "Import failed", str(exc))
+            return
+        self._selected_run = str(run.get("id"))
+        self._form_status.setText(
+            f"Imported “{run.get('name')}” into {run.get('path')}."
+        )
+        self.refresh()

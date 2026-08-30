@@ -92,6 +92,14 @@ does not stop a run, and the page reattaches to it from the run folder.
 Cancel signals the process group; checkpoints already written stay, and a run
 resumes from the last one. <b>Install adapter</b> copies the newest checkpoint
 into the LoRA folder, ready in the Generate Music picker (try ~0.8 strength).</p>
+<p>A long run is <b>Storage…</b> on the Train page, and it names the gigabytes
+before anything goes. <b>Prune checkpoints</b> keeps the newest N <i>plus</i>
+every checkpoint you installed as an adapter; <b>Clear caches</b> frees the VAE
+and text-embedding caches, which the next run rebuilds. <b>Resume from
+selected</b> continues a stopped run from any checkpoint it wrote — same folder,
+same caches, new process. Nothing destructive is offered at all while a run is
+live, and <b>Export…</b> / <b>Import run folder</b> move a run (weights, config,
+log — not its caches) to another disk or another machine.</p>
 <p>Training is <b>experimental</b>: Music 3 only, CUDA only, Python 3.12 with
 <code>pip install -e ".[train]"</code> and the <b>Music 3 Training Encoder</b>
 pack on Models. A 24 GB card is the floor, and preflight names the VRAM, packs,

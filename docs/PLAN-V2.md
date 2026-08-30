@@ -210,6 +210,34 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 
 ### S5 — Long-run hardening
 
+> **Status (0.2.33): landed, off-GPU.** Caches and checkpoints both live in the
+> run dir (`runs/<id>/cache`, `runs/<id>/checkpoints`) — that is where
+> SimpleTuner writes them — so the sweeper is a per-run **Storage…** dialog on
+> the Train page rather than the `/datasets/{id}/cache-size` line this plan
+> first sketched; `/train/storage` carries the totals across runs (cached ~15 s,
+> because walking a VAE cache means thousands of files and no page should pay
+> for that in a 2 s poll). **Prune** keeps the newest N *plus every checkpoint
+> that was installed as an adapter*: there is no eval score in SimpleTuner's
+> stdout, so "best" means *the one you chose to keep*, and the dialog says that
+> out loud instead of inventing a metric. A pruned step goes **whole** — the
+> `.safetensors` plus the accelerator/optimiser state SimpleTuner left beside it
+> — and the gigabytes in the confirmation come from a `dry_run` of that same
+> code path, so the promise is the number. **Clear caches** frees the derived VAE
+> and text-embedding caches. No destructive button exists at all while a run is
+> live, and the worker refuses a second time with the pid inside the sentence —
+> on Windows a live trainer holds those files open, so "cleanup" there is not
+> freed disk, it is a half-deleted run. **Resume** rewrites that run's own config
+> with `resume_from_checkpoint` and relaunches in place (new pid,
+> `resume_count++`, same caches, log keeps appending), and accepts only a
+> `.safetensors` that lives inside that run dir. **Export** copies state +
+> config + checkpoints + log with an `EXPORT.json` manifest and leaves the
+> caches behind; **Import** takes that folder back and refuses to merge onto an
+> id that is already here.
+>
+> **What S5 still cannot prove:** that `resume_from_checkpoint` is the key
+> SimpleTuner 4.8.0 actually reads, and what a rebuilt cache really costs in
+> wall-clock — both belong to S0 steps 3–5 on the 24 GB card.
+
 - Checkpoint retention policy (keep last N + best, disk-guarded), resume
   picker ("resume run from checkpoint X"), run-dir import/export, cache-dir
   sweeper (`/datasets/{id}/cache-size`, one-click clear)
@@ -260,7 +288,7 @@ deep-linking.
 | SimpleTuner `minimaxmusic` LoRAs don't survive the "sounds like the base model" smell test | S0 step 4 is the kill switch; badge or drop, per v1 risk table |
 | torch/torchvision/`simpletuner` pin conflicts with our generate pins | S0 exit criterion; fallback = managed separate venv (priced, one decision, then move on) |
 | SimpleTuner breaking changes at HEAD | Pin versions; preflight asserts `--version`; upgrade cadence = opt-in checkbox in Settings |
-| VAE/text-embeds cache disk blowout | S2 disk guard + S5 sweeper; cache-size line on the Dataset page |
+| VAE/text-embeds cache disk blowout | S2 disk guard + S5 sweeper (Storage dialog on the run, whose caches they are) |
 | H3 license (territories, derivatives) | No adapter **sharing** in v2 at all; territory text shown on first train preflight, same as first download |
 | Training + Comfy fighting over one GPU | Hard mutual exclusion in `/train/preflight`, named in the error |
 
@@ -281,10 +309,12 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 ## Next step
 
 **S0 steps 3–5 on a 24 GB card** is the only thing still blocking real
-training: `simpletuner train env=<id>`, `STEP_RE`/`LOSS_RE` and a real
-`.safetensors` in the picker have been written against SimpleTuner's docs, not
-its stdout. Everything around them has a screen and a test now (S1 datasets,
-S2 Build pages, S3 adapters + audition), so that evening is calibration, not
-construction — run `scripts/run.sh` (Python 3.12), download the Music 3
-Training Encoder pack, train ~200 steps on 5 clips, install, audition.
-After that: **S4 (H3 LoRA, stills first)** and **S5 (long-run hardening)**.
+training: `simpletuner train env=<id>`, `STEP_RE`/`LOSS_RE`,
+`resume_from_checkpoint` and a real `.safetensors` in the picker have been
+written against SimpleTuner's docs, not its stdout. Everything around them has a
+screen and a test now (S1 datasets, S2 Build pages, S3 adapters + audition, S5
+long-run hardening), so that evening is calibration, not construction — run
+`scripts/run.sh` (Python 3.12), download the Music 3 Training Encoder pack,
+train ~200 steps on 5 clips, install, audition, then let it run past a second
+checkpoint and prune it.
+After that: **S4 (H3 LoRA, stills first)**.
