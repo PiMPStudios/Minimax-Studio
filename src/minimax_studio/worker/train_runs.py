@@ -306,7 +306,10 @@ def checkpoint_rows(run_id: str) -> list[dict[str, Any]]:
     ):
         rows.append(
             {
-                "path": str(path.relative_to(run_dir)),
+                # POSIX separators on purpose: this string is part of the JSON
+                # contract (dialog rows, prune plans, export manifests), and a
+                # run folder copied off a Windows machine should read the same.
+                "path": path.relative_to(run_dir).as_posix(),
                 "abs": str(path),
                 "bytes": path.stat().st_size,
                 "written_at": path.stat().st_mtime,
@@ -433,7 +436,7 @@ def _prune_plan(
             doomed.append(
                 {
                     "abs": folder,
-                    "path": str(Path(folder).relative_to(run_dir)),
+                    "path": Path(folder).relative_to(run_dir).as_posix(),
                     "whole_folder": True,
                     "bytes": _folder_bytes(Path(folder)),
                 }

@@ -57,6 +57,10 @@ The version string is defined once in `src/minimax_studio/__init__.py` (`__versi
 
 ### Fixed
 
+- **Run-relative paths are POSIX-style in the API** — `checkpoints/step-800/lora.safetensors`,
+  not `checkpoints\step-800\lora.safetensors`. The Storage dialog, the prune
+  plan and `EXPORT.json` now read the same on every OS, which is the point of an
+  export contract. (Windows CI caught this on the first run.)
 - The modal-box harness in the tests moved to `tests/dialogs.py` and now stands
   in for `QFileDialog` as well, so the pages that ask for a folder are testable
   without a hung CI runner.
