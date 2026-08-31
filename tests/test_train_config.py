@@ -95,6 +95,8 @@ def test_write_run_config_contract(studio_home: Path, tmp_path: Path) -> None:
     # LoRAs must load in our picker / Comfy path without conversion.
     assert config["lora_format"] == "comfyui"
     assert config["max_train_steps"] == 250
+    assert config["num_train_epochs"] == 0
+    assert config["checkpoint_step_interval"] == 50
     assert config["lora_rank"] == PRESETS["24g"].lora_rank
     assert config["base_model_precision"] == "int8-quanto"
     assert config["pretrained_model_name_or_path"].endswith("music3-cuda")

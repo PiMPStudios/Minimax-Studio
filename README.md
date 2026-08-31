@@ -4,8 +4,9 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.31** generate studio + Build pages (datasets, LoRA training —
-experimental). Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
+Status: **0.2.37** generate studio + Build pages (datasets, LoRA training —
+experimental; Music and H3 24 GB smokes have run on a real NVIDIA GPU).
+Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Locked for v1
 
@@ -72,12 +73,16 @@ engine and its torch stack:
 pip install -e ".[train]"      # resolves on 3.12 only; CI asserts this
 ```
 
-Then download the **Music 3 Training Encoder** pack on Models (or the **H3
-diffusers** weights, to train video LoRAs). **Datasets** (Ctrl+Shift+D) takes a
+Then download the **Music 3 Training Encoder** pack on Models. Video LoRAs
+need the official **H3 diffusers** folder (audio VAE + Qwen3-VL text encoder —
+the Comfy generate pack is not a substitute for that tree). If the Comfy
+ConvRot INT8 DiT and fp16 video VAE are already on disk, the 24 GB preset uses
+those instead of the 130 GB official shards. **Datasets** (Ctrl+Shift+D) takes a
 folder of `track.wav` + `track.txt` (+ optional `track.lyrics`) or pulls good
 generations out of History; an H3 dataset takes `shot.png` stills and short
 `shot.mp4` clips instead — capped at 8 seconds, with `av` (audio+video) mode as
-an opt-in checkbox because it costs VRAM and disk. **Train LoRA**
+an opt-in checkbox because it costs VRAM and disk. Keep **one caption per
+`.txt`**: extra lines are variants the text-embed cache can miss. **Train LoRA**
 (Ctrl+Shift+T) checks VRAM, packs, active jobs and cache disk by name, then
 launches the trainer as **its own process** — closing Studio does not stop a
 run, and the page reattaches to it. The VRAM presets change with the dataset you
@@ -87,11 +92,11 @@ bytes before anything goes: prune old checkpoints (whatever you installed as an
 adapter is always kept), clear the VAE/text caches, **resume** a stopped run
 from any checkpoint it wrote, or **export** the run to another disk — caches
 excluded, since the next run rebuilds them. **Adapters** (Ctrl+Shift+A) records where
-every LoRA came from and **auditions** it: one 30-second render at 0.8 strength
-with the caption it trained on, badged in History. CUDA only, 24 GB
-VRAM floor. H3 training is newer than its own config keys — preflight says so
-until a real run confirms them. See
-[`docs/PLAN-V2.md`](docs/PLAN-V2.md).
+every LoRA came from and **auditions** a Music adapter: one 30-second render at
+0.8 strength with the caption it trained on, badged in History. That path is
+ComfyUI (the CUDA pipeline cannot load LoRAs). 24 GB VRAM floor. An H3 LoRA
+loads in the picker and on Generate Video; one-click still-pair audition is not
+built yet. See [`docs/PLAN-V2.md`](docs/PLAN-V2.md).
 
 ## License (models)
 

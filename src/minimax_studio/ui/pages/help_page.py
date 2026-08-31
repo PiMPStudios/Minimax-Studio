@@ -116,18 +116,20 @@ live, and <b>Export…</b> / <b>Import run folder</b> move a run (weights, confi
 log — not its caches) to another disk or another machine.</p>
 <p>Training is <b>experimental</b>: CUDA only, Python 3.12 with
 <code>pip install -e ".[train]"</code>, plus the weights the run needs — the
-<b>Music 3 Training Encoder</b> pack for Music LoRAs, the <b>H3 diffusers</b>
-weights for video ones (the Comfy packs will not do; the trainer reads the
-diffusers folder). 24 GB is the floor for Music. H3 offers 24 GB with RamTorch
-CPU-offload, then 32, 48 and 80 GB, and the preset list changes with the dataset
-you pick — the two trainers never share a run. Preflight names the VRAM, packs,
-active jobs and free cache disk before anything starts; no mystery OOM.</p>
-<p><b>Said plainly:</b> H3 LoRA training has not run on this build yet. Its
-config keys are written from SimpleTuner’s documentation rather than its output,
-and preflight says so on every H3 preset until a real run confirms them — watch
-the first minutes and report anything odd. Auditioning is still Music-only: an
-H3 adapter loads in the picker and works on Generate Video, but it has no
-one-click preview.</p>
+<b>Music 3 Training Encoder</b> pack for Music LoRAs; for video LoRAs the
+official <b>H3 diffusers</b> folder (audio VAE + Qwen3-VL text encoder — the
+Comfy generate pack is not a substitute for that folder). If the Comfy ConvRot
+INT8 DiT and fp16 video VAE are already on disk, the 24 GB preset uses those.
+24 GB is the floor for Music. H3 offers 24 GB with RamTorch CPU-offload, then
+32, 48 and 80 GB, and the preset list changes with the dataset you pick — the
+two trainers never share a run. Preflight names the VRAM, packs, active jobs
+and free cache disk before anything starts; no mystery OOM.</p>
+<p><b>Said plainly:</b> Music and H3 LoRA training have both run on a real
+NVIDIA card (PLAN-V2 S0). Caption files should be <i>one caption per
+<code>.txt</code></i> — extra lines are variants the cache can miss. Music
+<b>Audition</b> goes through ComfyUI (the CUDA pipeline cannot load LoRAs).
+An H3 adapter loads in the picker and works on Generate Video, but it has no
+one-click still-pair preview yet.</p>
 <p>A live training run warns you on Generate (and shows in the status bar) —
 one GPU, two hungry things.</p>
 

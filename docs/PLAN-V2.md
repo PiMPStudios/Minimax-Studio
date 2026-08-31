@@ -68,18 +68,13 @@ What the v1 plan hedged on, resolved:
 
 ### S0 — Engine spike (the gate for everything)
 
-> **Status (0.2.28): off-GPU half landed.** `pip install "minimax-studio[train]"`
-> (pins SimpleTuner 4.8.0), the DAV encoder pack on the Models page, the
-> two-config writer (`worker/train_config.py` — `minimaxmusic`/`music3`, rank +
-> precision presets, `lora_format: comfyui`, all writes confined to the run
-> dir), train preflight with named numbers (packs, free VRAM via nvidia-smi,
-> GPU-sharing block, cache-disk guard), the detached runner
-> (`worker/train_runs.py` — survives worker restarts, group-cancel, log→progress,
-> `install` → LoRA picker), and `/train/*` endpoints — 18 tests against a stub
-> trainer, CI-green on all three OSes. **Remaining: steps 3–5 on real metal**
-> (recalibrate the log regexes and the `train env=` arg shape against real
-> SimpleTuner output the first time it runs — they were written from its docs,
-> not its stdout).
+> **Status (0.2.37): S0 closed on metal.** Off-GPU half landed earlier
+> (`[train]` extra, config writer, preflight, detached runner). Steps 3–5 ran
+> 2026-08-30 on an RTX PRO 4500 Blackwell (32 GB): Music 5×15 s / 200 steps +
+> Comfy audition in History; H3 ConvRot INT8 24g RamTorch 50 steps, adapter
+> installed. Writer, tqdm parser, and trainer sitecustomize now match
+> SimpleTuner 4.8.0 stdout. `H3_UNVERIFIED_KEYS` is empty. Remaining after
+> S0: H3 still-pair audition (not built).
 >
 > **Step 1 is now genuinely closed (0.2.30) — and it had not been before.**
 > `simpletuner==4.8.0` declares `Requires-Python >=3.12,<3.14`; the dev venv was
@@ -102,11 +97,16 @@ Nothing ships until this passes on real metal:
    the catalog with license file + disk-space guard like every pack.
 3. Smallest possible Music LoRA run: ~5 clips × 15 s, ~200 steps, 24 GB
    preset, config generated *by our code*, launched *by our code*.
+   (**✅ 0.2.37** — 177 s clips OOM the VAE cache; 15 s is the 24 GB size.)
 4. The produced `.safetensors` appears in the Studio LoRA picker and an
    audition render goes through History.
+   (**✅ 0.2.37** — Comfy path; CUDA ModularPipeline cannot load LoRAs.)
 5. Same smoke for H3: ConvRot INT8 files from our existing Comfy pack
    accepted by the 24G RamTorch preset (if not, record the delta — a separate
    "H3 training files" pack may be needed).
+   (**✅ 0.2.37, with a delta:** Comfy INT8 DiT + fp16 video VAE yes; official
+   `audio_vae/` + Qwen3-VL-32B text encoder required; Kijai INT8 VAE and
+   Comfy NVFP4 TE are not substitutes. Not the full 130 GB official shards.)
 
 **Exit = demo video of 3→4 + a written config contract.** If 4 fails
 (adapter format drift), the whole plan re-thinks; if 1 fails, the extra
@@ -183,9 +183,8 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 > adapter, deleted dataset) and takes a typed prompt instead. `install_adapter`
 > writes the trained row, `import_lora` writes `source: imported`, and
 > unregistered files still appear — as `found on disk`, which is the honest
-> part. **Still to prove on metal:** an audition of a *real* trained adapter —
-> same `load_lora_weights` path the Music picker has used since 0.2.2x, but the
-> first one carrying a Studio-trained checkpoint.
+> part. **Music audition proved on metal (0.2.37)** through ComfyUI (the CUDA
+> ModularPipeline cannot load LoRAs). **H3 still-pair audition is not built.**
 
 - `adapters.json` registry: id, name, kind (music/h3), base pack, trainer
   (SimpleTuner vX), dataset + its manifest hash, created_at, source
@@ -216,13 +215,10 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 > how SimpleTuner's own H3 LoRA examples turn the audio-head safety net on;
 > omitting the key leaves it off.
 >
-> **Still to prove:** everything that needs the card. `minimax_h3_target_mode`,
-> `ramtorch` and the resolution buckets are listed in
-> `train_config.H3_UNVERIFIED_KEYS` and announced by preflight on every H3
-> preset — that warning retires when SimpleTuner's own output confirms them
-> (S0 steps 3–5). Unchanged from before: H3 adapter **audition** (the still
-> pair) is not built; an H3 LoRA loads on Generate Video today and has no
-> one-click preview.
+> **Metal (0.2.37):** `minimax_h3_target_mode`, `ramtorch` and the 480p
+> buckets ran on SimpleTuner 4.8.0's stdout; `H3_UNVERIFIED_KEYS` is empty.
+> H3 adapter **audition** (the still pair) is still not built; an H3 LoRA
+> loads on Generate Video today and has no one-click preview.
 
 - Video dataset validator in S1's frame; `minimax_h3_target_mode: "video"`
   default, `av` only when the dataset has clean audio (checkbox, not default
@@ -261,7 +257,7 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 >
 > **What S5 still cannot prove:** that `resume_from_checkpoint` is the key
 > SimpleTuner 4.8.0 actually reads, and what a rebuilt cache really costs in
-> wall-clock — both belong to S0 steps 3–5 on the 24 GB card.
+> wall-clock. S0 (0.2.37) did not exercise resume.
 
 - Checkpoint retention policy (keep last N + best, disk-guarded), resume
   picker ("resume run from checkpoint X"), run-dir import/export, cache-dir
@@ -333,15 +329,8 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 
 ## Next step
 
-**S0 steps 3–5 on a 24 GB card** is the only thing still blocking real
-training: `simpletuner train env=<id>`, `STEP_RE`/`LOSS_RE`,
-`resume_from_checkpoint`, and the H3 keys in `H3_UNVERIFIED_KEYS` have all been
-written against SimpleTuner's docs, not its stdout. Everything around them has a
-screen and a test now (S1 datasets incl. H3, S2 Build pages, S3 adapters +
-audition, S4a H3 training surfaces, S5 long-run hardening), so that evening is
-calibration, not construction — run `scripts/run.sh` (Python 3.12), download the
-Music 3 Training Encoder pack (and the H3 diffusers weights, for the video run),
-train ~200 steps on 5 clips, install, audition, then let it run past a second
-checkpoint and prune it.
-Remaining after that: the H3 **audition** (still pair) and whatever the metal
-session says the H3 config keys need.
+**S0 is closed (0.2.37).** Music 200-step LoRA + Comfy audition, H3 ConvRot
+INT8 24g RamTorch 50-step smoke, keys confirmed. Remaining: the H3 **audition**
+(still pair), and a dedicated "H3 training files" pack for official `audio_vae/`
++ Qwen3-VL if we do not want to keep pointing at a hand-assembled `h3-diffusers`
+tree.

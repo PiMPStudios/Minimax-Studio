@@ -6,8 +6,10 @@ The entire coupling surface to SimpleTuner is:
 2. ``simpletuner train env=<run-id>`` — launched by ``train_runs`` from the run
    directory, version-pinned below and asserted in preflight
 3. ``train.log`` + ``checkpoints/`` — parsed by ``train_runs``
+4. ``st_startup/sitecustomize.py`` — PYTHONPATH hook in the *trainer*
+   process only (Dynamo skip + SDNQ ConvRot shim). The GUI never imports it.
 
-No SimpleTuner code is imported, vendored, or monkeypatched. If a SimpleTuner
+No SimpleTuner code is imported by the GUI or the worker. If a SimpleTuner
 upgrade changes this contract, preflight's version assert fails loudly instead
 of the trainer silently misbehaving.
 """
@@ -64,11 +66,9 @@ class TrainPreset:
 # tiers are the four SimpleTuner names for LoRA on the video model (24G with
 # RamTorch CPU-offload, 32G, 48G, 80G).
 #
-# H3 note, said out loud rather than hidden in a key name: H3 has never been
-# trained on this machine yet (PLAN-V2 S0 steps 3–5 own that evening), so the
-# H3 config keys below are written against SimpleTuner's documentation. Preflight
-# says so on every H3 preset, and the metal session is what turns that warning
-# off — same rule that keeps STEP_RE/LOSS_RE honest.
+# H3 keys were written against SimpleTuner's docs until S0 metal (0.2.37)
+# confirmed them on a 32 GB Blackwell card. The RamTorch 24 GB warning stays:
+# that run is memory-bound even when the keys are right.
 PRESETS: dict[str, TrainPreset] = {
     "24g": TrainPreset(
         name="24g",
@@ -150,15 +150,10 @@ PRESETS: dict[str, TrainPreset] = {
 }
 DEFAULT_PRESET = "24g"
 
-#: Keys the H3 config writes that only real SimpleTuner output can confirm.
-#: Listed in code so the metal session has a checklist instead of a memory, and
-#: surfaced by preflight so the user is told before the run, not after.
-H3_UNVERIFIED_KEYS = (
-    "minimax_h3_target_mode",
-    "ramtorch",
-    "resolution",
-    "validation_prompt",
-)
+#: Retired 0.2.37: S0 metal confirmed minimax_h3_target_mode, ramtorch,
+#: resolution, and validation_prompt on SimpleTuner 4.8.0's own stdout.
+#: Left as an empty tuple so ``if H3_UNVERIFIED_KEYS:`` stays the gate.
+H3_UNVERIFIED_KEYS: tuple[str, ...] = ()
 
 
 def validate_video_dataset_dir(path: str | Path) -> list[str]:
@@ -316,6 +311,10 @@ def write_run_config(
         "learning_rate": learning_rate,
         "train_batch_size": 1,
         "max_train_steps": int(steps),
+        # SimpleTuner 4.8.0: max_train_steps without this is a ValueError
+        # ("you must set --num_train_epochs to 0"). Official H3/Music examples
+        # all write it; metal on 2026-08-30 confirmed the refusal.
+        "num_train_epochs": 0,
         # Only present when resuming, so a fresh run's config is unchanged.
         **(
             {"resume_from_checkpoint": str(resume_from_checkpoint)}
@@ -324,6 +323,9 @@ def write_run_config(
         ),
         "validation_prompt": str(validation.get("prompt") or _default_prompt(preset)),
         "validation_steps": 50,
+        # Official 24G examples write 50. A 200-step smoke with the default
+        # (often 500) would finish without a checkpoint to Install.
+        "checkpoint_step_interval": 50,
     }
     if preset.family == "h3":
         config: dict[str, Any] = {
@@ -334,13 +336,42 @@ def write_run_config(
             "model_family": "minimaxh3",
             "model_flavour": preset.flavour,
             "pretrained_model_name_or_path": str(root / "h3-diffusers"),
-            # JSON keys match CLI flags: ``--ramtorch``, not ``ram_torch``.
-            # The 24 GB example also offloads the text encoder.
             **(
-                {"ramtorch": True, "ramtorch_text_encoder": True}
+                {
+                    "pretrained_transformer_model_name_or_path": transformer,
+                    "pretrained_transformer_subfolder": None,
+                }
+                if (transformer := _local_h3_int8_transformer(root))
+                and preset.flavour == "convrot-int8"
+                else {}
+            ),
+            # Flavour convrot-int8 otherwise pulls Kijai's INT8 ConvRot VAE and
+            # SimpleTuner 4.8.0 + sdnq 0.2.6 crash in SDNQDequantizer (metal
+            # 2026-08-30). The Comfy fp16 VAE is already on disk and loads.
+            **(
+                {"pretrained_vae_model_name_or_path": vae}
+                if (vae := _local_h3_video_vae(root))
+                else {}
+            ),
+            # JSON keys match CLI flags: ``--ramtorch``, not ``ram_torch``.
+            # Official 24G writes transformer_percent=100 + text-encoder
+            # offload; 32G writes percent=0. Metal 2026-08-30: omitting
+            # percent still defaulted to 100 and peaked the 32 GB card.
+            **(
+                {
+                    "ramtorch": True,
+                    "ramtorch_text_encoder": True,
+                    "ramtorch_transformer_percent": 100,
+                }
                 if preset.ram_torch
                 else {}
             ),
+            # Official 24G/32G ConvRot examples. Metal 2026-08-30: without
+            # these the INT8 DiT forward fragmented 32 GB and died at step 9
+            # trying to allocate 316 MiB.
+            "attention_mechanism": "native-efficient",
+            "offload_during_startup": True,
+            "vae_enable_slicing": True,
             "minimax_h3_target_mode": str(
                 dataset_spec.get("h3_target_mode") or "video"
             ),
@@ -530,8 +561,9 @@ def train_preflight(
         )
         problems.append(
             f"Training H3 LoRAs needs the H3 weights in the diffusers layout — "
-            f"download {titles} on the Models page. The Comfy packs will not do: "
-            "the trainer reads the diffusers folder."
+            f"download {titles} on the Models page. That folder is the audio "
+            "VAE and Qwen3-VL text encoder; the Comfy generate pack is not a "
+            "substitute for it."
         )
 
     from minimax_studio.worker.runtime import runtime
@@ -607,13 +639,14 @@ def train_preflight(
         pass
 
     if preset.family == "h3":
-        result["warnings"].append(
-            "H3 LoRA training has not run on this build yet: "
-            f"{', '.join(H3_UNVERIFIED_KEYS)} are written from SimpleTuner's "
-            "documentation, not its output. Watch the first minutes of the log "
-            "and report anything odd — that session is what retires this "
-            "warning."
-        )
+        if H3_UNVERIFIED_KEYS:
+            result["warnings"].append(
+                "H3 LoRA training has not run on this build yet: "
+                f"{', '.join(H3_UNVERIFIED_KEYS)} are written from SimpleTuner's "
+                "documentation, not its output. Watch the first minutes of the log "
+                "and report anything odd — that session is what retires this "
+                "warning."
+            )
         if preset.ram_torch:
             result["warnings"].append(
                 "RamTorch keeps layers in system RAM: expect the run to be "
@@ -628,6 +661,29 @@ def train_preflight(
         else " ".join(problems)
     )
     return result
+
+
+def _first_named_weight(models_root: Path, name: str) -> str | None:
+    try:
+        from minimax_studio.worker.model_paths import search_roots
+
+        roots = search_roots(models_root, None)
+    except Exception:
+        roots = [models_root]
+    for base in roots:
+        for candidate in (base / name, base / "diffusion_models" / name, base / "vae" / name):
+            if candidate.is_file():
+                return str(candidate.resolve())
+    return None
+
+
+def _local_h3_int8_transformer(models_root: Path) -> str | None:
+    """Comfy-Org ConvRot INT8 DiT if it is already on disk (PLAN-V2 S0 step 5)."""
+    return _first_named_weight(models_root, "minimax_h3_fl2va_pruned_int8_convrot.safetensors")
+
+
+def _local_h3_video_vae(models_root: Path) -> str | None:
+    return _first_named_weight(models_root, "minimax_h3_video_vae_fp16.safetensors")
 
 
 def _models_root() -> Path:

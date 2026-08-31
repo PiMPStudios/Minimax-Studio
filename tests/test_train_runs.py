@@ -89,6 +89,9 @@ def test_start_run_sets_cuda_visible_devices(
     train_runs.start_run("gpu pin", _dataset(trainer_stub), "24g", steps=2)
     env = captured.get("env") or {}
     assert env.get("CUDA_VISIBLE_DEVICES") == "1"
+    pythonpath = str(env.get("PYTHONPATH") or "")
+    assert "st_startup" in pythonpath
+    assert "expandable_segments:True" in str(env.get("PYTORCH_CUDA_ALLOC_CONF") or "")
 
 
 def test_start_run_writes_run_dir_and_state(trainer_stub: Path) -> None:
@@ -109,6 +112,19 @@ def test_start_run_writes_run_dir_and_state(trainer_stub: Path) -> None:
         row.get("instance_data_dir") == str(clips.resolve()) for row in backends
     )
     _wait_status(state["id"], "completed")
+
+
+def test_progress_parses_simpletuner_tqdm_from_metal() -> None:
+    """S0 metal 2026-08-30: tqdm writes Steps: 100% | 200/200 and step_loss=."""
+    from minimax_studio.worker.train_runs import LOSS_RE, STEP_RE, TQDM_STEP_RE
+
+    line = (
+        "Epoch 40/40, Steps: 100%|██████████| 200/200 "
+        "[03:55<00:00,  1.18s/it, lr=5e-5, step_loss=1.05]"
+    )
+    assert STEP_RE.findall(line)[-1] == "100"  # the percent — why TQDM_STEP_RE exists
+    assert TQDM_STEP_RE.findall(line)[-1] == ("200", "200")
+    assert LOSS_RE.findall(line)[-1] == "1.05"
 
 
 def test_run_completes_and_progress_parses_log(trainer_stub: Path) -> None:

@@ -12,6 +12,51 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.37] — 2026-08-30
+
+PLAN-V2 S0 steps 3–5 on a real NVIDIA GPU (RTX PRO 4500 Blackwell, 32 GB).
+Writer, log parser, and trainer-process sitecustomize now match SimpleTuner
+4.8.0's stdout. Full suite green: 337 passed, `ruff check` clean.
+
+### Added
+
+- **Trainer-process `sitecustomize` (not imported by the GUI).** PYTHONPATH
+  points SimpleTuner at `worker/st_startup/`. Two metal crashes live there:
+  skip `mark_cudagraph_step_begin` when Dynamo is off (torch 2.13
+  `CustomDecompTable` is not a mapping), and fill sdnq 0.2.6's
+  `codebook_steps` / `use_codebook` so ConvRot INT8 `from_single_file` loads.
+  The hook is gated to the real `simpletuner` / `train.py` process so pytest
+  stubs do not import torch.
+
+### Changed
+
+- **Music 24g LoRA smoke.** ~5×15 s clips, 200 steps, adapter in the picker,
+  Comfy audition in History. 177 s clips OOM the VAE cache; 15 s is the 24 GB
+  size. CUDA ModularPipeline cannot `load_lora_weights` — audition is Comfy.
+- **H3 24g RamTorch smoke.** 50 steps, ConvRot INT8, rank 16. Comfy INT8 DiT
+  and fp16 video VAE are used when those files are on disk; official
+  `audio_vae/` + Qwen3-VL-32B text encoder in `h3-diffusers` are required.
+  Kijai INT8 ConvRot VAE and Comfy NVFP4 text encoder are not substitutes.
+- **H3 24g config matches SimpleTuner's own 24 GB example** more closely:
+  `attention_mechanism: native-efficient`, `offload_during_startup`,
+  `vae_enable_slicing`, `ramtorch_transformer_percent: 100`. Trainer env sets
+  `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (metal died at step 9
+  with 5.75 GiB reserved-but-unallocated).
+- **`num_train_epochs: 0` and `checkpoint_step_interval: 50`** on every run.
+  SimpleTuner 4.8.0 ValueErrors `max_train_steps` without the first; without
+  the second a short smoke finishes with nothing to Install.
+- **Progress reads real tqdm.** `200/200 […, step_loss=1.05]`, not the
+  percent bar. `H3_UNVERIFIED_KEYS` is empty — preflight no longer says H3
+  has never run. The RamTorch "memory-bound" warning stays.
+
+### Notes
+
+- Caption `.txt` files must be one caption per file (`textfile` strategy).
+  Extra lines are variants the text-embed cache can miss.
+  `text_cache_ondemand` is wrong for H3 (needs image-context metadata).
+- H3 one-click still-pair audition is still not built. An installed H3 LoRA
+  loads in the picker and on Generate Video.
+
 ## [0.2.36] — 2026-08-30
 
 0.2.35 rest-of-app pass (issues 51–67). Full suite green: 336 passed, `ruff

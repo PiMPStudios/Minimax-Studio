@@ -3,9 +3,8 @@
 None of this touches a GPU or SimpleTuner. What it pins down is the part that
 can be wrong quietly: which tiers exist, what config an H3 run writes, which
 packs preflight demands, and the refusal that stops a Music preset ever being
-pointed at a video dataset. The keys SimpleTuner has not been *seen* to accept
-for H3 are listed in ``train_config.H3_UNVERIFIED_KEYS`` and announced by
-preflight — the metal session is what retires that warning, not a green test run.
+pointed at a video dataset. ``H3_UNVERIFIED_KEYS`` is empty as of 0.2.37 —
+S0 metal confirmed those keys on SimpleTuner 4.8.0's stdout.
 """
 
 from __future__ import annotations
@@ -169,6 +168,10 @@ def test_an_h3_run_writes_the_video_config(h3_env, tmp_path) -> None:
     assert config["pretrained_model_name_or_path"].endswith("h3-diffusers")
     assert config["ramtorch"] is True
     assert config["ramtorch_text_encoder"] is True
+    assert config["ramtorch_transformer_percent"] == 100
+    assert config["attention_mechanism"] == "native-efficient"
+    assert config["offload_during_startup"] is True
+    assert config["vae_enable_slicing"] is True
     assert "ram_torch" not in config
     assert config["base_model_precision"] == "no_change"
     assert config["resolution"] == 480
@@ -176,6 +179,7 @@ def test_an_h3_run_writes_the_video_config(h3_env, tmp_path) -> None:
     assert config["flow_schedule_shift"] == 12.0
     assert config["minimax_h3_target_mode"] == "video"
     assert config["max_train_steps"] == 200
+    assert config["num_train_epochs"] == 0
     assert config["distillation_method"] == "h3_drift"
     # Music-only keys must not leak into an H3 run — that is how a wrong model
     # turns a config review into a guessing game.
@@ -244,7 +248,7 @@ def test_preflight_names_the_h3_weights_it_wants(h3_env, gpu24) -> None:
     assert check["family"] == "h3"
     problem = " ".join(check["problems"])
     assert "diffusers layout" in problem
-    assert "The Comfy packs will not do" in problem
+    assert "Comfy generate pack is not a substitute" in problem
 
     _h3_weights(ready=True)
     check = train_config.train_preflight("h3-24g")
@@ -253,14 +257,15 @@ def test_preflight_names_the_h3_weights_it_wants(h3_env, gpu24) -> None:
     assert not any("Training Encoder" in p for p in check["problems"])
 
 
-def test_preflight_says_which_h3_keys_nobody_has_seen_yet(h3_env, gpu24) -> None:
+def test_preflight_no_longer_warns_that_h3_keys_are_unseen(h3_env, gpu24) -> None:
+    """0.2.37: S0 metal confirmed the H3 keys; the RamTorch cost warning stays."""
     _h3_weights()
+    assert train_config.H3_UNVERIFIED_KEYS == ()
     check = train_config.train_preflight("h3-24g")
     warning = " ".join(check["warnings"])
-    assert "documentation, not its output" in warning
-    assert "minimax_h3_target_mode" in warning
+    assert "documentation, not its output" not in warning
+    assert "has not run on this build" not in warning
     assert "RamTorch keeps layers in system RAM" in warning
-    # Music preflight carries no such warning: it has run.
     music = train_config.train_preflight("24g")
     assert not any("documentation" in text for text in music["warnings"])
 

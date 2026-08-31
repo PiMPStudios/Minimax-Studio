@@ -47,8 +47,15 @@ def _invalidate_storage_cache() -> None:
     global _STORAGE_CACHE
     _STORAGE_CACHE = None
 
+# Stub trainer: "steps: 10 loss: 0.100". SimpleTuner 4.8.0 tqdm on metal:
+# "Steps: 100%|...| 200/200 [03:55<00:00,  1.18s/it, lr=5e-5, step_loss=1.05]"
+# The old `steps?: 100` pattern grabbed tqdm's *percent*, not 200/200.
 STEP_RE = re.compile(r"(?<![a-z_])steps?[:=\s]+(\d+)", re.IGNORECASE)
-LOSS_RE = re.compile(r"(?<![a-z_])loss[:=\s]+([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?\d+)?)")
+TQDM_STEP_RE = re.compile(r"(\d+)/(\d+)\s*\[")
+LOSS_RE = re.compile(
+    r"(?:step_loss|(?<![a-z_])loss)[:=\s]+([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?\d+)?)",
+    re.IGNORECASE,
+)
 
 
 def runs_root() -> Path:
@@ -254,10 +261,14 @@ def progress(run_id: str) -> dict[str, Any]:
     log = run_dir / "train.log"
     if log.is_file():
         text = log.read_text(encoding="utf-8", errors="replace")[-200_000:]
-        steps = STEP_RE.findall(text)
+        tqdm_hits = TQDM_STEP_RE.findall(text)
+        if tqdm_hits:
+            out["step"] = int(tqdm_hits[-1][0])
+        else:
+            steps = STEP_RE.findall(text)
+            if steps:
+                out["step"] = int(steps[-1])
         losses = LOSS_RE.findall(text)
-        if steps:
-            out["step"] = int(steps[-1])
         if losses:
             out["loss"] = float(losses[-1])
     total = out.get("total_steps")
@@ -676,6 +687,18 @@ def _trainer_env() -> dict[str, str]:
     from minimax_studio.worker.runtime import runtime
 
     env["CUDA_VISIBLE_DEVICES"] = str(max(0, int(runtime.config.cuda_device or 0)))
+    # sitecustomize.py: skip SimpleTuner's cudagraph mark when Dynamo is off
+    # (torch 2.13 inductor import crash). Trainer-only; the GUI never loads it.
+    startup = str(Path(__file__).resolve().parent / "st_startup")
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = startup if not existing else startup + os.pathsep + existing
+    # Metal 2026-08-30 H3 24G: PyTorch held 5.75 GiB reserved-but-unallocated
+    # and died on a 316 MiB alloc. SimpleTuner's own traceback asks for this.
+    alloc = env.get("PYTORCH_CUDA_ALLOC_CONF", "").strip()
+    if "expandable_segments" not in alloc:
+        env["PYTORCH_CUDA_ALLOC_CONF"] = (
+            f"{alloc},expandable_segments:True" if alloc else "expandable_segments:True"
+        )
     return env
 
 
