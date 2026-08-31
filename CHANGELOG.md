@@ -12,6 +12,28 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.38] — 2026-08-31
+
+H3 one-click audition. Music already had the PiMP loop; H3 adapters now
+queue a short Generate Video job the same way. Proven on metal with the S0
+ConvRot INT8 adapter. Full suite green: 340 passed.
+
+### Added
+
+- **H3 still-pair audition.** Adapters → Audition on an H3 LoRA queues a
+  5 s (frame-grid) job at 0.8 strength with the dataset caption, badged
+  `audition:<adapter>` in History. Two stills → `fl2va` (first + last);
+  one still → `i2va`; clips only → `t2va`. Auto backend is Comfy — official
+  CUDA picks `h3-diffusers` even when that tree is training-only and then
+  dies (`_workflow_map`).
+- H3 stub renderer under `MINIMAX_STUDIO_STUB=1` so the queue+History loop
+  is testable without a GPU.
+
+### Notes
+
+- Clip-trained S0 adapter auditioned as `t2va` (no stills in that dataset).
+  History `52497a013d40`: 5.17 s, 1376×768, h264+aac, LoRA 0.8.
+
 ## [0.2.37] — 2026-08-30
 
 PLAN-V2 S0 steps 3–5 on a real NVIDIA GPU (RTX PRO 4500 Blackwell, 32 GB).

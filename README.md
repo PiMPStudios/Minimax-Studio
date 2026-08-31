@@ -4,7 +4,7 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.37** generate studio + Build pages (datasets, LoRA training —
+Status: **0.2.38** generate studio + Build pages (datasets, LoRA training —
 experimental; Music and H3 24 GB smokes have run on a real NVIDIA GPU).
 Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
@@ -92,11 +92,11 @@ bytes before anything goes: prune old checkpoints (whatever you installed as an
 adapter is always kept), clear the VAE/text caches, **resume** a stopped run
 from any checkpoint it wrote, or **export** the run to another disk — caches
 excluded, since the next run rebuilds them. **Adapters** (Ctrl+Shift+A) records where
-every LoRA came from and **auditions** a Music adapter: one 30-second render at
-0.8 strength with the caption it trained on, badged in History. That path is
-ComfyUI (the CUDA pipeline cannot load LoRAs). 24 GB VRAM floor. An H3 LoRA
-loads in the picker and on Generate Video; one-click still-pair audition is not
-built yet. See [`docs/PLAN-V2.md`](docs/PLAN-V2.md).
+every LoRA came from and **auditions** it at 0.8 strength with the caption it
+trained on, badged in History: Music a 30 s song, H3 a short still-pair (or
+text-to-video if the dataset has no stills). That path is ComfyUI (the CUDA
+pipeline cannot load LoRAs). 24 GB VRAM floor. See
+[`docs/PLAN-V2.md`](docs/PLAN-V2.md).
 
 ## License (models)
 

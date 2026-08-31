@@ -54,6 +54,31 @@ IMPORTED = {
     "path": "/models/loras/borrowed.safetensors",
     "dataset": {},
 }
+H3 = {
+    "id": "h3-lora.safetensors",
+    "file": "h3-lora.safetensors",
+    "name": "h3-lora",
+    "kind": "h3",
+    "source": "trained",
+    "on_disk": True,
+    "can_audition": True,
+    "dataset_exists": True,
+    "audition_prompt": "a golden retriever puppy",
+    "created_at": 1787000100,
+    "path": "/models/loras/h3-lora.safetensors",
+    "trainer": "simpletuner 4.8.0",
+    "base_pack": "h3-diffusers-fl2va",
+    "preset": "h3-24g",
+    "steps": 50,
+    "rank": 16,
+    "run_name": "S0 metal h3 50",
+    "dataset": {
+        "path": "/data/datasets/s0-metal-h3",
+        "clip_count": 3,
+        "manifest_hash": "cb3be809ea3f",
+        "exists": True,
+    },
+}
 GONE = {
     "id": "ghost.safetensors",
     "file": "ghost.safetensors",
@@ -94,12 +119,15 @@ class FakeAdapterWorker:
         if self.audition_error:
             raise RuntimeError(self.audition_error)
         self.auditioned.append((adapter_id, prompt, float(duration_s or 0)))
+        row = next((item for item in self.rows if item["id"] == adapter_id), {})
+        kind = str(row.get("kind") or "music")
         return {
             "job_id": "job7",
             "adapter": adapter_id,
+            "kind": kind,
             "prompt": prompt or "moody folk with a warm chorus",
             "strength": 0.8,
-            "duration_s": float(duration_s or 30),
+            "duration_s": float(duration_s or (5 if kind == "h3" else 30)),
         }
 
     def forget_adapter(self, adapter_id: str) -> dict[str, Any]:
@@ -215,6 +243,20 @@ def test_blank_prompt_advertises_the_caption_it_will_reuse(app) -> None:
     assert "moody folk with a warm chorus" in page._prompt.placeholderText()
     _select(page, IMPORTED["id"])
     assert "type an audition prompt" in page._prompt.placeholderText().lower()
+
+
+def test_an_h3_adapter_auditions_as_a_short_clip(app) -> None:
+    worker = FakeAdapterWorker()
+    worker.rows.append(dict(H3))
+    page = AdaptersPage(worker)
+    _select(page, H3["id"])
+    assert page._audition_btn.isEnabled()
+    assert page._duration.value() == 5
+    assert page._duration.maximum() == 15
+    page._audition_btn.click()
+    assert worker.auditioned == [(H3["id"], "", 5.0)]
+    assert "5 s clip" in page._status.text()
+    assert "job job7" in page._status.text()
 
 
 def test_audition_queues_the_selected_adapter(app) -> None:

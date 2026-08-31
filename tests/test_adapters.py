@@ -116,8 +116,9 @@ def test_an_h3_run_installs_as_an_h3_adapter(
     assert row["kind"] == "h3"
     assert row["base_pack"] == "h3-diffusers-fl2va"
     listed = adapters.get_adapter(row["id"])
-    assert listed["can_audition"] is False
+    assert listed["can_audition"] is True
     assert listed["dataset"]["clip_count"] == 1
+    assert adapters.still_pair(dataset)[0] == "i2va"
 
 
 def test_fingerprint_follows_clips_not_mtimes(
@@ -197,7 +198,7 @@ def test_untracked_file_in_an_h3_folder_is_not_a_music_adapter(
     listed = adapters.get_adapter("shot.safetensors")
     assert listed["source"] == "untracked"
     assert listed["kind"] == "h3"
-    assert listed["can_audition"] is False
+    assert listed["can_audition"] is True
     assert listed["path"] == str(path)
 
 
@@ -213,7 +214,7 @@ def test_import_from_an_h3_folder_keeps_h3_kind(
     listed = adapters.get_adapter("face.safetensors")
     assert listed["source"] == "imported"
     assert listed["kind"] == "h3"
-    assert listed["can_audition"] is False
+    assert listed["can_audition"] is True
 
 
 def test_import_kind_argument_wins_over_a_generic_folder(
@@ -227,7 +228,7 @@ def test_import_kind_argument_wins_over_a_generic_folder(
     import_lora(str(source), kind="h3")
     listed = adapters.get_adapter("face.safetensors")
     assert listed["kind"] == "h3"
-    assert listed["can_audition"] is False
+    assert listed["can_audition"] is True
 
 
 # --- the audition loop ------------------------------------------------------
@@ -292,7 +293,7 @@ def test_audition_refuses_when_there_is_nothing_to_sing_with(
     assert queued["prompt"] == "bright synth pop"
 
 
-def test_audition_refuses_a_missing_file_and_an_h3_adapter(
+def test_audition_refuses_a_missing_file(
     studio_home: Path, tmp_path: Path
 ) -> None:
     row = _trained_adapter(studio_home, tmp_path)
@@ -300,10 +301,102 @@ def test_audition_refuses_a_missing_file_and_an_h3_adapter(
     with pytest.raises(RuntimeError, match="no file on disk"):
         adapters.audition(row["id"])
 
-    adapters.record({"file": Path(row["path"]).name, "kind": "video"})
-    _lora_file(studio_home, Path(row["path"]).name)
-    with pytest.raises(RuntimeError, match="no one-click preview"):
-        adapters.audition(Path(row["path"]).name)
+
+def _trained_h3_adapter(
+    studio_home: Path, tmp_path: Path, *, stills: int = 2
+) -> dict:
+    dataset = tmp_path / "shots"
+    dataset.mkdir()
+    for index in range(stills):
+        (dataset / f"s{index}.png").write_bytes(b"\x89PNG")
+        (dataset / f"s{index}.txt").write_text("a golden retriever puppy\n", encoding="utf-8")
+    source = tmp_path / "checkpoints" / "step-50" / "h3-lora.safetensors"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"\x00")
+    path = _lora_file(studio_home, "h3-lora.safetensors")
+    return adapters.record_trained(
+        {
+            "id": "20260830-h3",
+            "name": "H3 shots",
+            "dataset_dir": str(dataset),
+            "family": "h3",
+            "dataset_kind": "video",
+            "preset": "h3-24g",
+            "steps": 50,
+            "rank": 16,
+        },
+        {"name": "h3-lora", "path": str(path)},
+        source,
+    )
+
+
+def test_h3_audition_queues_a_still_pair(
+    studio_home: Path, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
+    row = _trained_h3_adapter(studio_home, tmp_path, stills=2)
+    mode, assets = adapters.still_pair(row["dataset"]["path"])
+    assert mode == "fl2va" and len(assets) == 2
+    assert {item["role"] for item in assets} == {"first_frame", "last_frame"}
+
+    queued = adapters.audition(row["id"])
+    assert queued["kind"] == "h3"
+    assert queued["mode"] == "fl2va"
+    assert queued["backend"] == "comfy"
+    assert queued["strength"] == 0.8
+    from minimax_studio.h3_timing import duration_to_frames, frames_to_seconds
+
+    assert queued["duration_s"] == frames_to_seconds(
+        duration_to_frames(adapters.AUDITION_H3_SECONDS)
+    )
+    assert queued["prompt"] == "a golden retriever puppy"
+
+    client = TestClient(app)
+    job = _wait_job(client, queued["job_id"])
+    assert job["status"] == "done", job
+    assert job["kind"] == "h3"
+    assert job["audition"] == f"audition:{row['id']}"
+    entry = next(
+        item for item in client.get("/history").json() if item["id"] == job["id"]
+    )
+    assert entry["audition"] == f"audition:{row['id']}"
+    assert entry["kind"] == "h3"
+    assert entry["mode"] == "fl2va"
+    assert entry["loras"] == [{"id": row["path"], "strength": 0.8}]
+    assert Path(entry["output_path"]).is_file()
+
+
+def test_h3_clip_dataset_auditions_as_text_to_video(
+    studio_home: Path, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("MINIMAX_STUDIO_STUB", "1")
+    dataset = tmp_path / "clips"
+    dataset.mkdir()
+    (dataset / "c.mp4").write_bytes(b"ftyp")
+    (dataset / "c.txt").write_text("puppy in a meadow\n", encoding="utf-8")
+    source = tmp_path / "ck" / "h3-lora.safetensors"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"\x00")
+    path = _lora_file(studio_home, "h3-clips.safetensors")
+    row = adapters.record_trained(
+        {
+            "id": "h3-clips",
+            "name": "clips",
+            "dataset_dir": str(dataset),
+            "family": "h3",
+            "dataset_kind": "video",
+            "preset": "h3-24g",
+            "steps": 50,
+            "rank": 16,
+        },
+        {"name": "h3-clips", "path": str(path)},
+        source,
+    )
+    queued = adapters.audition(row["id"])
+    assert queued["mode"] == "t2va"
+    job = _wait_job(TestClient(app), queued["job_id"])
+    assert job["status"] == "done", job
+    assert job["kind"] == "h3"
 
 
 # --- API --------------------------------------------------------------------

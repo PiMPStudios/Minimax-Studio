@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,16 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
 
         return generate_h3_comfy(job_id, request)
     if backend == "stub":
-        raise RuntimeError("H3 has no stub renderer.")
+        dest = runtime.config.history_root() / job_id
+        dest.mkdir(parents=True, exist_ok=True)
+        out_path = dest / "video.mp4"
+        update_job(job_id, message="Writing stub video", progress=0.5)
+        out_path.write_bytes(b"stub-h3-video")
+        return {
+            "output_path": str(out_path),
+            "backend": "stub",
+            "media_type": "video",
+        }
 
     dest = runtime.config.history_root() / job_id
     dest.mkdir(parents=True, exist_ok=True)
@@ -174,6 +184,8 @@ def generate_h3(job_id: str, request: JobRequest) -> dict[str, Any]:
 
 def resolve_h3_backend(requested: str, mode: str = "fl2va") -> str:
     name = requested.lower()
+    if name == "stub" or os.environ.get("MINIMAX_STUDIO_STUB") == "1":
+        return "stub"
     root = runtime.config.models_root()
     official = pack_status(PACKS["h3-diffusers-fl2va"], root)["ready"]
     int8 = pack_status(PACKS["h3-fl2va"], root)

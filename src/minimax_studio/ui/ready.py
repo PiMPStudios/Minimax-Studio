@@ -23,7 +23,7 @@ def ask_lora_family(parent: QWidget, source_path: str) -> str | None:
         parent,
         "Import LoRA",
         "Which generator is this adapter for?\n"
-        "Audition is Music-only; an H3 file loaded as Music would queue a song.",
+        "The wrong family queues the wrong generate job (a song vs a video clip).",
         _LORA_FAMILY_LABELS,
         0,
         False,

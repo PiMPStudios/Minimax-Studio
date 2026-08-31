@@ -6,10 +6,10 @@ it, you imported it, or it was simply already in a LoRA folder — ``trained`` /
 part: the picker has always loaded them, so pretending not to know would be a
 lie by omission.
 
-The button that closes the loop is **Audition**: one 30-second render at 0.8
-strength with the caption the adapter was actually trained on, queued as an
-ordinary job and badged in History. That is what 3 hours of GPU was for, in
-your ears, without setting up anything.
+The button that closes the loop is **Audition**: Music gets a 30-second song,
+H3 a short still-pair (or text-to-video if the dataset has no stills), both at
+0.8 strength with the caption the adapter was actually trained on, queued as an
+ordinary job and badged in History.
 """
 
 from __future__ import annotations
@@ -158,8 +158,7 @@ class AdaptersPage(QWidget):
         self._duration.setValue(30)
         self._duration.setSuffix(" s")
         self._duration.setToolTip(
-            "Auditions are short on purpose — you are checking for the voice, "
-            "not mastering a track."
+            "Auditions are short on purpose — Music 30 s, H3 5–15 s."
         )
         self._audition_btn = QPushButton("Audition")
         self._audition_btn.setObjectName("primary")
@@ -336,6 +335,21 @@ class AdaptersPage(QWidget):
                 else "No dataset caption behind this one — type an audition prompt"
             )
         )
+        kind = str(row.get("kind") or "music")
+        if kind == "h3":
+            self._duration.setRange(5, 15)
+            self._duration.setValue(5)
+            self._duration.setToolTip(
+                "H3 auditions snap to the 5–15 s frame grid. 5 s is the check."
+            )
+        else:
+            self._duration.setRange(5, 120)
+            if self._duration.value() < 15:
+                self._duration.setValue(30)
+            self._duration.setToolTip(
+                "Auditions are short on purpose — you are checking for the voice, "
+                "not mastering a track."
+            )
 
     def _set_buttons_enabled(self, have_selection: bool) -> None:
         row = self._current()
@@ -344,10 +358,12 @@ class AdaptersPage(QWidget):
         self._audition_btn.setEnabled(bool(row and row.get("can_audition")))
         if row and not row.get("can_audition"):
             self._audition_btn.setToolTip(
-                "One-click audition renders a clip: Music adapters only. An H3 "
-                "adapter has no preview wired up yet — load it on Generate Video."
-                if row.get("kind") != "music"
-                else "The file is not on disk — reinstall it from its run."
+                "The file is not on disk — reinstall it from its run."
+            )
+        elif row and row.get("kind") == "h3":
+            self._audition_btn.setToolTip(
+                "Short H3 generate at 0.8 strength: still-pair when the dataset "
+                "has frames, otherwise text-to-video. Lands in History."
             )
         else:
             self._audition_btn.setToolTip(
@@ -370,9 +386,11 @@ class AdaptersPage(QWidget):
             QMessageBox.warning(self, "Audition did not start", str(exc))
             return
         self._prompt.clear()
+        seconds = float(queued.get("duration_s") or 0)
+        length = f"{seconds:g} s clip" if (queued.get("kind") or row.get("kind")) == "h3" else f"{int(seconds)} s"
         self._status.setText(
             f"Audition queued for “{row.get('name')}” — "
-            f"{int(queued.get('duration_s') or 0)} s at "
+            f"{length} at "
             f"{float(queued.get('strength') or 0):.1f} strength, job "
             f"{queued.get('job_id')}. It lands in History badged as an "
             "audition, and Restore to Generate works on it like any take."

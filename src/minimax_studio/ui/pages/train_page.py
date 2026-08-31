@@ -821,8 +821,9 @@ class TrainPage(QWidget):
         family = str(self._detail.get("family") or "")
         if family == "h3":
             where = (
-                "Pick it in the LoRA dropdown on Generate Video. "
-                "One-click audition is Music-only for now."
+                "Pick it in the LoRA dropdown on Generate Video, or Audition "
+                "it from Adapters — a short still-pair (or text-to-video) at "
+                "0.8 strength, badged in History."
             )
         else:
             where = (

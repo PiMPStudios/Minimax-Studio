@@ -32,6 +32,8 @@ from minimax_studio.worker.runtime import runtime
 #: The PiMP loop's one-click audition: short, soft, and unmistakably a test.
 AUDITION_STRENGTH = 0.8
 AUDITION_SECONDS = 30.0
+#: H3's frame grid floor. Longer than 15 s is a real Generate Video job.
+AUDITION_H3_SECONDS = 5.0
 
 CLIP_SUFFIXES = {
     ".wav",
@@ -169,6 +171,32 @@ def typical_caption(folder: str | Path) -> str:
     return counts.most_common(1)[0][0] if counts else ""
 
 
+STILL_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def still_pair(folder: str | Path) -> tuple[str, list[dict[str, str]]]:
+    """H3 audition mode + assets from a dataset folder.
+
+    Two or more stills → ``fl2va`` (first and last by name). One still →
+    ``i2va``. Clips only → ``t2va`` with the caption; a video LoRA trained on
+    clips has no frames to hang a still-pair on.
+    """
+    root = Path(folder)
+    stills: list[Path] = []
+    if root.is_dir():
+        for path in sorted(root.iterdir()):
+            if path.suffix.lower() in STILL_SUFFIXES and not path.name.startswith("."):
+                stills.append(path)
+    if len(stills) >= 2:
+        return "fl2va", [
+            {"role": "first_frame", "path": str(stills[0])},
+            {"role": "last_frame", "path": str(stills[-1])},
+        ]
+    if len(stills) == 1:
+        return "i2va", [{"role": "first_frame", "path": str(stills[0])}]
+    return "t2va", []
+
+
 def list_adapters() -> list[dict[str, Any]]:
     """Registry ∪ disk. A file nobody registered shows as ``untracked``;
     a row whose file was deleted stays, flagged, rather than vanishing."""
@@ -223,7 +251,7 @@ def _decorate(row: dict[str, Any]) -> dict[str, Any]:
         typical_caption(path) if out.get("dataset_exists") else ""
     )
     out["can_audition"] = bool(
-        out.get("on_disk") and out.get("kind") == "music"
+        out.get("on_disk") and out.get("kind") in {"music", "h3"}
     )
     return out
 
@@ -303,11 +331,11 @@ def audition(
             f"“{row.get('name')}” has no file on disk to audition — reinstall "
             "it from its run, or Forget it here."
         )
-    if row.get("kind") != "music":
+    kind = str(row.get("kind") or "music")
+    if kind not in {"music", "h3"}:
         raise RuntimeError(
-            "Audition renders a 30-second clip, which only a Music adapter "
-            "has — an H3 adapter is a still/video LoRA and has no one-click "
-            "preview wired up yet. Load it in Generate Video instead."
+            f"“{row.get('name')}” is not a Music or H3 adapter — "
+            "Forget it and import it as the family it belongs to."
         )
     text = (prompt or "").strip() or str(row.get("audition_prompt") or "").strip()
     if not text:
@@ -320,21 +348,49 @@ def audition(
             )
             + " Type a prompt in the box, then Audition."
         )
-    request = JobRequest(
-        kind="music",
-        backend=backend,
-        mode="ttm",
-        prompt=text,
-        duration_s=float(duration_s or AUDITION_SECONDS),
-        loras=[{"id": str(row["path"]), "strength": AUDITION_STRENGTH}],
-        audition=f"audition:{row['id']}",
-    )
+    loras = [{"id": str(row["path"]), "strength": AUDITION_STRENGTH}]
+    badge = f"audition:{row['id']}"
+    if kind == "h3":
+        from minimax_studio.h3_timing import duration_to_frames, frames_to_seconds
+
+        mode, assets = still_pair((row.get("dataset") or {}).get("path") or "")
+        seconds = frames_to_seconds(
+            duration_to_frames(float(duration_s or AUDITION_H3_SECONDS))
+        )
+        # ConvRot INT8 LoRAs (lora_format comfyui) load on the Comfy path.
+        # auto would pick official CUDA whenever h3-diffusers exists, even
+        # as a training tree without generate shards.
+        h3_backend = "comfy" if backend in {"auto", ""} else backend
+        request = JobRequest(
+            kind="h3",
+            backend=h3_backend,
+            mode=mode,
+            prompt=text,
+            duration_s=seconds,
+            resolution="768P",
+            quality="native",
+            assets=assets,
+            loras=loras,
+            audition=badge,
+        )
+    else:
+        request = JobRequest(
+            kind="music",
+            backend=backend,
+            mode="ttm",
+            prompt=text,
+            duration_s=float(duration_s or AUDITION_SECONDS),
+            loras=loras,
+            audition=badge,
+        )
     job = start_job(request)
     return {
         "job_id": job["id"],
         "adapter": row["id"],
+        "kind": kind,
+        "mode": request.mode,
         "prompt": text,
         "strength": AUDITION_STRENGTH,
         "duration_s": request.duration_s,
-        "backend": backend,
+        "backend": request.backend,
     }

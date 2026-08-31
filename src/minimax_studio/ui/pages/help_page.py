@@ -126,10 +126,10 @@ two trainers never share a run. Preflight names the VRAM, packs, active jobs
 and free cache disk before anything starts; no mystery OOM.</p>
 <p><b>Said plainly:</b> Music and H3 LoRA training have both run on a real
 NVIDIA card (PLAN-V2 S0). Caption files should be <i>one caption per
-<code>.txt</code></i> — extra lines are variants the cache can miss. Music
-<b>Audition</b> goes through ComfyUI (the CUDA pipeline cannot load LoRAs).
-An H3 adapter loads in the picker and works on Generate Video, but it has no
-one-click still-pair preview yet.</p>
+<code>.txt</code></i> — extra lines are variants the cache can miss.
+<b>Audition</b> is one click for both families: Music a 30 s song through
+ComfyUI (the CUDA pipeline cannot load LoRAs), H3 a short still-pair — or
+text-to-video when the dataset has no stills.</p>
 <p>A live training run warns you on Generate (and shows in the status bar) —
 one GPU, two hungry things.</p>
 
@@ -140,12 +140,13 @@ those clip names and sizes, run id, preset, rank, steps, the pinned
 SimpleTuner version), <b>imported</b> (you brought the file), or <b>found on
 disk</b> — files Studio never registered but the picker loads anyway, which is
 worth saying out loud rather than hiding.</p>
-<p><b>Audition</b> queues one 30-second render at 0.8 strength with the caption
-that clip set used most, so the answer to “was that worth three hours?” arrives
-in the History list badged as an audition — and <b>Restore to Generate</b>
-works on it like any other take. It refuses honestly when there is nothing to
-sing with: a hand-imported adapter or a deleted dataset has no caption, so type
-a prompt.</p>
+<p><b>Audition</b> queues one short render at 0.8 strength with the caption
+that clip set used most — 30 s of Music, or a 5 s H3 still-pair (first and last
+frame from the dataset, or text-to-video if there are no stills) — so the
+answer to “was that worth three hours?” arrives in the History list badged as
+an audition. <b>Restore to Generate</b> works on it like any other take. It
+refuses honestly when there is nothing to sing or show with: a hand-imported
+adapter or a deleted dataset has no caption, so type a prompt.</p>
 <p><b>Forget</b> drops Studio’s provenance row and leaves the
 <code>.safetensors</code> on disk and in the picker. Deleting a file leaves the
 row behind, flagged “file is gone”, because the story of an adapter is still

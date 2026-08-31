@@ -73,8 +73,8 @@ What the v1 plan hedged on, resolved:
 > 2026-08-30 on an RTX PRO 4500 Blackwell (32 GB): Music 5×15 s / 200 steps +
 > Comfy audition in History; H3 ConvRot INT8 24g RamTorch 50 steps, adapter
 > installed. Writer, tqdm parser, and trainer sitecustomize now match
-> SimpleTuner 4.8.0 stdout. `H3_UNVERIFIED_KEYS` is empty. Remaining after
-> S0: H3 still-pair audition (not built).
+> SimpleTuner 4.8.0 stdout. `H3_UNVERIFIED_KEYS` is empty. H3 still-pair
+> audition landed in 0.2.38.
 >
 > **Step 1 is now genuinely closed (0.2.30) — and it had not been before.**
 > `simpletuner==4.8.0` declares `Requires-Python >=3.12,<3.14`; the dev venv was
@@ -184,7 +184,9 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 > writes the trained row, `import_lora` writes `source: imported`, and
 > unregistered files still appear — as `found on disk`, which is the honest
 > part. **Music audition proved on metal (0.2.37)** through ComfyUI (the CUDA
-> ModularPipeline cannot load LoRAs). **H3 still-pair audition is not built.**
+> ModularPipeline cannot load LoRAs). **H3 still-pair audition proved on
+> metal (0.2.38)** — `fl2va` when the dataset has two stills, `t2va` for
+> clip-only sets; History badge `audition:<adapter>`.
 
 - `adapters.json` registry: id, name, kind (music/h3), base pack, trainer
   (SimpleTuner vX), dataset + its manifest hash, created_at, source
@@ -217,8 +219,7 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 >
 > **Metal (0.2.37):** `minimax_h3_target_mode`, `ramtorch` and the 480p
 > buckets ran on SimpleTuner 4.8.0's stdout; `H3_UNVERIFIED_KEYS` is empty.
-> H3 adapter **audition** (the still pair) is still not built; an H3 LoRA
-> loads on Generate Video today and has no one-click preview.
+> **H3 audition (0.2.38):** still-pair / text-to-video one-click, History badge.
 
 - Video dataset validator in S1's frame; `minimax_h3_target_mode: "video"`
   default, `av` only when the dataset has clean audio (checkbox, not default
@@ -329,8 +330,7 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 
 ## Next step
 
-**S0 is closed (0.2.37).** Music 200-step LoRA + Comfy audition, H3 ConvRot
-INT8 24g RamTorch 50-step smoke, keys confirmed. Remaining: the H3 **audition**
-(still pair), and a dedicated "H3 training files" pack for official `audio_vae/`
-+ Qwen3-VL if we do not want to keep pointing at a hand-assembled `h3-diffusers`
-tree.
+**S0 is closed (0.2.37); H3 audition is closed (0.2.38).** Remaining: a
+dedicated "H3 training files" pack for official `audio_vae/` + Qwen3-VL if we
+do not want to keep pointing at a hand-assembled `h3-diffusers` tree; resume
+from checkpoint on metal.
