@@ -12,6 +12,19 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.42] — 2026-09-01
+
+Caption validator. Extra lines in a `.txt` no longer reach SimpleTuner as
+silent caption variants.
+
+### Changed
+
+- **Validate and train-start refuse extra caption lines.** SimpleTuner
+  `textfile` is one caption per `.txt`. Extra non-blank lines miss the
+  text-embed cache (H3 metal 2026-08-30). Blank lines around a single
+  caption are fine; `.lyrics` may still wrap. Empty caption files are
+  refused too.
+
 ## [0.2.41] — 2026-08-31
 
 Apple Silicon Music 3 extra. `scripts/run.sh` now installs `mlx-audio` on

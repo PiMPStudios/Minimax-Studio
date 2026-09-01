@@ -90,7 +90,8 @@ optionally <code>track.lyrics</code> for Music, or <code>shot.png</code> stills
 and short <code>shot.mp4</code> clips for H3. Imports <b>copy</b> files, so
 cleaning up your originals never guts a dataset; <b>Add from History</b> brings
 a good take’s caption and lyrics with it. <b>Validate</b> names the problem on
-every entry that can’t train — a missing caption, a 12.0s clip over the 8s cap,
+every entry that can’t train — a missing caption, extra lines in a
+<code>.txt</code> (one caption per file), a 12.0s clip over the 8s cap,
 a 128×96 still under the 256 px floor — and starting a run refuses a dataset
 that doesn’t validate. Without ffmpeg it says what it could not measure instead
 of blaming your clips.</p>
@@ -125,8 +126,8 @@ The 80 GB tier still wants the full official FL2VA tree.
 two trainers never share a run. Preflight names the VRAM, packs, active jobs
 and free cache disk before anything starts; no mystery OOM.</p>
 <p><b>Said plainly:</b> Music and H3 LoRA training have both run on a real
-NVIDIA card (PLAN-V2 S0). Caption files should be <i>one caption per
-<code>.txt</code></i> — extra lines are variants the cache can miss.
+NVIDIA card (PLAN-V2 S0). Validate refuses extra lines in a caption
+<code>.txt</code> — one caption per file; extra lines miss the text-embed cache.
 <b>Audition</b> is one click for both families: Music a 30 s song through
 ComfyUI (the CUDA pipeline cannot load LoRAs), H3 a short still-pair — or
 text-to-video when the dataset has no stills.</p>

@@ -4,7 +4,7 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.41** generate studio + Build pages (datasets, LoRA training —
+Status: **0.2.42** generate studio + Build pages (datasets, LoRA training —
 experimental; Music and H3 24 GB smokes have run on a real NVIDIA GPU).
 Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
@@ -84,8 +84,9 @@ DiT. The 80 GB tier still wants the full official FL2VA tree. **Datasets** (Ctrl
 folder of `track.wav` + `track.txt` (+ optional `track.lyrics`) or pulls good
 generations out of History; an H3 dataset takes `shot.png` stills and short
 `shot.mp4` clips instead — capped at 8 seconds, with `av` (audio+video) mode as
-an opt-in checkbox because it costs VRAM and disk. Keep **one caption per
-`.txt`**: extra lines are variants the text-embed cache can miss. **Train LoRA**
+an opt-in checkbox because it costs VRAM and disk. **Validate** refuses extra
+lines in a caption `.txt` — one caption per file; extra lines miss the
+text-embed cache. **Train LoRA**
 (Ctrl+Shift+T) checks VRAM, packs, active jobs and cache disk by name, then
 launches the trainer as **its own process** — closing Studio does not stop a
 run, and the page reattaches to it. The VRAM presets change with the dataset you

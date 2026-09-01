@@ -81,6 +81,24 @@ def test_cheap_music_check_sees_mp3(tmp_path: Path) -> None:
     assert validate_music_dataset_dir(folder) == []
 
 
+def test_cheap_checks_refuse_extra_caption_lines(tmp_path: Path) -> None:
+    from minimax_studio.worker.train_config import validate_video_dataset_dir
+
+    songs = tmp_path / "songs"
+    songs.mkdir()
+    (songs / "song.wav").write_bytes(b"RIFF")
+    (songs / "song.txt").write_text("verse one\nverse two\n", encoding="utf-8")
+    music = validate_music_dataset_dir(songs)
+    assert any("2 captions" in err and "song.txt" in err for err in music)
+
+    shots = tmp_path / "shots"
+    shots.mkdir()
+    (shots / "still.png").write_bytes(b"\x00")
+    (shots / "still.txt").write_text("a frame\nanother\n", encoding="utf-8")
+    video = validate_video_dataset_dir(shots)
+    assert any("2 captions" in err and "still.txt" in err for err in video)
+
+
 def test_write_run_config_contract(studio_home: Path, tmp_path: Path) -> None:
     clips = _dataset(tmp_path)
     run_dir = tmp_path / "run-1"

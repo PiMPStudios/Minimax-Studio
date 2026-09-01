@@ -161,7 +161,7 @@ def validate_video_dataset_dir(path: str | Path) -> list[str]:
     """Cheap, honest checks for an H3 dataset — the full validator is
     :func:`datasets._validate_video_dir`; this is the preflight-shaped version
     that answers in milliseconds without measuring a single frame."""
-    from minimax_studio.worker.datasets import MEDIA_BY_KIND
+    from minimax_studio.worker.datasets import MEDIA_BY_KIND, caption_body_problems
 
     folder = Path(path)
     if not folder.is_dir():
@@ -176,17 +176,19 @@ def validate_video_dataset_dir(path: str | Path) -> list[str]:
             f"No stills or clips in {folder} — H3 wants .png/.jpg stills or "
             "short .mp4 clips"
         ]
-    errors = [
-        f"{item.name}: missing caption {item.stem}.txt"
-        for item in media
-        if not item.with_suffix(".txt").is_file()
-    ]
+    errors: list[str] = []
+    for item in media:
+        txt = item.with_suffix(".txt")
+        if not txt.is_file():
+            errors.append(f"{item.name}: missing caption {item.stem}.txt")
+            continue
+        errors.extend(caption_body_problems(txt))
     return errors
 
 
 def validate_music_dataset_dir(path: str | Path) -> list[str]:
     """Cheap, honest checks only — the full validator is PLAN-V2 S1."""
-    from minimax_studio.worker.datasets import MEDIA_BY_KIND
+    from minimax_studio.worker.datasets import MEDIA_BY_KIND, caption_body_problems
 
     folder = Path(path)
     if not folder.is_dir():
@@ -201,8 +203,11 @@ def validate_music_dataset_dir(path: str | Path) -> list[str]:
         return [f"No audio files ({', '.join(exts)}) found in {folder}"]
     errors: list[str] = []
     for clip in clips:
-        if not clip.with_suffix(".txt").is_file():
+        txt = clip.with_suffix(".txt")
+        if not txt.is_file():
             errors.append(f"{clip.name}: missing caption {clip.stem}.txt")
+            continue
+        errors.extend(caption_body_problems(txt))
     return errors
 
 

@@ -1,8 +1,9 @@
 """Training datasets (PLAN-V2 S1, video half in S4).
 
 A dataset is a plain folder in the layout SimpleTuner reads natively —
-``track.wav`` + ``track.txt`` caption + optional ``track.lyrics`` (music), or
-``shot.png`` / ``shot.mp4`` + ``shot.txt`` (H3) — plus a ``dataset.json``
+``track.wav`` + ``track.txt`` caption (one caption per file) + optional
+``track.lyrics`` (music), or ``shot.png`` / ``shot.mp4`` + ``shot.txt`` (H3)
+— plus a ``dataset.json``
 manifest of ours for name/kind/provenance. The trainer never touches the
 manifest; the app uses it to validate before anyone burns GPU hours, per the
 standing rule: named numbers, no mystery failures.
@@ -389,10 +390,36 @@ def _validate_dir(folder: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     return _validate_music_dir(folder, manifest)
 
 
+def caption_body_problems(txt: Path) -> list[str]:
+    """SimpleTuner ``caption_strategy: textfile`` is one caption per file.
+
+    Extra non-blank lines are caption variants; H3's text-embed cache can miss
+    them (metal 2026-08-30). Blank lines around a single caption are fine.
+    ``.lyrics`` is a different file and is allowed to wrap.
+    """
+    try:
+        text = txt.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return [f"{txt.name}: cannot read caption ({exc})"]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return [f"{txt.name} is empty — write one caption"]
+    if len(lines) > 1:
+        return [
+            f"{txt.name} has {len(lines)} captions (one per line) — keep one "
+            "caption per .txt; extra lines are variants the text-embed cache "
+            "can miss"
+        ]
+    return []
+
+
 def _caption_rules(path: Path, problems: list[str]) -> None:
     """What every entry has in common, whatever its kind: a caption beside it."""
-    if not path.with_suffix(".txt").is_file():
+    txt = path.with_suffix(".txt")
+    if not txt.is_file():
         problems.append(f"missing caption {path.stem}.txt")
+        return
+    problems.extend(caption_body_problems(txt))
 
 
 def _orphan_captions(folder: Path, stems: set[str], rows: list[dict[str, Any]]) -> None:

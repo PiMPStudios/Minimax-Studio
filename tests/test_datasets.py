@@ -146,6 +146,31 @@ def test_from_history_rejects_missing_or_mismatched(
         datasets.add_from_history(manifest["id"], "video-one")
 
 
+def test_extra_caption_lines_are_a_named_problem(datasets_env: Path) -> None:
+    folder, manifest = _clean_dataset()
+    (folder / "one.txt").write_text(
+        "Soft natural daylight\nsecond take\nthird take\n",
+        encoding="utf-8",
+    )
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is False
+    problems = {row["file"]: row["problems"] for row in report["rows"]}
+    joined = " ".join(problems["one.wav"])
+    assert "one.txt" in joined
+    assert "3 captions" in joined
+    assert "text-embed cache" in joined
+    # Trailing blank lines around a single caption are still one caption.
+    (folder / "one.txt").write_text("\nSoft natural daylight\n\n", encoding="utf-8")
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is True
+    problems = {row["file"]: row["problems"] for row in report["rows"]}
+    assert not any("captions" in p for p in problems["one.wav"])
+    (folder / "one.txt").write_text("   \n", encoding="utf-8")
+    report = datasets.validate_dataset(manifest["id"])
+    problems = {row["file"]: row["problems"] for row in report["rows"]}
+    assert any("empty" in p for p in problems["one.wav"])
+
+
 def test_validate_reports_named_problems(datasets_env: Path) -> None:
     folder, manifest = _clean_dataset()
     _wav(folder / "tiny.wav", seconds=1.0)
@@ -377,6 +402,21 @@ def test_video_entries_need_captions_too(ffprobe, datasets_env: Path) -> None:
     problems = {row["file"]: row["problems"] for row in report["rows"]}
     assert any("shot_1280x720_t3s.txt" in p for p in problems["shot_1280x720_t3s.mp4"])
     assert any("no matching media" in p for p in problems["stray.txt"])
+
+
+def test_video_extra_caption_lines_are_a_named_problem(
+    ffprobe, datasets_env: Path
+) -> None:
+    _folder, manifest = _video_dataset(
+        "multiline",
+        {"shot_1280x720.png": "first frame\nlast frame"},
+    )
+    report = datasets.validate_dataset(manifest["id"])
+    assert report["ok"] is False
+    problems = {row["file"]: row["problems"] for row in report["rows"]}
+    joined = " ".join(problems["shot_1280x720.png"])
+    assert "2 captions" in joined
+    assert "shot_1280x720.txt" in joined
 
 
 def test_without_ffprobe_the_validator_warns_instead_of_accusing(
