@@ -55,5 +55,11 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 is_wanted python # the venv we are about to run in must be the pinned one
-pip install -e ".[dev]" 2>/dev/null || pip install -e .
+# Apple Silicon Music 3 needs mlx-audio (mlx_audio.music, >=0.5.0). Intel
+# Macs, Linux, and Windows stay on [dev] — mlx has no CUDA wheels here.
+extras="dev"
+if [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]]; then
+  extras="dev,mlx"
+fi
+pip install -e ".[${extras}]" 2>/dev/null || pip install -e .
 exec python -m minimax_studio "$@"

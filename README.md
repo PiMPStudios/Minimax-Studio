@@ -52,10 +52,12 @@ Comfy-Org INT8 packs generate through a **running ComfyUI** (Studio does not emb
 
 First launch asks for an output folder. Models and history live there.
 
-Local Music 3 generate also needs PyTorch + diffusers (CUDA) or mlx-audio (Mac):
+Local Music 3 generate also needs PyTorch + diffusers (CUDA) or mlx-audio (Mac).
+`scripts/run.sh` installs the `[mlx]` extra on Apple Silicon.
 
 ```bash
-pip install torch diffusers accelerate
+pip install torch diffusers accelerate   # NVIDIA
+pip install -e ".[mlx]"                  # Apple Silicon (mlx-audio >= 0.5.0)
 ```
 
 Optional OS keychain for API tokens:

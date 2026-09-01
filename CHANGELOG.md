@@ -12,6 +12,25 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.41] — 2026-08-31
+
+Apple Silicon Music 3 extra. `scripts/run.sh` now installs `mlx-audio` on
+Darwin arm64 so Generate Music can load the MXFP8 pack.
+
+### Added
+
+- **`[mlx]` extra** (`mlx-audio>=0.5.0`). That floor is the first release
+  with `mlx_audio.music` (MiniMax Music 3). `run.sh` installs
+  `.[dev,mlx]` on Apple Silicon only. Windows, Linux, Intel Mac, and CI
+  stay on `.[dev]`.
+
+### Changed
+
+- Import error for a missing `mlx-audio` names the extra instead of only
+  linking the upstream repo.
+- MLX generate maps seed `-1` (Studio random) to a non-negative int.
+  `mlx-audio` types `seed` as `int`; `None` TypeError'd on first Generate.
+
 ## [0.2.40] — 2026-08-31
 
 H3 training-files catalog pack. ConvRot INT8 LoRA tiers no longer ask for the

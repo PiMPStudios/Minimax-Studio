@@ -23,6 +23,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
 secrets = ["keyring>=25"]
+# Apple Silicon Music 3. mlx-audio 0.5.0 added mlx_audio.music (MiniMax
+# Music 3); 0.4.x has no such module. scripts/run.sh installs this extra
+# on Darwin arm64 only — mlx has no CUDA wheels and Intel Macs are not
+# apple_silicon in probe().
+mlx = ["mlx-audio>=0.5.0"]
 # SimpleTuner pulls torch — that is fine: the trainer runs as its own
 # detached process (worker/train_runs.py); the GUI never imports it.
 # Version pinned: our configs are generated to this contract (PLAN-V2 S0).

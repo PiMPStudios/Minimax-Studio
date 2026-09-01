@@ -216,18 +216,24 @@ def _generate_mlx(job_id: str, request: JobRequest, wav_path: Path) -> dict[str,
         from mlx_audio.music import load
     except ImportError as exc:
         raise RuntimeError(
-            "Mac Music 3 needs mlx-audio. "
+            "Mac Music 3 needs mlx-audio>=0.5.0 in this venv "
+            "(pip install -e '.[mlx]'). "
             "See https://github.com/Blaizzy/mlx-audio"
         ) from exc
     model = load(str(pack_dir))
     update_job(job_id, message="Sampling", progress=0.4)
+    # mlx-audio.music.generate types seed as int (default 0). Studio's
+    # default seed is -1 meaning random — None TypeErrors on Mac.
+    seed = int(request.seed)
+    if seed < 0:
+        seed = int.from_bytes(os.urandom(4), "big") & 0x7FFFFFFF
     result = next(
         model.generate(
             text=request.prompt,
             lyrics=request.lyrics or "",
             duration=float(request.duration_s),
             steps=int(request.steps),
-            seed=None if request.seed < 0 else int(request.seed),
+            seed=seed,
         )
     )
     update_job(job_id, message="Writing WAV", progress=0.9)
