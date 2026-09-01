@@ -8,10 +8,10 @@ Status: **0.2.41** generate studio + Build pages (datasets, LoRA training —
 experimental; Music and H3 24 GB smokes have run on a real NVIDIA GPU).
 Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
-## Locked for v1
+## Locked
 
 - Local inference first, optional MiniMax hosted API
-- Generate studio now; datasets + LoRA training next
+- Generate studio plus experimental LoRA training (CUDA). Mac stays generate-only
 - Same Qt UI on Windows, Linux, and Mac — backends differ by GPU
 - GUI never imports PyTorch; the worker does
 
@@ -68,8 +68,10 @@ pip install 'minimax-studio[secrets]'
 
 Then enable **Store tokens in the OS keychain** in Settings.
 
-LoRA training (v2, in progress — **Experimental**) adds the pinned SimpleTuner
-engine and its torch stack:
+LoRA training is **Experimental** and CUDA-only (Mac stays generate-only).
+`scripts/run.sh` does not install the trainer. Add the pinned SimpleTuner
+4.8.0 extra in the same 3.12 venv, then **restart Studio** so the worker can
+see `simpletuner` on PATH:
 
 ```bash
 pip install -e ".[train]"      # resolves on 3.12 only; CI asserts this
