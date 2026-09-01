@@ -78,6 +78,55 @@ metal only where a take has to move.
 skipped").** Abort S2 if there is nothing honest to list. Abort S3 if warm
 pipe already wins by a lot.
 
+> **Status (0.2.43): S0 closed.** Census 2026-09-01. Trim helper
+> `worker/trim.py` (stub + real-ffmpeg wav cut). Repeat-generate: in-session
+> pipe cache already exists; official H3 CUDA cannot be timed on this box
+> (no transformer shard); Music CUDA is on disk but a 63 GB cold load was
+> not burned for S0. S3 (warm worker across GUI quit) is **deferred after
+> S1**, not skipped and not SGLang. S2 is **not aborted** — H3 has a real
+> catalog; Music stays thin.
+
+#### S0 census (Hugging Face, 2026-09-01)
+
+**Music 3** — 22 adapter-tagged repos on `MiniMaxAI/MiniMax-Music3`. Honest
+generate LoRAs, not a bazaar:
+
+| Repo | What it is | Catalog? |
+|---|---|---|
+| `bghira/minimax-music-suno-reggae-rank128-v2` (v1 too) | The two experimental reggae tests PLAN.md named | Maybe one row; still a test |
+| `SimpleTuner/minimaxmusic-reggae-test-lora-comfyui-v1-4k` | ComfyUI export of the same idea | Duplicate-ish |
+| `guillaume127/MiniMax-Music-3-Turbo-FP8` | 8-step turbo LoRA (~180 MB) plus FP8 checkpoints | Turbo LoRA yes; FP8 weights are not a LoRA |
+| `ntc-ai/minimax-music3-concept-sliders` | Bipolar LM sliders (gender/energy/…) | Different UX — not S2 |
+| `RareConcepts/*`, `MiniMaxMusicTraining/soad-*`, tournament dumps | Identity/SOAD research | No |
+
+Music empty-state ("import a file") stays honest. S2 may add reggae-v2 and
+the 8-step Music turbo, not a storefront.
+
+**H3** — 40 adapter-tagged repos on `MiniMaxAI/MiniMax-H3`. Enough to curate:
+
+| Repo | What it is | Catalog? |
+|---|---|---|
+| `fal/MiniMax-H3-Realism-People-LoRA` | People/faces, trigger `r34l1sm`, H3 community license, ~46k downloads | **Yes** — the obvious first row |
+| `lovis93/studio-1939-old-animation-lora-minimax-h3` | Animation style | Yes if the file is a plain `.safetensors` |
+| `MATLOWAI/MiniMax-H3-Motion-Adapter` | Rank-16 motion, FL2VA+Ref2VA | Yes |
+| `ostris/minimax_h3_ref2va_jacked_lora` | Joke/style (muscles) | Optional |
+| Comfy-Org / larryvrh / lightx2v Turbo | Fast mode | **Already a Models pack** (`h3-turbo`) — do not duplicate |
+| Alibaba PAI Acc / PDD 8-step | Extra head bank, dedicated nodes | Not S2 (not a plain LoRA picker file) |
+| `bghira/minimax-h3-anyflow-wip`, SVD-delta experiments | WIP | No |
+| NSFW AfterMidnight et al. | Explicit | Not the default catalog |
+
+S2 proceeds: H3 style LoRAs with the same territory notice as `h3-train`.
+Turbo stays on Models.
+
+#### S0 timings
+
+| Question | Answer |
+|---|---|
+| Second job, same worker | Already cached (`runtime.h3_pipe` / `runtime.music_pipe`). No GPU run needed to know this. |
+| Kill worker and reload | Official H3 CUDA: **cannot** — this machine has the training tree, not `transformer/diffusion_pytorch_model-00001-of-00014.safetensors`. Music CUDA: pack is on disk; cold load is ~63 GB VRAM/RAM. Not measured in S0. |
+| Comfy INT8 | Already warm if the user left ComfyUI running (v1). |
+| S3 | **Deferred.** In-session is solved. Detached warm-worker is quit-and-relaunch, still a product slice after History trim. SGLang stays after v3. |
+
 ### S1 — History trim
 
 The PiMP leftover people feel every day.
@@ -197,5 +246,5 @@ shortcut (History → Add from History already copies).
 
 ## Next step
 
-**S0.** Adapter census + ffmpeg trim helper (tests, no GUI) + optional
-cold-vs-warm timing on this box. Then S1 History trim.
+**S1 — History trim.** S0 is closed (0.2.43). Wire `trim_media` to a History
+**Trim…** dialog: new row, `trimmed-from`, original kept.

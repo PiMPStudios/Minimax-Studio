@@ -12,6 +12,25 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.43] — 2026-09-01
+
+PLAN-V3 S0. ffmpeg trim helper and an adapter census. No History UI yet.
+
+### Added
+
+- **`worker/trim.py`.** `trim_media(src, dest, start, end)` stream-copies
+  with ffmpeg. Video in/out snap to 24 fps. Named error when ffmpeg is
+  missing. `MINIMAX_STUDIO_FFMPEG_BIN` is the test seam (same idea as
+  ffprobe). S1 will hang a History row on this.
+
+### Notes
+
+- Hugging Face 2026-09-01: ~22 Music 3 adapter repos (thin — reggae tests,
+  one 8-step turbo, research dumps); ~40 H3 adapter repos (fal Realism
+  People is the obvious first catalog row). S2 is not aborted. Turbo stays
+  on Models. S3 warm-worker deferred; in-session pipe cache already exists.
+  Official H3 CUDA cannot be timed here (no transformer shard).
+
 ## [0.2.42] — 2026-09-01
 
 Caption validator. Extra lines in a `.txt` no longer reach SimpleTuner as
