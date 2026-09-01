@@ -12,6 +12,17 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.44] — 2026-09-01
+
+History trim. In/out points write a **new** take; the original stays.
+
+### Added
+
+- **History Trim…** In and out timestamps, ffmpeg stream-copy, new History
+  row with `trimmed_from`. Restore to Generate still works. Delete of the
+  child does not delete the parent. Video in/out snap to 24 fps. Missing
+  ffmpeg is a named error; the button stays enabled.
+
 ## [0.2.43] — 2026-09-01
 
 PLAN-V3 S0. ffmpeg trim helper and an adapter census. No History UI yet.

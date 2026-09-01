@@ -101,6 +101,15 @@ class WorkerClient:
     def delete_history(self, entry_id: str) -> dict[str, Any]:
         return self._delete(f"/history/{_seg(entry_id)}")
 
+    def trim_history(
+        self, entry_id: str, start_s: float, end_s: float
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/history/{_seg(entry_id)}/trim",
+            {"start_s": float(start_s), "end_s": float(end_s)},
+            timeout=120.0,
+        )
+
     def write_lyrics(self, prompt: str, notes: str = "") -> dict[str, Any]:
         return self._post("/lyrics", {"prompt": prompt, "notes": notes}, timeout=180.0)
 

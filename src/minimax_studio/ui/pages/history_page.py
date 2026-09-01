@@ -5,7 +5,11 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -29,6 +33,8 @@ def _history_detail(entry: dict) -> str:
     if entry.get("audition"):
         # An audition is a check-up, not a take — say so before the prompt.
         bits.append(f"audition of {str(entry['audition']).split(':', 1)[-1]}")
+    if entry.get("trimmed_from"):
+        bits.append(f"trimmed from {entry['trimmed_from']}")
     meta = []
     if entry.get("mode"):
         meta.append(str(entry["mode"]))
@@ -99,6 +105,13 @@ class HistoryPage(QWidget):
         self._play.clicked.connect(self._play_current)
         restore = QPushButton("Restore to Generate")
         restore.clicked.connect(self._restore_current)
+        trim = QPushButton("Trim…")
+        trim.setToolTip(
+            "Cut in/out points into a new take. The original stays. "
+            "Needs ffmpeg on PATH (same binary H3 mux uses)."
+        )
+        trim.clicked.connect(self._trim_current)
+        self._trim = trim
         delete = QPushButton("Delete")
         delete.clicked.connect(self._delete_current)
         export = QPushButton("Export…")
@@ -109,6 +122,7 @@ class HistoryPage(QWidget):
         copy.clicked.connect(self._copy_prompt)
         row.addWidget(self._play)
         row.addWidget(restore)
+        row.addWidget(trim)
         row.addWidget(export)
         row.addWidget(show)
         row.addWidget(copy)
@@ -157,6 +171,8 @@ class HistoryPage(QWidget):
             bits = [str(kind)]
             if entry.get("audition"):
                 bits.append("audition")
+            if entry.get("trimmed_from"):
+                bits.append("trim")
             if entry.get("backend"):
                 bits.append(str(entry["backend"]))
             if entry.get("duration_s"):
@@ -199,6 +215,49 @@ class HistoryPage(QWidget):
             self._state.restore_music.emit(entry)
         else:
             self._state.restore_video.emit(entry)
+
+    def _trim_current(self) -> None:
+        entry = self._current()
+        if not entry:
+            return
+        if not entry.get("output_path"):
+            QMessageBox.information(self, "Trim", "This take has no file on disk.")
+            return
+        dialog = TrimDialog(float(entry.get("duration_s") or 0), self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        start_s, end_s = dialog.points()
+        entry_id = str(entry["id"])
+        from minimax_studio.ui.enhance import start_background
+
+        self._trim.setEnabled(False)
+
+        def work() -> dict:
+            try:
+                return self._client.trim_history(entry_id, start_s, end_s)
+            except Exception as exc:
+                return {"_error": str(exc)}
+
+        def done(payload: object) -> None:
+            self._trim.setEnabled(True)
+            if not isinstance(payload, dict):
+                return
+            if payload.get("_error"):
+                QMessageBox.warning(self, "Trim failed", str(payload["_error"]))
+                return
+            self.refresh()
+            child_id = str(payload.get("id") or "")
+            for index, row in enumerate(self._visible):
+                if row.get("id") == child_id:
+                    self._list.setCurrentRow(index)
+                    break
+
+        def fail() -> None:
+            self._trim.setEnabled(True)
+            QMessageBox.warning(self, "Trim failed", "The worker did not answer.")
+
+        if not start_background(self, work, done, fail, attr="_trim_thread"):
+            self._trim.setEnabled(True)
 
     def _export_current(self) -> None:
         import shutil
@@ -270,3 +329,41 @@ class HistoryPage(QWidget):
             QMessageBox.warning(self, "Delete failed", str(exc))
             return
         self.refresh()
+
+
+class TrimDialog(QDialog):
+    """In/out timestamps. The worker snaps video to 24 fps and writes a new take."""
+
+    def __init__(self, duration_s: float, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Trim take")
+        length = max(0.0, float(duration_s or 0))
+        end_default = length if length > 0 else 8.0
+        layout = QVBoxLayout(self)
+        note = QLabel(
+            "Writes a new History row. The original take is not changed. "
+            "Needs ffmpeg on PATH."
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        form = QFormLayout()
+        self._start = QDoubleSpinBox()
+        self._end = QDoubleSpinBox()
+        for box in (self._start, self._end):
+            box.setDecimals(2)
+            box.setRange(0.0, 300.0)
+            box.setSuffix(" s")
+        self._start.setValue(0.0)
+        self._end.setValue(min(end_default, 300.0))
+        form.addRow("Start", self._start)
+        form.addRow("End", self._end)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def points(self) -> tuple[float, float]:
+        return float(self._start.value()), float(self._end.value())

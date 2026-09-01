@@ -194,6 +194,45 @@ def test_history_detail_includes_seed() -> None:
     assert "a fox" in text
 
 
+def test_history_trim_dialog_defaults_and_restore_on_child(tmp_path) -> None:
+    app = QApplication.instance() or QApplication([])
+    apply_theme(app)
+
+    from minimax_studio.ui.pages.history_page import (
+        HistoryPage,
+        TrimDialog,
+        _history_detail,
+    )
+    from minimax_studio.ui.state import StudioState
+
+    dialog = TrimDialog(8.0)
+    assert dialog.points() == (0.0, 8.0)
+    dialog.close()
+
+    child = {
+        "id": "childchild12",
+        "kind": "music",
+        "prompt": "folk song",
+        "output_path": str(tmp_path / "cut.wav"),
+        "trimmed_from": "parentparent",
+        "duration_s": 2.5,
+    }
+    assert "trimmed from parentparent" in _history_detail(child)
+
+    class HistoryClient(FakeWorker):
+        def list_history(self) -> list:
+            return [child]
+
+    state = StudioState()
+    caught: list = []
+    state.restore_music.connect(lambda entry: caught.append(entry))
+    page = HistoryPage(HistoryClient(), state)  # type: ignore[arg-type]
+    page.refresh()
+    assert "trim" in page._list.item(0).text()
+    page._restore_current()
+    assert caught and caught[0]["trimmed_from"] == "parentparent"
+
+
 def test_presets_filter(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])
     apply_theme(app)

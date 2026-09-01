@@ -63,9 +63,10 @@ copy, never a ComfyUI folder.</p>
 packs already on disk. H3 duration in the inspector snaps to the model’s
 5–15 s / 24 fps frame grid.</p>
 <p>The status bar shows the live generate job (Cancel stops it). History
-<b>Show in folder</b> opens the take in the file manager. File menu opens the
-output and models folders. H3 local generate wants <code>ffmpeg</code> on PATH
-for MP4 mux.</p>
+<b>Show in folder</b> opens the take in the file manager. <b>Trim…</b> cuts
+in/out points into a <i>new</i> take (the original stays) and needs
+<code>ffmpeg</code> on PATH. File menu opens the output and models folders.
+H3 local generate wants <code>ffmpeg</code> on PATH for MP4 mux.</p>
 <p>Go menu: Ctrl+1…7 switches pages (Build pages: Ctrl+Shift+D / T / A),
 Ctrl+Enter generates on Video/Music.
 <b>Start ComfyUI</b> (Welcome, Settings, or Go) launches a detected

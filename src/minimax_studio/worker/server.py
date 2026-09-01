@@ -14,7 +14,12 @@ from minimax_studio import __version__
 from minimax_studio.config import AppConfig, save_config
 from minimax_studio.worker import downloads
 from minimax_studio.worker.backends.h3_api import run_context_ir
-from minimax_studio.worker.history import delete_entry, get_entry, list_history
+from minimax_studio.worker.history import (
+    delete_entry,
+    get_entry,
+    list_history,
+    trim_entry,
+)
 from minimax_studio.worker.jobs import (
     JobRequest,
     cancel_job,
@@ -304,6 +309,21 @@ def remove_history(entry_id: str) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     delete_entry(entry_id)
     return {"ok": True, "id": entry_id}
+
+
+class HistoryTrimIn(BaseModel):
+    start_s: float = 0
+    end_s: float
+
+
+@app.post("/history/{entry_id}/trim")
+def trim_history(entry_id: str, body: HistoryTrimIn) -> dict[str, object]:
+    try:
+        return trim_entry(entry_id, body.start_s, body.end_s)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class PresetIn(BaseModel):

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 from minimax_studio.worker.fsutil import atomic_write_text
 from minimax_studio.worker.runtime import runtime
+from minimax_studio.worker.trim import VIDEO_EXTS, trim_media
 
 
 def history_index_path() -> Path:
@@ -78,6 +81,58 @@ def delete_entry(entry_id: str) -> None:
             if row.get("id") != entry_id
         ]
         _write_index(index, kept)
+
+
+def trim_entry(entry_id: str, start_s: float, end_s: float) -> dict[str, Any]:
+    """Cut ``[start_s, end_s)`` of a take into a **new** History row.
+
+    The original is never mutated. The child keeps prompt/lyrics/loras/mode
+    so Restore to Generate still works. ``trimmed_from`` is the parent id.
+    """
+    parent = get_entry(entry_id)
+    src = Path(str(parent.get("output_path") or ""))
+    if not src.is_file():
+        raise RuntimeError("This take has no file on disk to trim.")
+    root = runtime.config.history_root().resolve()
+    new_id = _fresh_id(root)
+    name = _trim_filename(src)
+    dest = (root / new_id / name).resolve()
+    if dest != root and root not in dest.parents:
+        raise RuntimeError("refusing to write a trim outside History")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        cut = trim_media(src, dest, start_s, end_s)
+    except Exception:
+        shutil.rmtree(dest.parent, ignore_errors=True)
+        raise
+    skip = {"id", "created_at", "dir", "output_path", "duration_s"}
+    child = {key: value for key, value in parent.items() if key not in skip}
+    child.update(
+        {
+            "id": new_id,
+            "output_path": str(dest),
+            "duration_s": cut["duration_s"],
+            "trimmed_from": parent["id"],
+            "trim_start_s": cut["start_s"],
+            "trim_end_s": cut["end_s"],
+        }
+    )
+    return record_entry(child)
+
+
+def _fresh_id(root: Path) -> str:
+    for _ in range(8):
+        candidate = uuid.uuid4().hex[:12]
+        if not (root / candidate).exists():
+            return candidate
+    raise RuntimeError("could not allocate a History id")
+
+
+def _trim_filename(src: Path) -> str:
+    name = src.name
+    if Path(name).name != name or name in {".", ".."}:
+        return "video.mp4" if src.suffix.lower() in VIDEO_EXTS else "audio.wav"
+    return name
 
 
 def get_entry(entry_id: str) -> dict[str, Any]:

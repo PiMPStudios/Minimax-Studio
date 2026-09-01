@@ -115,3 +115,50 @@ def test_file_data_url_rejects_unknown_type(tmp_path) -> None:
         raise AssertionError("expected rejection of unknown extension")
     except RuntimeError as exc:
         assert "Unsupported asset type" in str(exc)
+
+
+def test_history_trim_route(studio_home, tmp_path, monkeypatch) -> None:
+    import sys
+    from pathlib import Path
+
+    from minimax_studio.worker.history import record_entry
+
+    script = tmp_path / "ffmpeg_stub.py"
+    script.write_text(
+        "import pathlib, sys\npathlib.Path(sys.argv[-1]).write_bytes(b'trimmed')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        "MINIMAX_STUDIO_FFMPEG_BIN", f'"{sys.executable}" "{script}"'
+    )
+    folder = studio_home / "history" / "parentparent"
+    folder.mkdir(parents=True)
+    src = folder / "audio.wav"
+    src.write_bytes(b"RIFF")
+    record_entry(
+        {
+            "id": "parentparent",
+            "kind": "music",
+            "prompt": "folk",
+            "duration_s": 8,
+            "output_path": str(src),
+        }
+    )
+    client = TestClient(app)
+    payload = client.post(
+        "/history/parentparent/trim", json={"start_s": 0, "end_s": 2}
+    )
+    assert payload.status_code == 200, payload.text
+    body = payload.json()
+    assert body["trimmed_from"] == "parentparent"
+    assert Path(body["output_path"]).read_bytes() == b"trimmed"
+
+    monkeypatch.delenv("MINIMAX_STUDIO_FFMPEG_BIN", raising=False)
+    monkeypatch.setattr(
+        "minimax_studio.worker.trim.shutil.which", lambda _name: None
+    )
+    missing = client.post(
+        "/history/parentparent/trim", json={"start_s": 0, "end_s": 1}
+    )
+    assert missing.status_code == 400
+    assert "install ffmpeg" in missing.json()["detail"]

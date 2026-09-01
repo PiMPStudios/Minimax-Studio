@@ -129,6 +129,12 @@ Turbo stays on Models.
 
 ### S1 — History trim
 
+> **Status (0.2.44): landed.** History **Trim…** writes a new row
+> (`trimmed_from`, duration the cut). Original file is untouched. Child
+> delete does not chase the parent. ffmpeg missing is a named 400; the
+> button stays enabled. Video in/out snap to 24 fps (S0 helper). Off-GPU
+> tests cover containment, provenance, restore-on-child, and the route.
+
 The PiMP leftover people feel every day.
 
 - History grows **Trim…** (in/out on the selected take). Preview in the
@@ -246,5 +252,6 @@ shortcut (History → Add from History already copies).
 
 ## Next step
 
-**S1 — History trim.** S0 is closed (0.2.43). Wire `trim_media` to a History
-**Trim…** dialog: new row, `trimmed-from`, original kept.
+**S2 — Adapter catalog.** S0 census stands: H3 first row
+`fal/MiniMax-H3-Realism-People-LoRA`; Music stays thin. S1 trim is closed
+(0.2.44).
