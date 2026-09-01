@@ -343,13 +343,13 @@ the history book.
 
 ### v3 — Studio extras (the take after it lands)
 
-**Plan written: [PLAN-V3.md](PLAN-V3.md).** Enhance/Context-IR and Comfy
-model-root import already shipped in v1. Remaining slices: History trim,
-curated adapter catalog, repeat-generate only if measurement says so.
+**Closed.** Plan: [PLAN-V3.md](PLAN-V3.md). History trim and curated adapter
+catalog shipped (0.2.44–0.2.45). Repeat-generate warm worker skipped
+(in-session pipe cache is enough).
 
 - Light audio/video trim in History (new take; original kept)
 - Curated adapter catalog (download + import; no sharing)
-- Faster repeat generate — measurement-gated; SGLang after v3 by default
+- Faster repeat generate — skipped; SGLang after v3
 
 ---
 

@@ -83,7 +83,7 @@ pipe already wins by a lot.
 > pipe cache already exists; official H3 CUDA cannot be timed on this box
 > (no transformer shard); Music CUDA is on disk but a 63 GB cold load was
 > not burned for S0. S3 (warm worker across GUI quit) is **deferred after
-> S1**, not skipped and not SGLang. S2 is **not aborted** — H3 has a real
+> S1; skipped 2026-09-01). S2 is **not aborted** — H3 has a real
 > catalog; Music stays thin.
 
 #### S0 census (Hugging Face, 2026-09-01)
@@ -178,16 +178,12 @@ Metal: one small adapter download if S0 found one; otherwise skip.
 
 ### S3 — Repeat generate (measurement-gated)
 
-Only if S0 said quit-and-relaunch is the expensive part.
-
-- **In scope:** keep the generate worker alive when the window quits (same
-  idea as training: detached process, GUI reconnects on launch, named in the
-  status bar). One GPU still. Training preflight already refuses while a
-  generate job is live — a warm worker with no job is idle, not a fight.
-- **Out of scope:** SGLang as a third server, RunPod, "generate on another
-  machine."
-- If S0 timings show the in-process pipe cache is enough, **write "S3
-  skipped"** here and stop. Do not build a daemon for theory.
+> **Status: skipped (2026-09-01).** In-session pipe cache already exists
+> (`runtime.h3_pipe` / `runtime.music_pipe`). Comfy INT8 stays warm if
+> ComfyUI is left running. A detached generate worker that survives GUI
+> quit was left unbuilt — same call as auto-audition: don't burn GPU or
+> process lifetime for a reload the user can avoid by leaving Studio open.
+> SGLang stays after v3.
 
 ---
 
@@ -211,10 +207,7 @@ CI stays off-GPU, all of it.
 - Trim: stub `ffmpeg` argv + fixture bytes; refuse when the binary is missing
 - History: child entry schema, `trimmed-from`, delete isolation
 - Catalog: pack_status markers, disk guard, import registry row
-- Warm worker (only if S3 is not skipped): reconnect against a stub process
-
-Metal checklists at the bottom of S1 (and S2/S3 if they ship), pasted into
-the release notes.
+Metal checklists at the bottom of S1/S2, pasted into the release notes.
 
 ## Risks & abort criteria
 
@@ -258,6 +251,6 @@ shortcut (History → Add from History already copies).
 
 ## Next step
 
-**S3 remains deferred** (in-session pipe cache already exists). v3 S0–S2
-are closed. Remaining v3 work is optional: warm worker across GUI quit,
-or stop here.
+**v3 is closed.** S0 census + trim helper (0.2.43), History trim (0.2.44),
+adapter catalog (0.2.45). S3 skipped. After v3 is still MCP, RunPod, Mac
+training, SGLang, GGUF, LyCORIS UI, …
