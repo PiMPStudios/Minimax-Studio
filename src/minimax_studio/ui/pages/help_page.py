@@ -141,7 +141,10 @@ where each came from: <b>trained here</b> (dataset name, clip count, a hash of
 those clip names and sizes, run id, preset, rank, steps, the pinned
 SimpleTuner version), <b>imported</b> (you brought the file), or <b>found on
 disk</b> — files Studio never registered but the picker loads anyway, which is
-worth saying out loud rather than hiding.</p>
+worth saying out loud rather than hiding. A short <b>Catalog</b> on that page
+downloads known H3 LoRAs (Realism People, Motion) into <code>models/loras/</code>
+with the same territory notice as H3 weights. Music is still Import a file —
+that catalog is thin. Not a store, not a Hugging Face scrape.</p>
 <p><b>Audition</b> queues one short render at 0.8 strength with the caption
 that clip set used most — 30 s of Music, or a 5 s H3 still-pair (first and last
 frame from the dataset, or text-to-video if there are no stills) — so the

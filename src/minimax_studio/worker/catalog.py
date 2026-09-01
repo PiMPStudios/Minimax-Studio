@@ -238,9 +238,53 @@ PACKS: dict[str, Pack] = {
     ),
 }
 
+MUSIC_CREDIT = (
+    "The MiniMax-Music3 Community License requires UI credit on commercial "
+    "products. There is no geographic carve-out."
+)
+
+# PLAN-V3 S2: curated LoRAs, not a live scrape. Kind ``lora`` so Models does
+# not list them. They land in models/loras/ next to trained/imported files.
+ADAPTERS: dict[str, Pack] = {
+    "h3-realism-people": Pack(
+        id="h3-realism-people",
+        title="H3 Realism People (fal)",
+        summary=(
+            "Faces, skin, people. Start the prompt with r34l1sm. "
+            "Strength 1.0; 0.6–0.8 for a lighter touch."
+        ),
+        repo_id="fal/MiniMax-H3-Realism-People-LoRA",
+        local_dir="loras",
+        approx_gb=0.13,
+        license_name="MiniMax H3 Community License",
+        family="h3",
+        kind="lora",
+        allow_patterns=("h3-realism-people-t2v-i2v-r2v.safetensors",),
+        marker_files=("h3-realism-people-t2v-i2v-r2v.safetensors",),
+        territory_notice=H3_TERRITORY,
+    ),
+    "h3-motion": Pack(
+        id="h3-motion",
+        title="H3 Motion Adapter (MATLOWAI)",
+        summary=(
+            "Rank-16 motion LoRA for FL2VA and Ref2VA. Reduces frame-to-frame "
+            "snap on fast motion."
+        ),
+        repo_id="MATLOWAI/MiniMax-H3-Motion-Adapter",
+        local_dir="loras",
+        approx_gb=0.06,
+        license_name="MiniMax H3 Community License",
+        family="h3",
+        kind="lora",
+        allow_patterns=("minimax_h3_motion_adapter_pilot_r16.safetensors",),
+        marker_files=("minimax_h3_motion_adapter_pilot_r16.safetensors",),
+        territory_notice=H3_TERRITORY,
+    ),
+}
+
 
 def pack_or_raise(pack_id: str) -> Pack:
-    try:
-        return PACKS[pack_id]
-    except KeyError as exc:
-        raise KeyError(f"unknown pack: {pack_id}") from exc
+    pack = PACKS.get(pack_id) or ADAPTERS.get(pack_id)
+    if pack is None:
+        raise KeyError(f"unknown pack: {pack_id}")
+    return pack

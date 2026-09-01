@@ -155,6 +155,12 @@ and one H3 mp4, play both, restore the child.
 
 ### S2 — Adapter catalog
 
+> **Status (0.2.45): landed.** Curated `ADAPTERS` in `catalog.py` (not on
+> Models). Two H3 rows: fal Realism People, MATLOWAI Motion. Download →
+> `models/loras/` + `record_imported` (kind h3). Territory notice on
+> download. Delete unlinks that file only. Music catalog skipped (reggae
+> v2 is HF gated; turbo is mixed with FP8 checkpoints).
+
 Browse and download, not a store.
 
 - Models-page cousin on Adapters: a short list of **known** LoRAs (id, title,
@@ -252,6 +258,6 @@ shortcut (History → Add from History already copies).
 
 ## Next step
 
-**S2 — Adapter catalog.** S0 census stands: H3 first row
-`fal/MiniMax-H3-Realism-People-LoRA`; Music stays thin. S1 trim is closed
-(0.2.44).
+**S3 remains deferred** (in-session pipe cache already exists). v3 S0–S2
+are closed. Remaining v3 work is optional: warm worker across GUI quit,
+or stop here.

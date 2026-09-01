@@ -103,11 +103,28 @@ class FakeAdapterWorker:
         self.forgotten: list[str] = []
         self.imported: list[str] = []
         self.import_kinds: list[str | None] = []
+        self.catalog: list[dict[str, Any]] = []
+        self.started: list[str] = []
+        self.deleted_packs: list[str] = []
         for key, value in overrides.items():
             setattr(self, key, value)
 
     def list_adapters(self) -> list[dict[str, Any]]:
         return self.rows
+
+    def list_adapter_catalog(self) -> list[dict[str, Any]]:
+        return self.catalog
+
+    def list_downloads(self) -> list[dict[str, Any]]:
+        return []
+
+    def start_download(self, pack_id: str, force: bool = False) -> dict[str, Any]:
+        self.started.append(pack_id)
+        return {"id": "dl1", "pack_id": pack_id, "status": "queued"}
+
+    def delete_pack(self, pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
+        self.deleted_packs.append(pack_id)
+        return {"ok": True, "removed": True}
 
     def audition_adapter(
         self,
@@ -329,3 +346,27 @@ def test_import_bring_its_own_provenance_label(app, monkeypatch) -> None:
     assert worker.imported == ["/home/me/cool.safetensors"]
     assert worker.import_kinds == ["music"]
     assert "listed as imported" in page._status.text()
+
+
+def test_catalog_lists_rows_and_download_asks_territory(app, no_modals) -> None:
+    worker = FakeAdapterWorker(
+        catalog=[
+            {
+                "id": "h3-realism-people",
+                "title": "H3 Realism People (fal)",
+                "family": "h3",
+                "approx_gb": 0.13,
+                "ready": False,
+                "summary": "r34l1sm",
+                "territory_notice": "US/EU/UK/KR",
+                "license_name": "MiniMax H3 Community License",
+            }
+        ]
+    )
+    page = AdaptersPage(worker)
+    assert page._catalog.topLevelItemCount() == 1
+    assert "Realism People" in page._catalog.topLevelItem(0).text(0)
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    page._download_catalog()
+    assert worker.started == ["h3-realism-people"]
+    assert any(item[0] == "question" and "US/EU" in item[1] for item in no_modals)

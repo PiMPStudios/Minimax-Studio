@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from minimax_studio.worker.catalog import PACKS, Pack, pack_or_raise
+from minimax_studio.worker.catalog import ADAPTERS, PACKS, Pack, pack_or_raise
 from minimax_studio.worker.fsutil import dir_bytes, first_existing
 from minimax_studio.worker.model_paths import pack_status as _pack_status
 from minimax_studio.worker.model_paths import search_roots
@@ -53,6 +53,12 @@ def list_packs() -> list[dict[str, Any]]:
         row["recommended"] = pack.id in recommended
         rows.append(row)
     return rows
+
+
+def list_adapter_catalog() -> list[dict[str, Any]]:
+    """Curated LoRAs for the Adapters page. Not listed on Models."""
+    root = runtime.config.models_root()
+    return [pack_status(pack, root) for pack in ADAPTERS.values()]
 
 
 def start_download(
@@ -167,7 +173,10 @@ def _run_download(
             # Some MLX packs use different markers; accept any file present.
             if first_existing(dest, pack.marker_files) is None and dir_bytes(dest) == 0:
                 raise RuntimeError("download finished but pack files are missing")
-        _ensure_license(pack.repo_id, dest, runtime.config.hf_token)
+        if pack.kind != "lora":
+            _ensure_license(pack.repo_id, dest, runtime.config.hf_token)
+        if pack.kind == "lora":
+            _register_imported_lora(pack, dest)
         from minimax_studio.worker.model_paths import reset_bytes_cache
 
         reset_bytes_cache()
@@ -311,6 +320,25 @@ def _ensure_license(repo_id: str, dest: Path, token: str | None) -> None:
             continue
 
 
+def _register_imported_lora(pack: Pack, dest: Path) -> None:
+    """Catalog downloads land in models/loras/; record provenance without copying."""
+    from minimax_studio.worker import adapters
+
+    for marker in pack.marker_files:
+        path = dest / marker
+        if not path.is_file():
+            continue
+        adapters.record_imported(
+            {
+                "id": path.name,
+                "name": path.stem,
+                "path": str(path),
+                "kind": pack.family,
+            }
+        )
+        return
+
+
 def _requires_chain(pack: Pack) -> list[Pack]:
     """Transitive `requires` closure of a pack (same or other folders)."""
     seen: set[str] = set()
@@ -351,6 +379,30 @@ def delete_pack(pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
         "kept_files": [],
     }
     if not dest.exists():
+        return result
+    if pack.kind == "lora":
+        # Trained/imported LoRAs share models/loras/. Never rmtree it.
+        before = dir_bytes(dest)
+        for marker in pack.marker_files or ():
+            path = dest / marker
+            if path.is_file():
+                try:
+                    path.unlink()
+                except OSError:
+                    result["kept_files"].append(marker)
+                    continue
+                try:
+                    from minimax_studio.worker.adapters import forget
+
+                    forget(Path(marker).name)
+                except RuntimeError:
+                    pass
+        result["removed"] = True
+        result["removed_bytes"] = max(0, before - dir_bytes(dest))
+        result["folder_kept"] = dest.exists()
+        from minimax_studio.worker.model_paths import reset_bytes_cache
+
+        reset_bytes_cache()
         return result
     before = dir_bytes(dest)
     # Installed means every marker is present. Configs that h3-train shares

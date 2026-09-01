@@ -135,6 +135,34 @@ class AdaptersPage(QWidget):
         root.addWidget(title)
         root.addWidget(subtitle)
 
+        cat_title = QLabel("Catalog")
+        cat_title.setObjectName("pageSubtitle")
+        cat_help = QLabel(
+            "Known LoRAs you can download — not a store, not a scrape. "
+            "H3 rows use the MiniMax H3 Community License (US/EU/UK/KR need a "
+            "separate grant). Music stays Import a file; that catalog is still thin."
+        )
+        cat_help.setObjectName("pageSubtitle")
+        cat_help.setWordWrap(True)
+        root.addWidget(cat_title)
+        root.addWidget(cat_help)
+        self._catalog = QTreeWidget()
+        self._catalog.setHeaderLabels(["Adapter", "Family", "Size", "Status"])
+        self._catalog.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._catalog.setMaximumHeight(140)
+        self._catalog.currentItemChanged.connect(lambda *_: self._catalog_selected())
+        root.addWidget(self._catalog)
+        cat_row = QHBoxLayout()
+        self._cat_download_btn = QPushButton("Download")
+        self._cat_download_btn.clicked.connect(self._download_catalog)
+        self._cat_remove_btn = QPushButton("Remove")
+        self._cat_remove_btn.clicked.connect(self._remove_catalog)
+        cat_row.addWidget(self._cat_download_btn)
+        cat_row.addWidget(self._cat_remove_btn)
+        cat_row.addStretch(1)
+        root.addLayout(cat_row)
+        self._catalog_rows: list[dict[str, Any]] = []
+
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["Adapter", "Source", "Kind", "Trained on", "When"])
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -202,6 +230,8 @@ class AdaptersPage(QWidget):
         self._status.setWordWrap(True)
         root.addWidget(self._status)
         self._set_buttons_enabled(False)
+        self._cat_download_btn.setEnabled(False)
+        self._cat_remove_btn.setEnabled(False)
         self.refresh()
 
     # --- data ---------------------------------------------------------------
@@ -214,26 +244,176 @@ class AdaptersPage(QWidget):
             return
         self._rows = rows
         self._rebuild_rows()
+        self._refresh_catalog()
+
+    def _refresh_catalog(self) -> None:
+        list_cat = getattr(self._client, "list_adapter_catalog", None)
+        if not callable(list_cat):
+            return
+        try:
+            catalog = list_cat()
+            downloads: dict[str, Any] = {}
+            list_dl = getattr(self._client, "list_downloads", None)
+            if callable(list_dl):
+                downloads = {
+                    item["pack_id"]: item
+                    for item in list_dl()
+                    if isinstance(item, dict) and item.get("pack_id")
+                }
+        except Exception:
+            return
+        self._apply_catalog(catalog, downloads)
+
+    def _apply_catalog(
+        self, catalog: list[dict[str, Any]], downloads: dict[str, Any]
+    ) -> None:
+        self._catalog_rows = catalog
+        wanted = None
+        current = self._catalog.currentItem()
+        if current is not None:
+            wanted = current.data(0, Qt.ItemDataRole.UserRole)
+        self._catalog.blockSignals(True)
+        self._catalog.clear()
+        for pack in catalog:
+            size = float(pack.get("approx_gb") or 0)
+            size_s = f"{size * 1024:.0f} MB" if size < 1 else f"{size:.1f} GB"
+            job = downloads.get(str(pack.get("id")))
+            status = "Ready" if pack.get("ready") else "Not downloaded"
+            if job and job.get("status") in {"queued", "running", "cancelling"}:
+                status = str(job.get("message") or job.get("status") or "Downloading")
+            elif job and job.get("status") == "error":
+                status = "Failed"
+            item = QTreeWidgetItem(
+                [
+                    str(pack.get("title") or pack.get("id")),
+                    str(pack.get("family") or ""),
+                    size_s,
+                    status,
+                ]
+            )
+            item.setData(0, Qt.ItemDataRole.UserRole, str(pack.get("id")))
+            item.setToolTip(0, str(pack.get("summary") or ""))
+            if pack.get("ready"):
+                item.setForeground(3, _OK)
+            self._catalog.addTopLevelItem(item)
+        self._catalog.blockSignals(False)
+        restore = next(
+            (
+                index
+                for index in range(self._catalog.topLevelItemCount())
+                if self._catalog.topLevelItem(index).data(0, Qt.ItemDataRole.UserRole)
+                == wanted
+            ),
+            None,
+        )
+        if restore is not None:
+            self._catalog.setCurrentItem(self._catalog.topLevelItem(restore))
+        elif self._catalog.topLevelItemCount():
+            self._catalog.setCurrentItem(self._catalog.topLevelItem(0))
+        self._catalog_selected()
+
+    def _catalog_current(self) -> dict[str, Any] | None:
+        item = self._catalog.currentItem()
+        if item is None:
+            return None
+        pack_id = item.data(0, Qt.ItemDataRole.UserRole)
+        return next((row for row in self._catalog_rows if row.get("id") == pack_id), None)
+
+    def _catalog_selected(self) -> None:
+        pack = self._catalog_current()
+        self._cat_download_btn.setEnabled(bool(pack) and not pack.get("ready"))
+        self._cat_remove_btn.setEnabled(bool(pack) and bool(pack.get("ready")))
+
+    def _download_catalog(self) -> None:
+        pack = self._catalog_current()
+        if not pack:
+            return
+        notice = pack.get("territory_notice")
+        if notice:
+            answer = QMessageBox.question(
+                self,
+                pack.get("license_name") or "License",
+                str(notice) + "\n\nDownload this adapter anyway?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            self._client.start_download(str(pack["id"]))
+        except Exception as exc:
+            message = str(exc)
+            if "Not enough free disk" not in message:
+                QMessageBox.warning(self, "Download failed", message)
+                return
+            answer = QMessageBox.question(
+                self, "Low disk space", message + "\n\nDownload anyway?"
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            try:
+                self._client.start_download(str(pack["id"]), force=True)
+            except Exception as exc2:
+                QMessageBox.warning(self, "Download failed", str(exc2))
+                return
+        self._status.setText(f"Downloading “{pack.get('title')}”…")
+        self._refresh_catalog()
+
+    def _remove_catalog(self) -> None:
+        pack = self._catalog_current()
+        if not pack:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Remove adapter",
+            f"Delete the Studio copy of “{pack.get('title')}”? "
+            "Other LoRAs in the same folder are left alone.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self._client.delete_pack(str(pack["id"]))
+        except Exception as exc:
+            QMessageBox.warning(self, "Remove failed", str(exc))
+            return
+        self._status.setText(f"Removed “{pack.get('title')}”.")
+        self.refresh()
 
     def poll(self) -> None:
         """Timer path: list adapters off the GUI thread. Overlapping polls skip."""
         from minimax_studio.ui.enhance import start_background
 
+        def work() -> tuple[list, list, dict]:
+            catalog: list = []
+            downloads: dict = {}
+            rows = self._client.list_adapters()
+            list_cat = getattr(self._client, "list_adapter_catalog", None)
+            if callable(list_cat):
+                catalog = list_cat()
+            list_dl = getattr(self._client, "list_downloads", None)
+            if callable(list_dl):
+                downloads = {
+                    item["pack_id"]: item
+                    for item in list_dl()
+                    if isinstance(item, dict) and item.get("pack_id")
+                }
+            return rows, catalog, downloads
+
         def done(payload: object) -> None:
-            if not isinstance(payload, list):
+            if not isinstance(payload, tuple) or len(payload) != 3:
                 return
-            signature = self._rows_signature(payload)
-            previous = self._rows_signature(self._rows)
-            self._rows = payload
-            if signature != previous:
-                self._rebuild_rows()
+            rows, catalog, downloads = payload
+            if isinstance(rows, list):
+                signature = self._rows_signature(rows)
+                previous = self._rows_signature(self._rows)
+                self._rows = rows
+                if signature != previous:
+                    self._rebuild_rows()
+            if isinstance(catalog, list):
+                self._apply_catalog(catalog, downloads if isinstance(downloads, dict) else {})
 
         def fail() -> None:
             self._status.setText("Could not list adapters — keeping the last list.")
 
-        start_background(
-            self, self._client.list_adapters, done, fail, attr="_poll_thread"
-        )
+        start_background(self, work, done, fail, attr="_poll_thread")
 
     def _rows_signature(self, rows: list[dict[str, Any]]) -> list[tuple]:
         return [

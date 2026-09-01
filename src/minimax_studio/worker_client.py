@@ -293,6 +293,9 @@ class WorkerClient:
     def list_adapters(self) -> list[dict[str, Any]]:
         return self._get_list("/adapters")
 
+    def list_adapter_catalog(self) -> list[dict[str, Any]]:
+        return self._get_list("/adapters/catalog")
+
     def audition_adapter(
         self,
         adapter_id: str,

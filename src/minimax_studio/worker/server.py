@@ -671,6 +671,16 @@ def adapter_list() -> list[dict[str, object]]:
     return adapters.list_adapters()
 
 
+@app.get("/adapters/catalog")
+def adapter_catalog() -> list[dict[str, object]]:
+    from minimax_studio.worker.downloads import list_adapter_catalog
+
+    try:
+        return list_adapter_catalog()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/adapters/{adapter_id}/audition")
 def adapter_audition(adapter_id: str, body: AuditionIn) -> dict[str, object]:
     """Queue the 30 s / 0.8-strength render that answers 'was that worth the

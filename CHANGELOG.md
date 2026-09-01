@@ -12,6 +12,18 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.45] — 2026-09-01
+
+Adapter catalog. Curated H3 LoRAs on the Adapters page, not a store.
+
+### Added
+
+- **Adapters Catalog.** Two H3 rows: fal Realism People (trigger `r34l1sm`)
+  and MATLOWAI Motion. Download uses the Models snapshot + disk guard,
+  lands in `models/loras/`, and registers as imported. Territory notice is
+  the same US/EU/UK/KR text as H3 weights. Remove deletes only that file —
+  trained LoRAs in the same folder stay. Music stays Import a file.
+
 ## [0.2.44] — 2026-09-01
 
 History trim. In/out points write a **new** take; the original stays.
