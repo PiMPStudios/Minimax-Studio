@@ -341,13 +341,15 @@ the history book.
 - H3 LoRA via Fizgig-class trainer or a thin wrapper, stills first, clips later
 - Adapter registry, strength, audition into History (the PiMP loop)
 
-### v3 — Studio extras
+### v3 — Studio extras (the take after it lands)
 
-- Prompt enhancement / Context-IR (API) as a first-class step
-- Light audio/video trim in History
-- Community adapter browser
-- Optional Comfy model-root import
-- Persistent SGLang worker for faster repeat gens
+**Plan written: [PLAN-V3.md](PLAN-V3.md).** Enhance/Context-IR and Comfy
+model-root import already shipped in v1. Remaining slices: History trim,
+curated adapter catalog, repeat-generate only if measurement says so.
+
+- Light audio/video trim in History (new take; original kept)
+- Curated adapter catalog (download + import; no sharing)
+- Faster repeat generate — measurement-gated; SGLang after v3 by default
 
 ---
 

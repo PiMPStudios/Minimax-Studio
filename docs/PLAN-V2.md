@@ -341,5 +341,5 @@ All three closed 2026-09-01:
 
 **v1 and v2 are closed.** S0–S5 on metal (0.2.37–0.2.40), caption validator
 (0.2.42), S0 demo video declined, auto-audition declined, History→dataset
-copies. Remaining items on this document are v3 / after v2 (History trim,
-adapter browser, Mac training, MCP, RunPod, …).
+copies. v3 is [PLAN-V3.md](PLAN-V3.md). Items below that are not in v3
+stay later (Mac training, MCP, RunPod, LyCORIS UI, …).
