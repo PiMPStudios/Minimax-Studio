@@ -332,7 +332,9 @@ Out of v1: training, datasets, editor, MCP, RunPod, prompt LLM, 2K local.
 
 ### v2 — Training (PiMP “Build”)
 
-**Plan written: [PLAN-V2.md](PLAN-V2.md)** — engine research done, slices S0–S5 ordered. Summary bullets kept below for the history book.
+**Closed.** Plan: [PLAN-V2.md](PLAN-V2.md) — slices S0–S5 shipped (metal
+0.2.37–0.2.40, caption validator 0.2.42). Summary bullets kept below for
+the history book.
 
 - Datasets from local files (music: wav + `.txt` caption + `.lyrics`; video: Fizgig/Gizmo-style clip spec)
 - Music LoRA via SimpleTuner wrapper, experimental badge

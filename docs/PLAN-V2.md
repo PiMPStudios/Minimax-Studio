@@ -109,9 +109,11 @@ Nothing ships until this passes on real metal:
    Comfy NVFP4 TE are not substitutes. Not the full 130 GB official shards.
    Catalogued as `h3-train` in 0.2.40.)
 
-**Exit = demo video of 3→4 + a written config contract.** If 4 fails
-(adapter format drift), the whole plan re-thinks; if 1 fails, the extra
-becomes a managed separate venv (decision deferred to S0, both paths priced).
+**Exit = written config contract** (golden tests + metal 0.2.37). Demo video
+of 3→4 declined 2026-09-01 — metal logs and History entries are the record.
+If 4 had failed (adapter format drift), the whole plan re-thinks; if 1 had
+failed, the extra would have become a managed separate venv. Step 1 shipped
+as `[train]` on the pinned 3.12 venv.
 
 ### S1 — Datasets foundation (fully off-GPU; CI-coverable)
 
@@ -123,6 +125,8 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 > `Datasets` page (list/create/import/from-History/validate/report), built on
 > the API surface that has not needed a change since (one addition: rows carry
 > `path`, because the Train page must hand `dataset_dir` back to the worker).
+> **Caption files (0.2.42):** Validate and train-start refuse extra non-blank
+> lines in a `.txt` — SimpleTuner `textfile` is one caption per file.
 
 - `datasets.py`: `dataset.json` manifest (kind music/video, created_at,
   clip list, validation report), import from folder **and from History**
@@ -324,16 +328,18 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 
 ## Open questions (product, not engineering)
 
-1. Extra-vs-managed-venv for the trainer install → decided at S0 exit.
-2. Should completed runs auto-audition (one free render with the new
-   adapter), or is any GPU burn after "training finished" unwelcome?
-3. Datasets from History: copy clips into the dataset folder (safe, 2× disk)
-   or reference them in place (cheap, breaks when people clean History)?
+All three closed 2026-09-01:
+
+1. Extra-vs-managed-venv for the trainer install → `[train]` extra on the
+   pinned 3.12 venv (S0 / 0.2.30).
+2. Auto-audition when a run finishes → no. Audition stays one click on
+   Adapters; the person who trained runs it themselves.
+3. Datasets from History → copy into the dataset folder (S1 already does
+   this). Referencing in place is not offered.
 
 ## Next step
 
-**S0 is closed (0.2.37); H3 audition is closed (0.2.38); resume is closed
-(0.2.39); H3 training-files pack is closed (0.2.40).** `h3-train` on the
-Models page pulls official `audio_vae/` + Qwen3-VL-32B (~63 GB) into
-`h3-diffusers` without the 130 GB transformer. ConvRot INT8 tiers also want
-the Comfy FL2VA INT8 pack for the DiT.
+**v1 and v2 are closed.** S0–S5 on metal (0.2.37–0.2.40), caption validator
+(0.2.42), S0 demo video declined, auto-audition declined, History→dataset
+copies. Remaining items on this document are v3 / after v2 (History trim,
+adapter browser, Mac training, MCP, RunPod, …).
