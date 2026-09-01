@@ -47,7 +47,7 @@ second trainer.
 | Trim scope | In/out points only. No DSP, no inpaint, no beat grid, no titles. Video snaps to the H3 frame grid (same 24 fps / 17k+5 rule as Generate) |
 | Adapter catalog | **Curated list** in `catalog.py` (same shape as model packs: repo, license, markers, territory). Not a live scrape of Hugging Face |
 | Sharing | Still no "publish this LoRA". H3 Community License V.3 and PLAN-V2's legal pass stand. Download-with-notice is the same risk class as Models |
-| Repeat generate | Measure first (v3 S0). Default is "leave Studio or Comfy open." A detached **warm worker** is in scope if the measurement says quit-and-relaunch is the pain. **SGLang is after v3** unless S0 shows official CUDA cold-start is worse than that |
+| Repeat generate | In-session pipe cache. Leave Studio or Comfy open. Warm worker and SGLang are after v3 |
 | GUI invariant | GUI still never imports torch. Trim and catalog live in the worker; ffmpeg is a subprocess like SimpleTuner |
 | Hardware | Trim is CPU/ffmpeg, all platforms. Catalog is download. Warm-worker is CUDA (and MLX Music on Mac) — same generate backends as v1 |
 
@@ -125,7 +125,7 @@ Turbo stays on Models.
 | Second job, same worker | Already cached (`runtime.h3_pipe` / `runtime.music_pipe`). No GPU run needed to know this. |
 | Kill worker and reload | Official H3 CUDA: **cannot** — this machine has the training tree, not `transformer/diffusion_pytorch_model-00001-of-00014.safetensors`. Music CUDA: pack is on disk; cold load is ~63 GB VRAM/RAM. Not measured in S0. |
 | Comfy INT8 | Already warm if the user left ComfyUI running (v1). |
-| S3 | **Deferred.** In-session is solved. Detached warm-worker is quit-and-relaunch, still a product slice after History trim. SGLang stays after v3. |
+| S3 | **Skipped (2026-09-01).** In-session is solved. Leave Studio or Comfy open. SGLang stays after v3. |
 
 ### S1 — History trim
 
@@ -231,7 +231,7 @@ From PLAN.md / PLAN-V2, unchanged and still later:
 - Drift-distillation tuning UI
 - Dataset pack sharing / voice-clone datasets (licensing first)
 - Tensorboard embed
-- SGLang persistent server (unless S0 forces it — default is after v3)
+- Detached generate worker / SGLang persistent server
 - GGUF / 8 GB H3 preview
 - Spectrum, latent upscale, motion-context packs
 - In-app DSP editor, latent inpaint, 2K local
