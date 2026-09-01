@@ -342,6 +342,7 @@ def test_resume_reuses_the_recorded_spec(h3_env, tmp_path) -> None:
     config = _written_config(run_dir, state["id"])
     assert config["model_family"] == "minimaxh3"
     assert config["resume_from_checkpoint"] == "latest"
+    assert config["max_train_steps"] == 12
 
 
 # --- dataset_spec ------------------------------------------------------------

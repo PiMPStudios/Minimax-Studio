@@ -256,9 +256,10 @@ becomes a managed separate venv (decision deferred to S0, both paths priced).
 > caches behind; **Import** takes that folder back and refuses to merge onto an
 > id that is already here.
 >
-> **What S5 still cannot prove:** that `resume_from_checkpoint` is the key
-> SimpleTuner 4.8.0 actually reads, and what a rebuilt cache really costs in
-> wall-clock. S0 (0.2.37) did not exercise resume.
+> **Metal (0.2.39):** `resume_from_checkpoint: latest` loaded
+> `checkpoints/checkpoint-50` (`Loading states from …`), VAE cache had 0
+> unprocessed files, and training continued 51–60. Rebuilt-cache wall-clock
+> is still unmeasured.
 
 - Checkpoint retention policy (keep last N + best, disk-guarded), resume
   picker ("resume run from checkpoint X"), run-dir import/export, cache-dir
@@ -330,7 +331,7 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 
 ## Next step
 
-**S0 is closed (0.2.37); H3 audition is closed (0.2.38).** Remaining: a
-dedicated "H3 training files" pack for official `audio_vae/` + Qwen3-VL if we
-do not want to keep pointing at a hand-assembled `h3-diffusers` tree; resume
-from checkpoint on metal.
+**S0 is closed (0.2.37); H3 audition is closed (0.2.38); resume is closed
+(0.2.39).** Remaining: a dedicated "H3 training files" pack for official
+`audio_vae/` + Qwen3-VL if we do not want to keep pointing at a hand-assembled
+`h3-diffusers` tree.

@@ -12,6 +12,26 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.39] — 2026-08-31
+
+Resume from checkpoint on metal. SimpleTuner 4.8.0 reads
+`resume_from_checkpoint: latest`, reuses the VAE cache, and continues
+training. Full suite green.
+
+### Changed
+
+- **`POST /train/runs/{id}/resume` accepts `steps`.** A finished 50-step
+  smoke can be extended (e.g. to 60) instead of loading the checkpoint and
+  immediately exiting. Omit `steps` to keep the original cap. Resume also
+  keeps the previous `validation_prompt`.
+
+### Notes
+
+- Metal: H3 run `20260830-201940-s0-metal-h3-50` resumed from
+  `checkpoints/checkpoint-50` (`Loading states from …/checkpoint-50`),
+  `VAECache has 0 unprocessed files`, then 51–60/60, exit 0, last
+  `step_loss=2.32`.
+
 ## [0.2.38] — 2026-08-31
 
 H3 one-click audition. Music already had the PiMP loop; H3 adapters now

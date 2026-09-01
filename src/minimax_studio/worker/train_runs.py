@@ -597,12 +597,15 @@ def _resume_checkpoint_arg(run_dir: Path, safetensors: Path) -> str:
     return str(parent)
 
 
-def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
+def resume_run(
+    run_id: str, checkpoint: str | None = None, steps: int | None = None
+) -> dict[str, Any]:
     """Continue a finished, failed or cancelled run from one of its checkpoints.
 
     Same run dir, same caches, new process: the weights, the log and the
     provenance keep one home instead of a second folder pretending to be a new
-    project.
+    project. ``steps`` raises ``max_train_steps`` so a finished 50-step smoke
+    can actually train further; omit it to keep the original cap.
     """
     run_dir, state = _refuse_if_running(run_id, "resuming")
     rows = checkpoint_rows(run_id)
@@ -641,15 +644,29 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
             "SimpleTuner is not installed — resuming needs the pinned [train] "
             "extra on Python 3.12."
         )
+    target_steps = int(steps) if steps is not None else int(state.get("steps") or 1000)
+    if target_steps < 1:
+        raise RuntimeError("Resume steps must be at least 1.")
+    validation = None
+    old_cfg = run_dir / "config" / run_id / "config.json"
+    if old_cfg.is_file():
+        try:
+            previous = json.loads(old_cfg.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            previous = {}
+        prompt = str(previous.get("validation_prompt") or "").strip()
+        if prompt:
+            validation = {"prompt": prompt}
     write_run_config(
         run_dir,
         run_id,
         state.get("dataset_dir") or "",
         preset_name=str(state.get("preset") or DEFAULT_PRESET),
-        steps=int(state.get("steps") or 1000),
+        steps=target_steps,
         rank=state.get("rank"),
         resume_from_checkpoint=resume_from,
         dataset_spec=state.get("dataset_spec") or None,
+        validation=validation,
     )
     log = open(run_dir / "train.log", "ab")
     try:
@@ -674,6 +691,7 @@ def resume_run(run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
             "cancel_requested": False,
             "resumed_from": str(resume_from),
             "resume_count": int(state.get("resume_count") or 0) + 1,
+            "steps": target_steps,
         }
     )
     _write_state(run_dir, state)

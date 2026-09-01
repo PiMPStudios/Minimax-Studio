@@ -236,9 +236,17 @@ class WorkerClient:
     def train_run_storage(self, run_id: str) -> dict[str, Any]:
         return self._get(f"/train/runs/{_seg(run_id)}/storage", timeout=120.0)
 
-    def resume_train_run(self, run_id: str, checkpoint: str | None = None) -> dict[str, Any]:
+    def resume_train_run(
+        self,
+        run_id: str,
+        checkpoint: str | None = None,
+        steps: int | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"checkpoint": checkpoint}
+        if steps is not None:
+            payload["steps"] = int(steps)
         return self._post(
-            f"/train/runs/{_seg(run_id)}/resume", {"checkpoint": checkpoint}, timeout=120.0
+            f"/train/runs/{_seg(run_id)}/resume", payload, timeout=120.0
         )
 
     def clear_train_cache(self, run_id: str) -> dict[str, Any]:

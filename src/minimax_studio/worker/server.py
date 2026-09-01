@@ -687,6 +687,7 @@ class PruneIn(BaseModel):
 
 class ResumeIn(BaseModel):
     checkpoint: str | None = None
+    steps: int | None = None
 
 
 class ExportIn(BaseModel):
@@ -744,7 +745,7 @@ def train_run_resume(run_id: str, body: ResumeIn) -> dict[str, object]:
     from minimax_studio.worker import train_runs
 
     try:
-        return train_runs.resume_run(run_id, body.checkpoint)
+        return train_runs.resume_run(run_id, body.checkpoint, body.steps)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

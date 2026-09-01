@@ -337,6 +337,18 @@ def test_resume_continues_the_same_run_in_the_same_folder(runs_home):
     assert (Path(run["path"]) / "cache").is_dir()  # the cache is why it's fast
 
 
+def test_resume_can_raise_the_step_cap(runs_home):
+    run = _make_run(steps=50)
+    _checkpoint(run, 50)
+    resumed = train_runs.resume_run(run["id"], steps=60)
+    assert resumed["steps"] == 60
+    config = json.loads(
+        (Path(run["path"]) / "config" / run["id"] / "config.json").read_text()
+    )
+    assert config["max_train_steps"] == 60
+    assert config["resume_from_checkpoint"] == "latest"
+
+
 def test_resume_takes_a_chosen_checkpoint_not_just_the_newest(runs_home):
     run = _make_run()
     _checkpoint(run, 200, age_s=300)
