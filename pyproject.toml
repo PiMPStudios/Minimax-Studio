@@ -50,7 +50,7 @@ version = {attr = "minimax_studio.__version__"}
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 # Correctness-focused: unused code, real bugs, import hygiene. Deliberately
