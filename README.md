@@ -4,7 +4,7 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.39** generate studio + Build pages (datasets, LoRA training —
+Status: **0.2.40** generate studio + Build pages (datasets, LoRA training —
 experimental; Music and H3 24 GB smokes have run on a real NVIDIA GPU).
 Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md).
 
@@ -74,10 +74,9 @@ pip install -e ".[train]"      # resolves on 3.12 only; CI asserts this
 ```
 
 Then download the **Music 3 Training Encoder** pack on Models. Video LoRAs
-need the official **H3 diffusers** folder (audio VAE + Qwen3-VL text encoder —
-the Comfy generate pack is not a substitute for that tree). If the Comfy
-ConvRot INT8 DiT and fp16 video VAE are already on disk, the 24 GB preset uses
-those instead of the 130 GB official shards. **Datasets** (Ctrl+Shift+D) takes a
+need **H3 Training files (audio VAE + Qwen3-VL)** (~63 GB — not the 130 GB
+official transformer) plus the Comfy **H3 FL2VA INT8** pack for the ConvRot
+DiT. The 80 GB tier still wants the full official FL2VA tree. **Datasets** (Ctrl+Shift+D) takes a
 folder of `track.wav` + `track.txt` (+ optional `track.lyrics`) or pulls good
 generations out of History; an H3 dataset takes `shot.png` stills and short
 `shot.mp4` clips instead — capped at 8 seconds, with `av` (audio+video) mode as

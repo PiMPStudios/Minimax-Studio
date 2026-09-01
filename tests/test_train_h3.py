@@ -71,17 +71,22 @@ def gpu24(monkeypatch):
 
 
 def _h3_weights(ready: bool = True) -> Path:
-    root = train_config._models_root() / "h3-diffusers"
-    (root / "transformer").mkdir(parents=True, exist_ok=True)
-    (root / "text_encoder").mkdir(parents=True, exist_ok=True)
-    files = [
-        root / "modular_model_index.json",
-        root / "transformer" / "config.json",
-        root / "text_encoder" / "config.json",
-    ]
+    from minimax_studio.worker.catalog import PACKS
+
+    models = train_config._models_root()
+    root = models / "h3-diffusers"
+    files: list[Path] = []
+    for marker in PACKS["h3-train"].marker_files:
+        files.append(root / marker)
+    for marker in PACKS["h3-fl2va"].marker_files:
+        files.append(models / "h3-comfy" / marker)
+    for marker in PACKS["h3-diffusers-fl2va"].marker_files:
+        files.append(root / marker)
     for path in files:
         if ready:
-            path.write_text("{}", encoding="utf-8")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.is_file():
+                path.write_bytes(b"{}")
         elif path.is_file():
             path.unlink()
     return root
@@ -132,9 +137,10 @@ def test_the_h3_tiers_are_the_four_simpletuner_names() -> None:
     assert "RamTorch" in h3["h3-24g"].title
     assert h3["h3-24g"].flavour == "convrot-int8"
     assert h3["h3-80g"].flavour == "fl2va"
-    assert {row.packs_any for row in h3.values()} == {
-        ("h3-diffusers-fl2va", "h3-diffusers-ref2va")
-    }
+    assert h3["h3-24g"].packs == ("h3-train", "h3-fl2va")
+    assert h3["h3-32g"].packs == ("h3-train", "h3-fl2va")
+    assert h3["h3-48g"].packs == ("h3-train", "h3-fl2va")
+    assert h3["h3-80g"].packs_any == ("h3-diffusers-fl2va", "h3-diffusers-ref2va")
 
 
 def test_music_presets_stay_music_only() -> None:
@@ -247,14 +253,36 @@ def test_preflight_names_the_h3_weights_it_wants(h3_env, gpu24) -> None:
     assert check["ok"] is False
     assert check["family"] == "h3"
     problem = " ".join(check["problems"])
-    assert "diffusers layout" in problem
-    assert "Comfy generate pack is not a substitute" in problem
+    assert "H3 Training files" in problem
+    assert "Qwen3-VL" in problem
 
     _h3_weights(ready=True)
     check = train_config.train_preflight("h3-24g")
-    assert not any("diffusers layout" in p for p in check["problems"]), check["problems"]
+    assert not any("H3 Training files" in p for p in check["problems"]), check[
+        "problems"
+    ]
+    assert not any("FL2VA (pruned INT8)" in p for p in check["problems"]), check[
+        "problems"
+    ]
     # Music's encoder pack is not an H3 requirement.
     assert not any("Training Encoder" in p for p in check["problems"])
+
+
+def test_preflight_names_the_comfy_dit_when_only_training_files_are_present(
+    h3_env, gpu24
+) -> None:
+    from minimax_studio.worker.catalog import PACKS
+
+    models = train_config._models_root()
+    root = models / "h3-diffusers"
+    for marker in PACKS["h3-train"].marker_files:
+        path = root / marker
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"{}")
+    check = train_config.train_preflight("h3-24g")
+    problem = " ".join(check["problems"])
+    assert "H3 Training files" not in problem
+    assert "FL2VA (pruned INT8)" in problem
 
 
 def test_preflight_no_longer_warns_that_h3_keys_are_unseen(h3_env, gpu24) -> None:

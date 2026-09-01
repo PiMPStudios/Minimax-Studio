@@ -19,7 +19,7 @@ changed the shape of this plan.
 | Dataset format | Local audio backend: **wav + textfile captions** (`caption_strategy: "textfile"`, duration bucketing) — v1 PLAN's guessed format is SimpleTuner's native one | Local video backend; `minimax_h3_target_mode: video / av / audio`; audio-only via `dataset_type: "audio"` |
 | LoRA output | `lora_format: "comfyui"` export — **loads directly in our LoRA picker and Comfy path** | PEFT adapters; community `.safetensors` in the HF ecosystem already |
 | Validation | Built-in: `validation_prompt`, `validation_lyrics`, `validation_audio_duration` render audio during the run | Validation samples incl. joint A/V; Drift-Distillation/CREPA regularization keeps the base model's behaviour |
-| Extra weights needed | DAV encoder for VAE caching: `dav.pth` (in the upstream repo) or `SimpleTuner/MiniMax-Music-3-Encoder` — a **new small pack in our catalog** | None beyond the packs we already download (verify ConvRot file match in S0) |
+| Extra weights needed | DAV encoder for VAE caching: `dav.pth` (in the upstream repo) or `SimpleTuner/MiniMax-Music-3-Encoder` — a **new small pack in our catalog** | Official `audio_vae/` + Qwen3-VL (`h3-train`, ~63 GB) plus the Comfy ConvRot INT8 DiT; not the 130 GB transformer (S0 metal, catalogued in 0.2.40) |
 | Ready-made examples | `simpletuner train example=minimaxmusic-music3.peft-lora` | `simpletuner train example=minimaxh3-fl2va-convrot-int8.peft-lora` (+ VRAM tiers) |
 
 What the v1 plan hedged on, resolved:
@@ -106,7 +106,8 @@ Nothing ships until this passes on real metal:
    "H3 training files" pack may be needed).
    (**✅ 0.2.37, with a delta:** Comfy INT8 DiT + fp16 video VAE yes; official
    `audio_vae/` + Qwen3-VL-32B text encoder required; Kijai INT8 VAE and
-   Comfy NVFP4 TE are not substitutes. Not the full 130 GB official shards.)
+   Comfy NVFP4 TE are not substitutes. Not the full 130 GB official shards.
+   Catalogued as `h3-train` in 0.2.40.)
 
 **Exit = demo video of 3→4 + a written config contract.** If 4 fails
 (adapter format drift), the whole plan re-thinks; if 1 fails, the extra
@@ -332,6 +333,7 @@ instead), dataset pack sharing, voice-cloning datasets (licensing first).
 ## Next step
 
 **S0 is closed (0.2.37); H3 audition is closed (0.2.38); resume is closed
-(0.2.39).** Remaining: a dedicated "H3 training files" pack for official
-`audio_vae/` + Qwen3-VL if we do not want to keep pointing at a hand-assembled
-`h3-diffusers` tree.
+(0.2.39); H3 training-files pack is closed (0.2.40).** `h3-train` on the
+Models page pulls official `audio_vae/` + Qwen3-VL-32B (~63 GB) into
+`h3-diffusers` without the 130 GB transformer. ConvRot INT8 tiers also want
+the Comfy FL2VA INT8 pack for the DiT.

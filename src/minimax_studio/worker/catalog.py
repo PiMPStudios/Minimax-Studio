@@ -93,6 +93,46 @@ PACKS: dict[str, Pack] = {
             "audio_vae/diffusion_pytorch_model.safetensors",
         ),
     ),
+    "h3-train": Pack(
+        id="h3-train",
+        title="H3 Training files (audio VAE + Qwen3-VL)",
+        summary=(
+            "Official audio VAE and Qwen3-VL-32B text encoder for SimpleTuner "
+            "H3 LoRAs (~63 GB). Does not download the 130 GB transformer — "
+            "ConvRot INT8 training uses the Comfy DiT pack for that. Same "
+            "folder as official diffusers, so a full FL2VA download already "
+            "counts as this pack."
+        ),
+        repo_id="MiniMaxAI/MiniMax-H3",
+        local_dir="h3-diffusers",
+        approx_gb=63.0,
+        license_name="MiniMax H3 Community License",
+        family="h3",
+        kind="diffusers",
+        allow_patterns=(
+            "audio_vae/*",
+            "text_encoder/*",
+            "tokenizer/*",
+            "processor/*",
+            "scheduler/*",
+            "audio_scheduler/*",
+            "transformer/*.json",
+            "vae/*.json",
+            "model_index.json",
+            "modular_model_index.json",
+            "LICENSE",
+        ),
+        marker_files=(
+            "audio_vae/config.json",
+            "audio_vae/diffusion_pytorch_model.safetensors",
+            "text_encoder/config.json",
+            "text_encoder/model.safetensors.index.json",
+            "text_encoder/model-00001-of-00014.safetensors",
+            "tokenizer/tokenizer_config.json",
+            "modular_model_index.json",
+        ),
+        territory_notice=H3_TERRITORY,
+    ),
     "h3-diffusers-fl2va": Pack(
         id="h3-diffusers-fl2va",
         title="MiniMax H3 FL2VA (official diffusers)",
@@ -115,6 +155,7 @@ PACKS: dict[str, Pack] = {
         marker_files=(
             "modular_model_index.json",
             "transformer/config.json",
+            "transformer/diffusion_pytorch_model-00001-of-00014.safetensors",
             "text_encoder/config.json",
         ),
         territory_notice=H3_TERRITORY,

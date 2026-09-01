@@ -5,6 +5,102 @@ from minimax_studio.worker.catalog import PACKS
 from minimax_studio.worker.downloads import delete_pack, get_download, start_download
 
 
+def test_h3_train_pack_is_the_63gb_slice_not_the_transformer() -> None:
+    pack = PACKS["h3-train"]
+    assert pack.local_dir == "h3-diffusers"
+    assert pack.repo_id == "MiniMaxAI/MiniMax-H3"
+    assert 50 <= pack.approx_gb <= 70
+    assert pack.allow_patterns is not None
+    assert "audio_vae/*" in pack.allow_patterns
+    assert "text_encoder/*" in pack.allow_patterns
+    assert "tokenizer/*" in pack.allow_patterns
+    assert not any(
+        "transformer" in pattern and pattern.endswith("safetensors")
+        for pattern in pack.allow_patterns
+    )
+    assert "audio_vae/diffusion_pytorch_model.safetensors" in pack.marker_files
+    assert "text_encoder/model.safetensors.index.json" in pack.marker_files
+    assert "text_encoder/model-00001-of-00014.safetensors" in pack.marker_files
+    generate = PACKS["h3-diffusers-fl2va"]
+    assert generate.local_dir == pack.local_dir
+    assert (
+        "transformer/diffusion_pytorch_model-00001-of-00014.safetensors"
+        in generate.marker_files
+    )
+
+
+def test_h3_train_markers_do_not_make_the_generate_pack_ready(tmp_path: Path) -> None:
+    from minimax_studio.worker.model_paths import pack_status
+
+    models = tmp_path / "models"
+    dest = models / "h3-diffusers"
+    _touch(dest, PACKS["h3-train"].marker_files)
+    train = pack_status(PACKS["h3-train"], models, extra_roots=[models])
+    generate = pack_status(PACKS["h3-diffusers-fl2va"], models, extra_roots=[models])
+    assert train["ready"] is True
+    assert generate["ready"] is False
+
+
+def test_full_official_fl2va_already_counts_as_h3_train(tmp_path: Path) -> None:
+    from minimax_studio.worker.model_paths import pack_status
+
+    models = tmp_path / "models"
+    dest = models / "h3-diffusers"
+    _touch(dest, PACKS["h3-train"].marker_files)
+    _touch(dest, PACKS["h3-diffusers-fl2va"].marker_files)
+    train = pack_status(PACKS["h3-train"], models, extra_roots=[models])
+    generate = pack_status(PACKS["h3-diffusers-fl2va"], models, extra_roots=[models])
+    assert train["ready"] is True
+    assert generate["ready"] is True
+
+
+def test_delete_h3_train_wipes_folder_when_generate_pack_is_not_installed(
+    studio_home: Path,
+) -> None:
+    dest = studio_home / "models" / "h3-diffusers"
+    _touch(dest, PACKS["h3-train"].marker_files)
+    result = delete_pack("h3-train")
+    assert not dest.exists()
+    assert result["folder_kept"] is False
+    assert result["removed_bytes"] > 0
+
+
+def test_delete_h3_train_keeps_folder_when_official_fl2va_is_installed(
+    studio_home: Path,
+) -> None:
+    dest = studio_home / "models" / "h3-diffusers"
+    _touch(dest, PACKS["h3-train"].marker_files)
+    _touch(dest, PACKS["h3-diffusers-fl2va"].marker_files)
+    result = delete_pack("h3-train")
+    assert dest.is_dir()
+    assert result["folder_kept"] is True
+    assert result["removed"] is False
+    assert any("FL2VA" in title for title in result["kept_for"])
+    for marker in PACKS["h3-train"].marker_files:
+        assert (dest / marker).is_file()
+    for marker in PACKS["h3-diffusers-fl2va"].marker_files:
+        assert (dest / marker).is_file()
+
+
+def test_list_packs_recommends_h3_train_from_24gb(
+    studio_home: Path, monkeypatch
+) -> None:
+    from minimax_studio.worker.downloads import list_packs
+
+    monkeypatch.setattr(
+        "minimax_studio.worker.probe.probe",
+        lambda: {
+            "cuda": True,
+            "vram_gb": 24.0,
+            "ram_gb": 32.0,
+            "apple_silicon": False,
+        },
+    )
+    rows = {item["id"]: item for item in list_packs()}
+    assert rows["h3-train"]["recommended"] is True
+    assert rows["h3-diffusers-fl2va"]["recommended"] is False
+
+
 def test_download_uses_injected_snapshot(studio_home: Path) -> None:
     def snapshot(**kwargs):
         dest = Path(kwargs["local_dir"])

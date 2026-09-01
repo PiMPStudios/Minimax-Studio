@@ -40,6 +40,8 @@ def list_packs() -> list[dict[str, Any]]:
         recommended.update({"music3-comfy", "h3-fl2va", "h3-turbo"})
         if vram >= 16 or ram >= 64:
             recommended.add("h3-ref2va")
+        if vram >= 24:
+            recommended.add("h3-train")
         if vram >= 40:
             recommended.add("h3-diffusers-fl2va")
             recommended.add("music3-cuda")
@@ -351,32 +353,42 @@ def delete_pack(pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
     if not dest.exists():
         return result
     before = dir_bytes(dest)
+    # Installed means every marker is present. Configs that h3-train shares
+    # with official FL2VA must not keep the 63 GB Qwen tree after that pack
+    # is deleted, and must not make the 130 GB generate pack look ready.
     in_use = [
         other
         for other in PACKS.values()
         if other.local_dir == pack.local_dir
         and other.id != pack.id
         and other.marker_files
-        and any((dest / marker).is_file() for marker in other.marker_files)
+        and all((dest / marker).is_file() for marker in other.marker_files)
     ]
     if in_use and not delete_shared:
+        # A pack with no allow_patterns is a full-folder snapshot (official
+        # FL2VA). The training-files slice lives in that same tree — deleting
+        # unique train markers would gut the generate pack.
+        owns_folder = any(other.allow_patterns is None for other in in_use)
         protected: set[str] = set()
         for other in in_use:
             protected.update(other.marker_files)
             for needed in _requires_chain(other):
                 if needed.local_dir == pack.local_dir:
                     protected.update(needed.marker_files)
-        for marker in pack.marker_files or ():
-            if marker in protected:
-                result["kept_files"].append(marker)
-                continue
-            path = dest / marker
-            if path.is_file():
-                try:
-                    path.unlink()
-                except OSError:
+        if not owns_folder:
+            for marker in pack.marker_files or ():
+                if marker in protected:
                     result["kept_files"].append(marker)
-        result["removed"] = True
+                    continue
+                path = dest / marker
+                if path.is_file():
+                    try:
+                        path.unlink()
+                    except OSError:
+                        result["kept_files"].append(marker)
+        else:
+            result["kept_files"] = list(pack.marker_files or ())
+        result["removed"] = not owns_folder
         result["removed_bytes"] = max(0, before - dir_bytes(dest))
         result["folder_kept"] = True
         result["shared"] = True

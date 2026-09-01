@@ -12,6 +12,35 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.40] — 2026-08-31
+
+H3 training-files catalog pack. ConvRot INT8 LoRA tiers no longer ask for the
+130 GB official transformer. Full suite green.
+
+### Added
+
+- **`h3-train` pack (~63 GB).** Official `audio_vae/` + Qwen3-VL-32B into
+  `h3-diffusers`, without the transformer shards. Same folder as official
+  FL2VA, so a full generate download already counts as this pack. Analog of
+  the Music 3 Training Encoder.
+
+### Changed
+
+- **24 / 32 / 48 GB H3 presets** require `h3-train` plus the Comfy FL2VA
+  INT8 pack (ConvRot DiT + fp16 video VAE). The 80 GB tier still wants the
+  full official FL2VA tree.
+- Models page recommends `h3-train` from 24 GB VRAM.
+- Official FL2VA is ready only when a transformer shard is on disk, so a
+  training-files tree no longer looks like the 130 GB generate pack.
+  Deleting `h3-train` wipes that folder unless official FL2VA is actually
+  installed, in which case the shared tree stays put.
+
+### Notes
+
+- Metal already has these files in `MiniMax-GUI/models/h3-diffusers`
+  (~63 GB, Qwen shards present, transformer configs only). This release
+  does not re-download them.
+
 ## [0.2.39] — 2026-08-31
 
 Resume from checkpoint on metal. SimpleTuner 4.8.0 reads

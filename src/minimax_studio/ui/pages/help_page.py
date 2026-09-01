@@ -116,10 +116,10 @@ live, and <b>Export…</b> / <b>Import run folder</b> move a run (weights, confi
 log — not its caches) to another disk or another machine.</p>
 <p>Training is <b>experimental</b>: CUDA only, Python 3.12 with
 <code>pip install -e ".[train]"</code>, plus the weights the run needs — the
-<b>Music 3 Training Encoder</b> pack for Music LoRAs; for video LoRAs the
-official <b>H3 diffusers</b> folder (audio VAE + Qwen3-VL text encoder — the
-Comfy generate pack is not a substitute for that folder). If the Comfy ConvRot
-INT8 DiT and fp16 video VAE are already on disk, the 24 GB preset uses those.
+<b>Music 3 Training Encoder</b> pack for Music LoRAs; for video LoRAs
+<b>H3 Training files (audio VAE + Qwen3-VL)</b> (~63 GB, not the 130 GB
+transformer) and the Comfy <b>H3 FL2VA INT8</b> pack for the ConvRot DiT.
+The 80 GB tier still wants the full official FL2VA tree.
 24 GB is the floor for Music. H3 offers 24 GB with RamTorch CPU-offload, then
 32, 48 and 80 GB, and the preset list changes with the dataset you pick — the
 two trainers never share a run. Preflight names the VRAM, packs, active jobs
