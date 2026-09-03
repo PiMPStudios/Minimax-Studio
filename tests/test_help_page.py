@@ -20,6 +20,8 @@ def test_help_quotes_music_credit_and_h3_territory() -> None:
     assert MUSIC_CREDIT in html
     assert H3_TERRITORY in html
     assert "Apache-2.0" in html
+    assert "from catalog" in html
+    assert "you brought the file" in html
 
 
 def test_catalog_reexports_the_same_h3_territory() -> None:

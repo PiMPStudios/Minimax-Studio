@@ -38,7 +38,7 @@ def test_list_packs_does_not_include_catalog_loras(studio_home: Path) -> None:
     assert "h3-fl2va" in ids
 
 
-def test_catalog_status_and_download_registers_imported(
+def test_catalog_status_and_download_registers_catalog(
     studio_home: Path,
 ) -> None:
     from minimax_studio.worker import adapters
@@ -73,7 +73,7 @@ def test_catalog_status_and_download_registers_imported(
     dest = studio_home / "models" / "loras" / marker
     assert dest.is_file()
     listed = {row["id"]: row for row in adapters.list_adapters()}
-    assert listed[marker]["source"] == "imported"
+    assert listed[marker]["source"] == "catalog"
     assert listed[marker]["kind"] == "h3"
     assert list_adapter_catalog()[0]["ready"] is True or any(
         row["id"] == "h3-realism-people" and row["ready"] for row in list_adapter_catalog()

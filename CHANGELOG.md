@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.51] — 2026-09-02
+
+A catalog LoRA is “from catalog”, not “imported”.
+
+### Changed
+
+- **Catalog downloads record `source: catalog`.** Hand imports stay
+  `imported` (“you brought the file”). The Adapters list and Help say
+  which. “Only what Studio trained” is unchanged.
+
 ## [0.2.50] — 2026-09-02
 
 Help quotes the Music 3 and H3 license notices instead of paraphrasing them.

@@ -1,10 +1,10 @@
 """Adapters — provenance and the audition loop (PLAN-V2 S3).
 
 Every ``.safetensors`` the app can load is listed here, whether Studio trained
-it, you imported it, or it was simply already in a LoRA folder — ``trained`` /
-``imported`` / ``untracked`` say which, and the untracked ones are the honest
-part: the picker has always loaded them, so pretending not to know would be a
-lie by omission.
+it, you imported it, the Catalog downloaded it, or it was simply already in a
+LoRA folder — ``trained`` / ``imported`` / ``catalog`` / ``untracked`` say
+which, and the untracked ones are the honest part: the picker has always
+loaded them, so pretending not to know would be a lie by omission.
 
 The button that closes the loop is **Audition**: Music gets a 30-second song,
 H3 a short still-pair (or text-to-video if the dataset has no stills), both at
@@ -49,6 +49,7 @@ _DIM = QBrush(QColor("#8e8e93"))
 SOURCE_LABEL = {
     "trained": "trained here",
     "imported": "imported",
+    "catalog": "from catalog",
     "untracked": "found on disk",
 }
 

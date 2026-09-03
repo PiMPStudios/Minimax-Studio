@@ -157,7 +157,7 @@ and one H3 mp4, play both, restore the child.
 
 > **Status (0.2.45): landed.** Curated `ADAPTERS` in `catalog.py` (not on
 > Models). Two H3 rows: fal Realism People, MATLOWAI Motion. Download →
-> `models/loras/` + `record_imported` (kind h3). Territory notice on
+> `models/loras/` + `record_imported(..., source="catalog")` (kind h3). Territory notice on
 > download. Delete unlinks that file only. Music catalog skipped (reggae
 > v2 is HF gated; turbo is mixed with FP8 checkpoints).
 
@@ -167,7 +167,7 @@ Browse and download, not a store.
   summary, repo, approx GB, family, license, territory notice). Download uses
   the same snapshot + disk-space guard as packs.
 - Land in `models/loras/` (or the Comfy loras root we already search).
-  `import_lora` / `record_imported` so the picker and Audition see them
+  `record_imported(..., source="catalog")` so the picker and Audition see them
   without a second path.
 - H3 rows show the same US/EU/UK/KR text as `h3-train`. Music rows show the
   Music 3 credit line.

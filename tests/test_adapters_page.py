@@ -79,6 +79,20 @@ H3 = {
         "exists": True,
     },
 }
+CATALOG = {
+    "id": "minimax_h3_motion_adapter_pilot_r16.safetensors",
+    "file": "minimax_h3_motion_adapter_pilot_r16.safetensors",
+    "name": "minimax_h3_motion_adapter_pilot_r16",
+    "kind": "h3",
+    "source": "catalog",
+    "on_disk": True,
+    "can_audition": True,
+    "dataset_exists": False,
+    "audition_prompt": "",
+    "created_at": 1787000200,
+    "path": "/models/loras/minimax_h3_motion_adapter_pilot_r16.safetensors",
+    "dataset": {},
+}
 GONE = {
     "id": "ghost.safetensors",
     "file": "ghost.safetensors",
@@ -316,6 +330,19 @@ def test_a_refused_audition_is_shown_not_swallowed(app, no_modals) -> None:
     assert no_modals[-1][0] == "warning"
     assert "Nothing to audition" in no_modals[-1][1]
     assert "Audition queued" not in page._status.text()
+
+
+def test_catalog_row_is_from_catalog_not_imported(app) -> None:
+    worker = FakeAdapterWorker(rows=[dict(CATALOG), dict(IMPORTED)])
+    page = AdaptersPage(worker)
+    labels = [
+        (page._tree.topLevelItem(i).text(0), page._tree.topLevelItem(i).text(1))
+        for i in range(page._tree.topLevelItemCount())
+    ]
+    assert (CATALOG["name"], "from catalog") in labels
+    assert (IMPORTED["name"], "imported") in labels
+    page._mine_only.setChecked(True)
+    assert page._tree.topLevelItemCount() == 0
 
 
 def test_filters_separate_the_three_origins(app) -> None:

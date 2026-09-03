@@ -9,6 +9,7 @@ already uses):
 
 ``trained``    installed from a Studio training run — full provenance
 ``imported``   brought in by hand through File ▸ Import
+``catalog``    downloaded from the curated Adapters catalog
 ``untracked``  on disk with no row; still listed, so the picker is one honest
                list instead of two half-truths
 
@@ -256,8 +257,12 @@ def _decorate(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def record_imported(lora_row: dict[str, Any]) -> dict[str, Any]:
-    """A hand-imported file: we know its name and that we did not train it."""
+def record_imported(
+    lora_row: dict[str, Any], source: str = "imported"
+) -> dict[str, Any]:
+    """A file Studio did not train. Default ``imported`` is a hand copy;
+    catalog downloads pass ``source="catalog"`` so a year from now the
+    registry does not claim you brought the file."""
     file_name = Path(str(lora_row.get("path") or "")).name
     kind = str(lora_row.get("kind") or "") or kind_from_path(
         str(lora_row.get("source_path") or lora_row.get("path") or "")
@@ -267,7 +272,7 @@ def record_imported(lora_row: dict[str, Any]) -> dict[str, Any]:
             "file": file_name,
             "name": lora_row.get("name") or Path(file_name).stem,
             "kind": kind,
-            "source": "imported",
+            "source": source,
             "path": lora_row.get("path"),
         }
     )

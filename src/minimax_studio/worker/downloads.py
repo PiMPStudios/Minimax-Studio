@@ -190,7 +190,7 @@ def _run_download(
         if pack.kind != "lora":
             _ensure_license(pack.repo_id, dest, runtime.config.hf_token)
         if pack.kind == "lora":
-            _register_imported_lora(pack, dest)
+            _register_catalog_lora(pack, dest)
         from minimax_studio.worker.model_paths import reset_bytes_cache
 
         reset_bytes_cache()
@@ -359,8 +359,8 @@ def _assert_marker_sizes(pack: Pack, dest: Path) -> None:
             )
 
 
-def _register_imported_lora(pack: Pack, dest: Path) -> None:
-    """Catalog downloads land in models/loras/; record provenance without copying."""
+def _register_catalog_lora(pack: Pack, dest: Path) -> None:
+    """Catalog downloads land in models/loras/; provenance is ``catalog``, not imported."""
     from minimax_studio.worker import adapters
 
     for marker in pack.marker_files:
@@ -373,7 +373,8 @@ def _register_imported_lora(pack: Pack, dest: Path) -> None:
                 "name": path.stem,
                 "path": str(path),
                 "kind": pack.family,
-            }
+            },
+            source="catalog",
         )
         return
 

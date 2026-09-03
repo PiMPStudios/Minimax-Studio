@@ -173,6 +173,17 @@ def test_forget_drops_the_row_not_the_file(
         adapters.forget(row["id"])
 
 
+def test_record_imported_can_mark_a_catalog_download(studio_home: Path) -> None:
+    path = _lora_file(studio_home, "minimax_h3_motion_adapter_pilot_r16.safetensors")
+    adapters.record_imported(
+        {"name": path.stem, "path": str(path), "kind": "h3"},
+        source="catalog",
+    )
+    listed = adapters.get_adapter(path.name)
+    assert listed["source"] == "catalog"
+    assert listed["kind"] == "h3"
+
+
 def test_import_lora_records_that_we_did_not_train_it(
     studio_home: Path, tmp_path: Path
 ) -> None:
