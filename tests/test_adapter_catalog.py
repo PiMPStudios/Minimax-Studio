@@ -32,6 +32,11 @@ def test_catalog_is_h3_only_and_not_on_models() -> None:
     assert pack_or_raise("h3-realism-people").repo_id.startswith("fal/")
 
 
+def test_adapter_ids_do_not_collide_with_pack_ids() -> None:
+    # pack_or_raise checks PACKS first — a collision would silently shadow a row.
+    assert not set(ADAPTERS) & set(PACKS)
+
+
 def test_list_packs_does_not_include_catalog_loras(studio_home: Path) -> None:
     ids = {row["id"] for row in list_packs()}
     assert "h3-realism-people" not in ids
@@ -94,6 +99,21 @@ def test_delete_catalog_lora_does_not_wipe_the_loras_folder(
     assert not (loras / marker).exists()
     assert trained.is_file()
     assert loras.is_dir()
+
+
+def test_delete_catalog_lora_forgets_the_registry_row(studio_home: Path) -> None:
+    from minimax_studio.worker import adapters
+
+    marker = ADAPTERS["h3-motion"].marker_files[0]
+    loras = studio_home / "models" / "loras"
+    loras.mkdir(parents=True)
+    path = loras / marker
+    path.write_bytes(b"lora")
+    adapters.record_imported({"path": str(path), "kind": "h3"}, source="catalog")
+    assert marker in {row["file"] for row in adapters.load_registry()}
+    delete_pack("h3-motion")
+    assert marker not in {row["file"] for row in adapters.load_registry()}
+    assert not path.exists()
 
 
 def test_start_download_refuses_a_second_in_flight(studio_home: Path) -> None:

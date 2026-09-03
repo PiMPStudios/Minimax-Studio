@@ -483,6 +483,25 @@ def test_catalog_lists_rows_and_download_asks_territory(app, no_modals) -> None:
     assert worker.cancelled == ["dl1"]
 
 
+def test_catalog_declining_territory_does_not_start_a_download(app, monkeypatch) -> None:
+    from minimax_studio.ui import download as download_mod
+    from tests.dialogs import Dialogs
+
+    worker = FakeAdapterWorker(
+        catalog=[{**CATALOG_PACK, "territory_notice": "US/EU/UK/KR"}]
+    )
+    Dialogs(
+        monkeypatch,
+        {"question": QMessageBox.StandardButton.No},
+        download_mod,
+        adapters_module,
+    )
+    page = AdaptersPage(worker)
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    page._download_catalog()
+    assert worker.started == []
+
+
 def test_catalog_low_disk_asks_download_anyway(app, monkeypatch) -> None:
     """Adapters must catch InsufficientDisk by type. Reworded copy still hatches."""
     from minimax_studio.errors import InsufficientDisk
@@ -490,7 +509,12 @@ def test_catalog_low_disk_asks_download_anyway(app, monkeypatch) -> None:
     from tests.dialogs import Dialogs
 
     class TightDisk(FakeAdapterWorker):
+        def __init__(self, **overrides: Any) -> None:
+            super().__init__(**overrides)
+            self.calls: list[tuple[str, bool]] = []
+
         def start_download(self, pack_id: str, force: bool = False) -> dict[str, Any]:
+            self.calls.append((pack_id, force))
             if not force:
                 raise InsufficientDisk("The models volume is full.")
             return super().start_download(pack_id, force=True)
@@ -519,6 +543,7 @@ def test_catalog_low_disk_asks_download_anyway(app, monkeypatch) -> None:
     page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
     page._download_catalog()
     assert worker.started == ["h3-motion"]
+    assert worker.calls == [("h3-motion", False), ("h3-motion", True)]
     assert "Download anyway?" in dialogs.bodies()
     assert "The models volume is full." in dialogs.bodies()
 
@@ -532,3 +557,53 @@ def test_catalog_poll_skips_identical_rebuild(app) -> None:
     page._sync_catalog([{**row, "ready": True}], {})
     assert page._catalog.topLevelItem(0) is not item
     assert page._catalog.topLevelItem(0).text(3) == "Ready"
+
+
+def test_catalog_ready_row_disables_download_and_enables_remove(app) -> None:
+    page = AdaptersPage(FakeAdapterWorker(catalog=[{**CATALOG_PACK, "ready": True}]))
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    assert not page._cat_download_btn.isEnabled()
+    assert page._cat_download_btn.text() == "Re-download"
+    assert page._cat_remove_btn.isEnabled()
+
+
+def test_catalog_busy_disables_download(app) -> None:
+    page = AdaptersPage(
+        FakeAdapterWorker(
+            catalog=[dict(CATALOG_PACK)],
+            downloads=[
+                {
+                    "id": "dl1",
+                    "pack_id": "h3-realism-people",
+                    "status": "running",
+                    "message": "Fetching",
+                }
+            ],
+        )
+    )
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    assert not page._cat_download_btn.isEnabled()
+    assert page._cat_download_btn.text() == "Downloading…"
+    assert not page._cat_cancel_btn.isHidden()
+    assert not page._cat_remove_btn.isEnabled()
+
+
+def test_remove_catalog_asks_then_deletes(app, no_modals) -> None:
+    worker = FakeAdapterWorker(catalog=[{**CATALOG_PACK, "ready": True}])
+    page = AdaptersPage(worker)
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    page._remove_catalog()
+    assert worker.deleted_packs == ["h3-realism-people"]
+    assert "Removed" in page._status.text()
+    assert any(item[0] == "question" and "left alone" in item[1] for item in no_modals)
+
+
+def test_remove_catalog_no_does_not_delete(app, monkeypatch) -> None:
+    from tests.dialogs import Dialogs
+
+    worker = FakeAdapterWorker(catalog=[{**CATALOG_PACK, "ready": True}])
+    Dialogs(monkeypatch, {"question": QMessageBox.StandardButton.No}, adapters_module)
+    page = AdaptersPage(worker)
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    page._remove_catalog()
+    assert worker.deleted_packs == []

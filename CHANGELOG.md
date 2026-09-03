@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.55] — 2026-09-02
+
+Catalog tests cover forget, declined consent, and button state.
+
+### Changed
+
+- **Adapter catalog coverage.** Delete now asserts the registry row is
+  forgotten. GUI tests cover territory-No, low-disk `force=True`, Remove,
+  ready/busy buttons, and that catalog ids cannot shadow pack ids.
+
 ## [0.2.54] — 2026-09-02
 
 `adapters.json` is locked and replaced atomically.
