@@ -385,3 +385,24 @@ def test_catalog_lists_rows_and_download_asks_territory(app, no_modals) -> None:
     assert worker.started == ["h3-realism-people"]
     page._cancel_catalog()
     assert worker.cancelled == ["dl1"]
+
+
+def test_catalog_poll_skips_identical_rebuild(app) -> None:
+    row = {
+        "id": "h3-realism-people",
+        "title": "H3 Realism People (fal)",
+        "family": "h3",
+        "approx_gb": 0.13,
+        "ready": False,
+        "bytes_on_disk": 0,
+        "summary": "r34l1sm",
+        "territory_notice": None,
+        "license_name": "MiniMax H3 Community License",
+    }
+    page = AdaptersPage(FakeAdapterWorker(catalog=[dict(row)]))
+    item = page._catalog.topLevelItem(0)
+    page._sync_catalog([dict(row)], {})
+    assert page._catalog.topLevelItem(0) is item
+    page._sync_catalog([{**row, "ready": True}], {})
+    assert page._catalog.topLevelItem(0) is not item
+    assert page._catalog.topLevelItem(0).text(3) == "Ready"

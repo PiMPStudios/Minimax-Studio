@@ -268,7 +268,7 @@ class AdaptersPage(QWidget):
                 }
         except Exception:
             return
-        self._apply_catalog(catalog, downloads)
+        self._sync_catalog(catalog, downloads)
 
     def _catalog_job(self, pack: dict[str, Any] | None) -> dict[str, Any] | None:
         if not pack:
@@ -457,7 +457,9 @@ class AdaptersPage(QWidget):
                 if signature != previous:
                     self._rebuild_rows()
             if isinstance(catalog, list):
-                self._apply_catalog(catalog, downloads if isinstance(downloads, dict) else {})
+                self._sync_catalog(
+                    catalog, downloads if isinstance(downloads, dict) else {}
+                )
 
         def fail() -> None:
             self._status.setText("Could not list adapters — keeping the last list.")
@@ -476,6 +478,36 @@ class AdaptersPage(QWidget):
             )
             for row in rows
         ]
+
+    def _catalog_signature(
+        self, catalog: list[dict[str, Any]], downloads: dict[str, Any]
+    ) -> list[tuple]:
+        return [
+            (
+                row.get("id"),
+                row.get("ready"),
+                row.get("bytes_on_disk"),
+                (downloads.get(str(row.get("id"))) or {}).get("status"),
+                (downloads.get(str(row.get("id"))) or {}).get("message"),
+            )
+            for row in catalog
+        ]
+
+    def _sync_catalog(
+        self, catalog: list[dict[str, Any]], downloads: dict[str, Any]
+    ) -> None:
+        """Rebuild the catalog tree only when ready/size/download text changed.
+
+        Poll ticks every ~2 s; clear()+rebuild flickers, drops the click, and
+        closes the tooltip. Same skip the installed-adapter list already uses.
+        """
+        signature = self._catalog_signature(catalog, downloads)
+        previous = self._catalog_signature(self._catalog_rows, self._catalog_jobs)
+        if signature != previous:
+            self._apply_catalog(catalog, downloads)
+            return
+        self._catalog_jobs = downloads
+        self._catalog_selected()
 
     def _rebuild_rows(self) -> None:
         wanted = self._selected

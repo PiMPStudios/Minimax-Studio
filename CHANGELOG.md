@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.48] — 2026-09-01
+
+Catalog poll no longer rebuilds the tree every 2 s.
+
+### Changed
+
+- **Adapters Catalog skips identical rebuilds.** Same signature skip the
+  installed-adapter list already uses (`ready`, bytes, download status and
+  message). Button state still updates when the tree is left alone.
+
 ## [0.2.47] — 2026-09-01
 
 Catalog download busy state. A second click no longer starts a second snapshot.
