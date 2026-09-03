@@ -132,7 +132,8 @@ for plan-slice steps, `wip:` for red tests. Squash-ish, imperative, short subjec
   their own changes.
 - Train runs are **detached on purpose**: closing Studio must not stop a run,
   and `train_page` reattaches. Don't "clean up" that lifecycle.
-- H3 territory notice (`H3_TERRITORY`) is legal text — copy it, don't paraphrase.
+- H3 territory notice (`H3_TERRITORY`) and Music 3 credit (`MUSIC_CREDIT`)
+  live in `licenses.py` — copy them, don't paraphrase. Help quotes both.
 - `src/minimax_studio/secrets.py` is our keyring helper; `from secrets import token_hex`
   is stdlib. `app.py` imports it as `# stdlib secrets` for that reason.
 - `python -m minimax_studio --worker-only` has **no token**. Never ship it as a

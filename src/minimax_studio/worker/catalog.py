@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from minimax_studio.licenses import H3_TERRITORY
+
 
 @dataclass(frozen=True)
 class Pack:
@@ -29,12 +31,6 @@ class Pack:
     min_bytes: int | None = None
     max_bytes: int | None = None
 
-
-H3_TERRITORY = (
-    "The MiniMax H3 Community License does not authorize using the open weights "
-    "(or their outputs) in the US, EU, UK, or South Korea unless MiniMax grants "
-    "a separate license. The MiniMax hosted API remains globally available."
-)
 
 PACKS: dict[str, Pack] = {
     "music3-cuda": Pack(
@@ -244,11 +240,6 @@ PACKS: dict[str, Pack] = {
         territory_notice=H3_TERRITORY,
     ),
 }
-
-MUSIC_CREDIT = (
-    "The MiniMax-Music3 Community License requires UI credit on commercial "
-    "products. There is no geographic carve-out."
-)
 
 # PLAN-V3 S2: curated LoRAs, not a live scrape. Kind ``lora`` so Models does
 # not list them. They land in models/loras/ next to trained/imported files.

@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.50] — 2026-09-02
+
+Help quotes the Music 3 and H3 license notices instead of paraphrasing them.
+
+### Changed
+
+- **`MUSIC_CREDIT` is on Help.** Same GUI-safe module as `H3_TERRITORY`.
+  Studio is Apache-2.0 freeware; the Music 3 UI-credit clause is for
+  commercial products. Generate already shows the model names.
+
 ## [0.2.49] — 2026-09-02
 
 Free-disk “Download anyway?” is a typed error, not a substring of the copy.

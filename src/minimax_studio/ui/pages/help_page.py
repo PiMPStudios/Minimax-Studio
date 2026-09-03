@@ -3,19 +3,18 @@ from __future__ import annotations
 from PySide6.QtWidgets import QLabel, QTextBrowser, QVBoxLayout, QWidget
 
 from minimax_studio import __version__
+from minimax_studio.licenses import H3_TERRITORY, MUSIC_CREDIT
 
 HELP = """
 <h2>MiniMax Studio {version}</h2>
 <p>Point-and-click local studio for <b>MiniMax H3</b> and <b>MiniMax-Music3</b>.
 Weights are downloaded after install. This app does not ship model files.</p>
 
-<h3>Models</h3>
+<h3>Licenses</h3>
+<p>This app is Apache-2.0 freeware. Weights stay MiniMax’s.</p>
 <ul>
-<li><b>MiniMax-Music3</b> — MiniMax-Music3 Community License. Commercial use allowed
-with UI credit. Over USD 20M/year needs MiniMax authorization. No geographic carve-out.</li>
-<li><b>MiniMax H3</b> — MiniMax H3 Community License. Open weights are not authorized
-in the US, EU, UK, or South Korea unless MiniMax grants a separate license.
-The MiniMax hosted API remains globally available.</li>
+<li><b>MiniMax-Music3</b> — {music_credit}</li>
+<li><b>MiniMax H3</b> — {h3_territory}</li>
 </ul>
 
 <p>Version is also shown in the window title and on <code>GET /health</code>.</p>
@@ -168,6 +167,12 @@ class HelpPage(QWidget):
         title.setObjectName("pageTitle")
         body = QTextBrowser()
         body.setOpenExternalLinks(True)
-        body.setHtml(HELP.format(version=__version__))
+        body.setHtml(
+            HELP.format(
+                version=__version__,
+                music_credit=MUSIC_CREDIT,
+                h3_territory=H3_TERRITORY,
+            )
+        )
         layout.addWidget(title)
         layout.addWidget(body, 1)
