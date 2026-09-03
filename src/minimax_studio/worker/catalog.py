@@ -21,6 +21,13 @@ class Pack:
     # Packs whose files this pack needs at run time (same local_dir).
     # Deleting a required pack's files would break this one.
     requires: tuple[str, ...] = ()
+    # Hugging Face commit SHA. None follows ``main`` (weight packs). A curated
+    # LoRA row must pin this — the filename is not an identity.
+    revision: str | None = None
+    # Marker-file size band after download. Catches a truncated or 4× swap
+    # that kept the same name. None skips the check (weight packs).
+    min_bytes: int | None = None
+    max_bytes: int | None = None
 
 
 H3_TERRITORY = (
@@ -262,6 +269,10 @@ ADAPTERS: dict[str, Pack] = {
         allow_patterns=("h3-realism-people-t2v-i2v-r2v.safetensors",),
         marker_files=("h3-realism-people-t2v-i2v-r2v.safetensors",),
         territory_notice=H3_TERRITORY,
+        # main HEAD 2026-08-12; LoRA bytes last changed b6e6b9f (rank 32 / 1500).
+        revision="039cc8579d7aa357a882d7f4111b25da4f72dccc",
+        min_bytes=1_000_000,
+        max_bytes=250_000_000,
     ),
     "h3-motion": Pack(
         id="h3-motion",
@@ -279,6 +290,10 @@ ADAPTERS: dict[str, Pack] = {
         allow_patterns=("minimax_h3_motion_adapter_pilot_r16.safetensors",),
         marker_files=("minimax_h3_motion_adapter_pilot_r16.safetensors",),
         territory_notice=H3_TERRITORY,
+        # main HEAD 2026-08-25; LoRA bytes last changed 7d8c909 (pilot r16).
+        revision="0bfe4d6263fe4cc6f36f7682c95d33e50a5f6362",
+        min_bytes=1_000_000,
+        max_bytes=150_000_000,
     ),
 }
 

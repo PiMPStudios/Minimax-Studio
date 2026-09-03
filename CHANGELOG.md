@@ -12,6 +12,17 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.46] — 2026-09-01
+
+Catalog integrity. Curated LoRAs pin a Hugging Face commit and a size band.
+
+### Changed
+
+- **`Pack.revision` / `min_bytes` / `max_bytes`.** Adapter catalog rows pin
+  a commit SHA (`snapshot_download(revision=…)`) and refuse a marker file
+  that is far off the expected size. Weight packs still follow ``main``.
+  A curated list vouches for bytes, not a filename on a moving branch.
+
 ## [0.2.45] — 2026-09-01
 
 Adapter catalog. Curated H3 LoRAs on the Adapters page, not a store.

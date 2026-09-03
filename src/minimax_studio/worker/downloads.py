@@ -161,6 +161,8 @@ def _run_download(
             "allow_patterns": list(pack.allow_patterns) if pack.allow_patterns else None,
             "ignore_patterns": list(pack.ignore_patterns) if pack.ignore_patterns else None,
         }
+        if pack.revision:
+            kwargs["revision"] = pack.revision
         if snapshot is not None:
             snapshot(**kwargs)
         else:
@@ -173,6 +175,7 @@ def _run_download(
             # Some MLX packs use different markers; accept any file present.
             if first_existing(dest, pack.marker_files) is None and dir_bytes(dest) == 0:
                 raise RuntimeError("download finished but pack files are missing")
+        _assert_marker_sizes(pack, dest)
         if pack.kind != "lora":
             _ensure_license(pack.repo_id, dest, runtime.config.hf_token)
         if pack.kind == "lora":
@@ -318,6 +321,31 @@ def _ensure_license(repo_id: str, dest: Path, token: str | None) -> None:
             return
         except Exception:
             continue
+
+
+def _assert_marker_sizes(pack: Pack, dest: Path) -> None:
+    """Refuse a name-only swap that kept the marker but changed the bytes a lot."""
+    if pack.min_bytes is None and pack.max_bytes is None:
+        return
+    for marker in pack.marker_files:
+        path = dest / marker
+        if not path.is_file():
+            continue
+        size = path.stat().st_size
+        too_small = pack.min_bytes is not None and size < pack.min_bytes
+        too_big = pack.max_bytes is not None and size > pack.max_bytes
+        if too_small or too_big:
+            bound = pack.min_bytes if too_small else pack.max_bytes
+            word = "at least" if too_small else "at most"
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            raise RuntimeError(
+                f"“{pack.title}” came out {size} bytes — expected {word} "
+                f"{bound}. The file on Hugging Face is not the one this "
+                "catalog row vouches for."
+            )
 
 
 def _register_imported_lora(pack: Pack, dest: Path) -> None:

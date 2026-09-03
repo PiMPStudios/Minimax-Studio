@@ -19,6 +19,9 @@ def test_catalog_is_h3_only_and_not_on_models() -> None:
         assert pack.local_dir == "loras"
         assert pack.territory_notice == H3_TERRITORY
         assert pack.allow_patterns
+        assert pack.revision and len(pack.revision) == 40
+        assert pack.min_bytes and pack.max_bytes
+        assert pack.min_bytes < pack.max_bytes
         assert not any(
             pattern.endswith(".mp4") or "LICENSE" in pattern
             for pattern in pack.allow_patterns
@@ -46,10 +49,11 @@ def test_catalog_status_and_download_registers_imported(
     marker = pack.marker_files[0]
 
     def snapshot(**kwargs):
+        assert kwargs.get("revision") == pack.revision
         dest = Path(kwargs["local_dir"])
         path = dest / marker
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"lora")
+        path.write_bytes(b"x" * pack.min_bytes)
         return str(dest)
 
     record = start_download("h3-realism-people", snapshot=snapshot, force=True)
@@ -88,3 +92,30 @@ def test_delete_catalog_lora_does_not_wipe_the_loras_folder(
     assert not (loras / marker).exists()
     assert trained.is_file()
     assert loras.is_dir()
+
+
+def test_catalog_download_refuses_a_too_small_marker(studio_home: Path) -> None:
+    pack = ADAPTERS["h3-realism-people"]
+    marker = pack.marker_files[0]
+
+    def snapshot(**kwargs):
+        dest = Path(kwargs["local_dir"])
+        path = dest / marker
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"tiny")
+        return str(dest)
+
+    record = start_download("h3-realism-people", snapshot=snapshot, force=True)
+    import time
+
+    from minimax_studio.worker.downloads import get_download
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        current = get_download(record["id"])
+        if current["status"] in {"done", "error"}:
+            break
+        time.sleep(0.05)
+    final = get_download(record["id"])
+    assert final["status"] == "error"
+    assert "vouches for" in (final.get("error") or "")
