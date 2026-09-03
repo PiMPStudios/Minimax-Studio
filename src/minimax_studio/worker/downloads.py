@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -15,6 +16,11 @@ from minimax_studio.worker.model_paths import search_roots
 from minimax_studio.worker.runtime import runtime
 
 SnapshotFn = Callable[..., str]
+
+# A cancelling record whose thread died before it recorded cancelled would
+# otherwise block that pack until the worker restarts. Jobs prune terminals;
+# downloads just ignore a 15 min stall with no bytes.
+_STALE_DOWNLOAD_S = 900.0
 
 
 class _DownloadCancelled(Exception):
@@ -93,11 +99,15 @@ def start_download(
             )
     with runtime.lock:
         for existing in runtime.downloads.values():
-            if existing.get("pack_id") == pack.id and existing.get("status") in {
-                "queued",
-                "running",
-                "cancelling",
-            }:
+            if existing.get("pack_id") != pack.id:
+                continue
+            if existing.get("status") not in {"queued", "running", "cancelling"}:
+                continue
+            started = float(existing.get("started_at") or 0)
+            stalled = time.time() - started > _STALE_DOWNLOAD_S and not existing.get(
+                "bytes"
+            )
+            if not stalled:
                 raise RuntimeError(
                     f"“{pack.title}” is already downloading."
                 )
@@ -111,6 +121,7 @@ def start_download(
         "message": "Starting download",
         "error": None,
         "path": str(dest),
+        "started_at": time.time(),
     }
     with runtime.lock:
         runtime.downloads[job_id] = record

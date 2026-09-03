@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.63] — 2026-09-02
+
+A stalled cancelling download no longer blocks that pack until restart.
+
+### Changed
+
+- **Download dedupe ignores a 15-minute stall with no bytes.** Records
+  now store `started_at`. A live in-flight job still refuses a second
+  start.
+
 ## [0.2.62] — 2026-09-02
 
 GUI boundary tests cover every UI module, not one file.

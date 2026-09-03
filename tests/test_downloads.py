@@ -263,6 +263,54 @@ def test_start_download_force_bypasses_free_space(
     assert final["status"] == "done", final.get("error")
 
 
+def test_stale_cancelling_download_does_not_block_a_retry(studio_home: Path) -> None:
+    from minimax_studio.worker.runtime import runtime
+
+    runtime.downloads["dead"] = {
+        "id": "dead",
+        "pack_id": "h3-turbo",
+        "status": "cancelling",
+        "bytes": 0,
+        "started_at": time.time() - 901,
+    }
+
+    def fake_snapshot(repo_id, local_dir, token, allow_patterns, ignore_patterns):
+        pack = PACKS["h3-turbo"]
+        for marker in pack.marker_files:
+            path = Path(local_dir) / marker
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"x")
+        return local_dir
+
+    record = start_download("h3-turbo", snapshot=fake_snapshot, force=True)
+    assert record["id"] != "dead"
+    assert record.get("started_at")
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if get_download(record["id"])["status"] in {"done", "error", "cancelled"}:
+            break
+        time.sleep(0.05)
+    assert get_download(record["id"])["status"] == "done", get_download(record["id"]).get(
+        "error"
+    )
+
+
+def test_recent_cancelling_download_still_blocks(studio_home: Path) -> None:
+    import pytest
+
+    from minimax_studio.worker.runtime import runtime
+
+    runtime.downloads["live"] = {
+        "id": "live",
+        "pack_id": "h3-turbo",
+        "status": "cancelling",
+        "bytes": 0,
+        "started_at": time.time(),
+    }
+    with pytest.raises(RuntimeError, match="already downloading"):
+        start_download("h3-turbo", force=True)
+
+
 class _HttpError:
     """Stand-in for httpx.Response in WorkerClient._raise tests."""
 
