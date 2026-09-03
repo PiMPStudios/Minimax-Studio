@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.53] — 2026-09-02
+
+Catalog refresh failures are named, and they no longer stall the adapter list.
+
+### Changed
+
+- **Adapters catalog errors surface.** `_refresh_catalog` used to swallow
+  every exception. Poll fetches adapters and catalog independently so one
+  raise cannot silently stop the other.
+
 ## [0.2.52] — 2026-09-02
 
 Models and Adapters share one download confirm helper.

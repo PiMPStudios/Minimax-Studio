@@ -93,6 +93,17 @@ CATALOG = {
     "path": "/models/loras/minimax_h3_motion_adapter_pilot_r16.safetensors",
     "dataset": {},
 }
+CATALOG_PACK = {
+    "id": "h3-realism-people",
+    "title": "H3 Realism People (fal)",
+    "family": "h3",
+    "approx_gb": 0.13,
+    "ready": False,
+    "bytes_on_disk": 0,
+    "summary": "r34l1sm",
+    "territory_notice": None,
+    "license_name": "MiniMax H3 Community License",
+}
 GONE = {
     "id": "ghost.safetensors",
     "file": "ghost.safetensors",
@@ -241,6 +252,60 @@ def test_adapter_list_survives_a_failed_refresh(app) -> None:
     page.refresh()
     assert page._tree.topLevelItemCount() == 3
     assert "keeping the last list" in page._status.text()
+
+
+def test_catalog_refresh_failure_is_said_and_keeps_the_list(app) -> None:
+    worker = FakeAdapterWorker(catalog=[dict(CATALOG_PACK)])
+    page = AdaptersPage(worker)
+    assert page._catalog.topLevelItemCount() == 1
+
+    def boom() -> list:
+        raise RuntimeError("catalog down")
+
+    worker.list_adapter_catalog = boom  # type: ignore[method-assign]
+    page.refresh()
+    assert page._catalog.topLevelItemCount() == 1
+    assert page._tree.topLevelItemCount() == 3
+    assert "Could not refresh the adapter catalog: catalog down" in page._status.text()
+
+
+def test_poll_catalog_failure_does_not_stop_the_adapter_list(app) -> None:
+    from tests.dialogs import wait_background
+
+    worker = FakeAdapterWorker(catalog=[dict(CATALOG_PACK)])
+    page = AdaptersPage(worker)
+    worker.rows = [dict(TRAINED)]
+
+    def boom() -> list:
+        raise RuntimeError("catalog down")
+
+    worker.list_adapter_catalog = boom  # type: ignore[method-assign]
+    page.poll()
+    wait_background(page)
+    assert page._tree.topLevelItemCount() == 1
+    assert page._tree.topLevelItem(0).text(0) == "summer-lora"
+    assert page._catalog.topLevelItemCount() == 1
+    assert "Could not refresh the adapter catalog: catalog down" in page._status.text()
+
+
+def test_poll_adapter_failure_does_not_stop_the_catalog(app) -> None:
+    from tests.dialogs import wait_background
+
+    worker = FakeAdapterWorker(catalog=[])
+    page = AdaptersPage(worker)
+    assert page._catalog.topLevelItemCount() == 0
+    worker.catalog = [dict(CATALOG_PACK)]
+
+    def boom() -> list:
+        raise RuntimeError("worker down")
+
+    worker.list_adapters = boom  # type: ignore[method-assign]
+    page.poll()
+    wait_background(page)
+    assert page._tree.topLevelItemCount() == 3
+    assert "keeping the last list" in page._status.text()
+    assert page._catalog.topLevelItemCount() == 1
+    assert "Realism People" in page._catalog.topLevelItem(0).text(0)
 
 
 def test_every_loadable_lora_is_listed_with_its_origin(app) -> None:
@@ -459,17 +524,7 @@ def test_catalog_low_disk_asks_download_anyway(app, monkeypatch) -> None:
 
 
 def test_catalog_poll_skips_identical_rebuild(app) -> None:
-    row = {
-        "id": "h3-realism-people",
-        "title": "H3 Realism People (fal)",
-        "family": "h3",
-        "approx_gb": 0.13,
-        "ready": False,
-        "bytes_on_disk": 0,
-        "summary": "r34l1sm",
-        "territory_notice": None,
-        "license_name": "MiniMax H3 Community License",
-    }
+    row = dict(CATALOG_PACK)
     page = AdaptersPage(FakeAdapterWorker(catalog=[dict(row)]))
     item = page._catalog.topLevelItem(0)
     page._sync_catalog([dict(row)], {})

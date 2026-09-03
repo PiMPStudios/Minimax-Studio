@@ -248,9 +248,9 @@ class AdaptersPage(QWidget):
             rows = self._client.list_adapters()
         except Exception:
             self._status.setText("Could not list adapters — keeping the last list.")
-            return
-        self._rows = rows
-        self._rebuild_rows()
+        else:
+            self._rows = rows
+            self._rebuild_rows()
         self._refresh_catalog()
 
     def _refresh_catalog(self) -> None:
@@ -267,7 +267,8 @@ class AdaptersPage(QWidget):
                     for item in list_dl()
                     if isinstance(item, dict) and item.get("pack_id")
                 }
-        except Exception:
+        except Exception as exc:
+            self._status.setText(f"Could not refresh the adapter catalog: {exc}")
             return
         self._sync_catalog(catalog, downloads)
 
@@ -410,36 +411,61 @@ class AdaptersPage(QWidget):
         """Timer path: list adapters off the GUI thread. Overlapping polls skip."""
         from minimax_studio.ui.enhance import start_background
 
-        def work() -> tuple[list, list, dict]:
-            catalog: list = []
-            downloads: dict = {}
-            rows = self._client.list_adapters()
+        def work() -> dict[str, Any]:
+            """Adapters and catalog fail independently — one raise must not
+            stall the other list."""
+            payload: dict[str, Any] = {
+                "rows": None,
+                "rows_error": False,
+                "catalog": None,
+                "catalog_error": None,
+                "downloads": {},
+            }
+            try:
+                payload["rows"] = self._client.list_adapters()
+            except Exception:
+                payload["rows_error"] = True
             list_cat = getattr(self._client, "list_adapter_catalog", None)
             if callable(list_cat):
-                catalog = list_cat()
-            list_dl = getattr(self._client, "list_downloads", None)
-            if callable(list_dl):
-                downloads = {
-                    item["pack_id"]: item
-                    for item in list_dl()
-                    if isinstance(item, dict) and item.get("pack_id")
-                }
-            return rows, catalog, downloads
+                try:
+                    payload["catalog"] = list_cat()
+                    list_dl = getattr(self._client, "list_downloads", None)
+                    if callable(list_dl):
+                        payload["downloads"] = {
+                            item["pack_id"]: item
+                            for item in list_dl()
+                            if isinstance(item, dict) and item.get("pack_id")
+                        }
+                except Exception as exc:
+                    payload["catalog"] = None
+                    payload["catalog_error"] = str(exc)
+            return payload
 
         def done(payload: object) -> None:
-            if not isinstance(payload, tuple) or len(payload) != 3:
+            if not isinstance(payload, dict):
                 return
-            rows, catalog, downloads = payload
+            notes: list[str] = []
+            rows = payload.get("rows")
             if isinstance(rows, list):
                 signature = self._rows_signature(rows)
                 previous = self._rows_signature(self._rows)
                 self._rows = rows
                 if signature != previous:
                     self._rebuild_rows()
+            elif payload.get("rows_error"):
+                notes.append("Could not list adapters — keeping the last list.")
+            catalog = payload.get("catalog")
+            downloads = payload.get("downloads")
             if isinstance(catalog, list):
                 self._sync_catalog(
                     catalog, downloads if isinstance(downloads, dict) else {}
                 )
+            elif payload.get("catalog_error"):
+                notes.append(
+                    f"Could not refresh the adapter catalog: {payload['catalog_error']}"
+                )
+            if notes:
+                self._status.setText(" ".join(notes))
 
         def fail() -> None:
             self._status.setText("Could not list adapters — keeping the last list.")

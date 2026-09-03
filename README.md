@@ -4,7 +4,7 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.52** generate studio + Build pages (datasets, LoRA training —
+Status: **0.2.53** generate studio + Build pages (datasets, LoRA training —
 experimental; Music and H3 24 GB smokes have run on a real NVIDIA GPU).
 Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md)
 ([v2](docs/PLAN-V2.md), [v3](docs/PLAN-V3.md)).
