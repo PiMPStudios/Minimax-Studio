@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.59] — 2026-09-02
+
+License notices state the actual Music 3 test, and Help names the upstreams.
+
+### Changed
+
+- **`licenses.py` no longer settles “freeware.”** §3.1 is use, not shipping
+  weights. Help lists Qwen3-8B (Apache-2.0), Stable Audio (MIT), and DAC
+  (MIT) from the Music 3 license tail.
+
 ## [0.2.58] — 2026-09-02
 
 Catalog Ready means the pin was verified, not just that a file exists.

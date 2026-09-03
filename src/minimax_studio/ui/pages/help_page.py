@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QLabel, QTextBrowser, QVBoxLayout, QWidget
 
 from minimax_studio import __version__
-from minimax_studio.licenses import H3_TERRITORY, MUSIC_CREDIT
+from minimax_studio.licenses import H3_TERRITORY, MUSIC_CREDIT, MUSIC_UPSTREAMS
 
 HELP = """
 <h2>MiniMax Studio {version}</h2>
@@ -14,6 +14,7 @@ Weights are downloaded after install. This app does not ship model files.</p>
 <p>This app is Apache-2.0 freeware. Weights stay MiniMax’s.</p>
 <ul>
 <li><b>MiniMax-Music3</b> — {music_credit}</li>
+<li><b>MiniMax-Music3 upstreams</b> — {music_upstreams}</li>
 <li><b>MiniMax H3</b> — {h3_territory}</li>
 </ul>
 
@@ -172,6 +173,7 @@ class HelpPage(QWidget):
             HELP.format(
                 version=__version__,
                 music_credit=MUSIC_CREDIT,
+                music_upstreams=MUSIC_UPSTREAMS,
                 h3_territory=H3_TERRITORY,
             )
         )
