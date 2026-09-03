@@ -28,6 +28,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from minimax_studio.lora_kind import kind_from_path
 from minimax_studio.worker.fsutil import atomic_write_text
 from minimax_studio.worker.loras import list_loras
 from minimax_studio.worker.runtime import runtime
@@ -57,18 +58,6 @@ CLIP_SUFFIXES = {
     ".jpeg",
     ".webp",
 }
-
-# Folder names that mean this file is an H3 adapter, not Music.
-_H3_LORA_FOLDERS = {"h3-comfy", "minimax-h3"}
-
-
-def kind_from_path(path: str | Path) -> str:
-    """Infer adapter family from the folders a .safetensors lives in."""
-    parts = {part.lower() for part in Path(path).parts}
-    if parts & _H3_LORA_FOLDERS:
-        return "h3"
-    return "music"
-
 
 def registry_path() -> Path:
     return runtime.config.models_root() / "adapters.json"

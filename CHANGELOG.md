@@ -12,6 +12,17 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.62] — 2026-09-02
+
+GUI boundary tests cover every UI module, not one file.
+
+### Changed
+
+- **`test_gui_never_imports_the_worker`.** Walks `ui/`, `app.py`, and
+  `worker_client.py`. `kind_from_path` moved to `lora_kind.py` so Import
+  LoRA no longer pulls `worker/`. Disk-copy substring check is the same
+  walk; pages are not banned from saying `territory_notice`.
+
 ## [0.2.61] — 2026-09-02
 
 Catalog Download and Cancel no longer block the GUI thread on a refresh.

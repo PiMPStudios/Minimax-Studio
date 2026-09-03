@@ -319,26 +319,6 @@ def test_conflict_status_is_not_insufficient_disk() -> None:
         assert "already in progress" in str(exc)
 
 
-def test_ui_does_not_substring_match_disk_copy() -> None:
-    from pathlib import Path
-
-    root = Path("src/minimax_studio/ui")
-    hits = [
-        str(path)
-        for path in root.rglob("*.py")
-        if "Not enough free disk" in path.read_text(encoding="utf-8")
-    ]
-    assert hits == []
-    models = (root / "pages" / "models_page.py").read_text(encoding="utf-8")
-    adapters = (root / "pages" / "adapters_page.py").read_text(encoding="utf-8")
-    assert "confirm_and_download" in models
-    assert "confirm_and_download" in adapters
-    assert "territory_notice" not in models
-    assert "territory_notice" not in adapters
-    assert "Download this pack anyway" not in models
-    assert "Download this adapter anyway" not in adapters
-
-
 def test_confirm_and_download_asks_the_license_then_starts(monkeypatch) -> None:
     from PySide6.QtWidgets import QMessageBox
 

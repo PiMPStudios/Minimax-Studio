@@ -15,7 +15,7 @@ def ask_lora_family(parent: QWidget, source_path: str) -> str | None:
 
     Folders named ``h3-comfy`` / ``minimax-h3`` already say H3, so we don't ask.
     """
-    from minimax_studio.worker.adapters import kind_from_path
+    from minimax_studio.lora_kind import kind_from_path
 
     if kind_from_path(source_path) == "h3":
         return "h3"

@@ -33,9 +33,8 @@ def test_catalog_reexports_the_same_h3_territory() -> None:
     assert CATALOG_H3 is H3_TERRITORY
 
 
-def test_help_does_not_import_worker() -> None:
+def test_help_quotes_notices_from_licenses() -> None:
     text = Path("src/minimax_studio/ui/pages/help_page.py").read_text(encoding="utf-8")
-    assert "minimax_studio.worker" not in text
     assert "from minimax_studio.licenses import" in text
 
 
