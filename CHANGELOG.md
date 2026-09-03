@@ -12,6 +12,17 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.57] — 2026-09-02
+
+Catalog LoRAs pin the file digest, not just the commit and a size band.
+
+### Changed
+
+- **`Pack.sha256`.** After the size-band pre-check, a catalog download
+  hashes the marker. A mismatch unlinks only that file and names the
+  deletion. Weight packs skip the digest. Verified against HF `lfs.oid`
+  and a local `sha256sum` of both files.
+
 ## [0.2.56] — 2026-09-02
 
 Catalog nits: honest Remove, unmeasured size, tighter forget catch.

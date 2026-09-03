@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import threading
 import uuid
 from collections.abc import Callable
@@ -187,6 +188,7 @@ def _run_download(
             if first_existing(dest, pack.marker_files) is None and dir_bytes(dest) == 0:
                 raise RuntimeError("download finished but pack files are missing")
         _assert_marker_sizes(pack, dest)
+        _assert_marker_digest(pack, dest)
         if pack.kind != "lora":
             _ensure_license(pack.repo_id, dest, runtime.config.hf_token)
         if pack.kind == "lora":
@@ -356,6 +358,32 @@ def _assert_marker_sizes(pack: Pack, dest: Path) -> None:
                 f"“{pack.title}” came out {size} bytes — expected {word} "
                 f"{bound}. The file on Hugging Face is not the one this "
                 "catalog row vouches for."
+            )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _assert_marker_digest(pack: Pack, dest: Path) -> None:
+    """A pinned commit is somebody's promise. The digest is the evidence."""
+    if not pack.sha256:
+        return
+    for marker in pack.marker_files:
+        path = dest / marker
+        if not path.is_file():
+            continue
+        digest = _file_sha256(path)
+        if digest != pack.sha256:
+            path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"“{pack.title}” hashed to {digest}, not the {pack.sha256} "
+                "this catalog row vouches for. Studio deleted the copy it "
+                "fetched; nothing else in models/loras/ was touched."
             )
 
 

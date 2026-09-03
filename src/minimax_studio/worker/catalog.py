@@ -30,6 +30,10 @@ class Pack:
     # that kept the same name. None skips the check (weight packs).
     min_bytes: int | None = None
     max_bytes: int | None = None
+    # A revision says which commit; only a digest says which bytes. HF
+    # publishes this: GET /api/models/<repo>/tree/<revision>?blobs=true →
+    # lfs.oid. None skips the check (weight packs).
+    sha256: str | None = None
 
 
 PACKS: dict[str, Pack] = {
@@ -264,6 +268,8 @@ ADAPTERS: dict[str, Pack] = {
         revision="039cc8579d7aa357a882d7f4111b25da4f72dccc",
         min_bytes=1_000_000,
         max_bytes=250_000_000,
+        # 131,229,656 B at that revision (HF lfs.oid + local sha256sum).
+        sha256="acc529601d2da117fb81179e76c56e488a3beab1171659d305f04fa3655b787e",
     ),
     "h3-motion": Pack(
         id="h3-motion",
@@ -285,6 +291,8 @@ ADAPTERS: dict[str, Pack] = {
         revision="0bfe4d6263fe4cc6f36f7682c95d33e50a5f6362",
         min_bytes=1_000_000,
         max_bytes=150_000_000,
+        # 63,103,768 B at that revision (HF lfs.oid + local sha256sum).
+        sha256="2b31e67d0399eab21ae45fadddcefe82293b1c6cf677b87f8f19bcc745d02fe4",
     ),
 }
 
