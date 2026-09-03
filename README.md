@@ -99,9 +99,11 @@ from any checkpoint it wrote, or **export** the run to another disk — caches
 excluded, since the next run rebuilds them. **Adapters** (Ctrl+Shift+A) records where
 every LoRA came from and **auditions** it at 0.8 strength with the caption it
 trained on, badged in History: Music a 30 s song, H3 a short still-pair (or
-text-to-video if the dataset has no stills). That path is ComfyUI (the CUDA
-pipeline cannot load LoRAs). 24 GB VRAM floor. See
-[`docs/PLAN-V2.md`](docs/PLAN-V2.md).
+text-to-video if the dataset has no stills). A short **Catalog** on that page
+downloads known H3 LoRAs (Realism People, Motion) with the same territory
+notice as H3 weights; Music is still Import a file. Music LoRAs load on CUDA
+and ComfyUI; H3 audition uses ComfyUI on Auto because ConvRot INT8 LoRAs live
+there. 24 GB VRAM floor. See [`docs/PLAN-V2.md`](docs/PLAN-V2.md).
 
 ## License (models)
 

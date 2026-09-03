@@ -27,6 +27,8 @@ def test_help_quotes_music_credit_and_h3_territory() -> None:
     assert "DAC" in html
     assert "from catalog" in html
     assert "you brought the file" in html
+    assert "CUDA pipeline cannot load LoRAs" not in html
+    assert "Music a 30 s song on CUDA or" in html
 
 
 def test_catalog_reexports_the_same_h3_territory() -> None:

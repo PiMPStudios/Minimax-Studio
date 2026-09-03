@@ -129,8 +129,8 @@ and free cache disk before anything starts; no mystery OOM.</p>
 <p><b>Said plainly:</b> Music and H3 LoRA training have both run on a real
 NVIDIA card (PLAN-V2 S0). Validate refuses extra lines in a caption
 <code>.txt</code> — one caption per file; extra lines miss the text-embed cache.
-<b>Audition</b> is one click for both families: Music a 30 s song through
-ComfyUI (the CUDA pipeline cannot load LoRAs), H3 a short still-pair — or
+<b>Audition</b> is one click for both families: Music a 30 s song on CUDA or
+ComfyUI, H3 a short still-pair through ComfyUI on Auto — or
 text-to-video when the dataset has no stills.</p>
 <p>A live training run warns you on Generate (and shows in the status bar) —
 one GPU, two hungry things.</p>
