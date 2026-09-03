@@ -12,6 +12,20 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.65] — 2026-09-02
+
+A dead cancel no longer blocks that pack, and Download comes back without a
+restart.
+
+### Changed
+
+- **Stall bypass is `cancelling` only.** A 15-minute `queued`/`running`
+  record with no bytes still refuses a second start, so two snapshots
+  cannot share one dest.
+- **`list_downloads` retires the zombie.** A 15-minute zero-byte
+  `cancelling` row becomes `cancelled` (“Cancel stalled — you can try
+  again”) so Catalog and Models re-enable Download on the next poll.
+
 ## [0.2.64] — 2026-09-02
 
 Catalog refresh failures stay a short status line; finished downloads drop

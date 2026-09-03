@@ -2,7 +2,12 @@ import time
 from pathlib import Path
 
 from minimax_studio.worker.catalog import PACKS
-from minimax_studio.worker.downloads import delete_pack, get_download, start_download
+from minimax_studio.worker.downloads import (
+    delete_pack,
+    get_download,
+    list_downloads,
+    start_download,
+)
 
 
 def test_h3_train_pack_is_the_63gb_slice_not_the_transformer() -> None:
@@ -288,6 +293,8 @@ def test_stale_cancelling_download_does_not_block_a_retry(studio_home: Path) -> 
     record = start_download("h3-turbo", snapshot=fake_snapshot, force=True)
     assert record["id"] != "dead"
     assert record.get("started_at")
+    assert get_download("dead")["status"] == "cancelled"
+    assert "dead" not in runtime.download_stops
     deadline = time.time() + 5
     while time.time() < deadline:
         if get_download(record["id"])["status"] in {"done", "error", "cancelled"}:
@@ -296,6 +303,64 @@ def test_stale_cancelling_download_does_not_block_a_retry(studio_home: Path) -> 
     assert get_download(record["id"])["status"] == "done", get_download(record["id"]).get(
         "error"
     )
+
+
+def test_list_downloads_retires_a_stale_cancelling_zombie(studio_home: Path) -> None:
+    import threading
+
+    from minimax_studio.worker.runtime import runtime
+
+    runtime.downloads["dead"] = {
+        "id": "dead",
+        "pack_id": "h3-turbo",
+        "status": "cancelling",
+        "bytes": 0,
+        "started_at": time.time() - 901,
+        "message": "Cancel requested — Hugging Face may finish the current file",
+    }
+    runtime.download_stops["dead"] = threading.Event()
+    rows = list_downloads()
+    zombie = next(row for row in rows if row["id"] == "dead")
+    assert zombie["status"] == "cancelled"
+    assert "try again" in zombie["message"]
+    assert "dead" not in runtime.download_stops
+
+
+def test_stale_queued_or_running_download_still_blocks(studio_home: Path) -> None:
+    import pytest
+
+    from minimax_studio.worker.runtime import runtime
+
+    for status in ("queued", "running"):
+        runtime.downloads.clear()
+        runtime.download_stops.clear()
+        runtime.downloads["hung"] = {
+            "id": "hung",
+            "pack_id": "h3-turbo",
+            "status": status,
+            "bytes": 0,
+            "started_at": time.time() - 901,
+        }
+        with pytest.raises(RuntimeError, match="already downloading"):
+            start_download("h3-turbo", force=True)
+        assert get_download("hung")["status"] == status
+
+
+def test_stale_cancelling_with_bytes_still_blocks(studio_home: Path) -> None:
+    import pytest
+
+    from minimax_studio.worker.runtime import runtime
+
+    runtime.downloads["partial"] = {
+        "id": "partial",
+        "pack_id": "h3-turbo",
+        "status": "cancelling",
+        "bytes": 1,
+        "started_at": time.time() - 901,
+    }
+    with pytest.raises(RuntimeError, match="already downloading"):
+        start_download("h3-turbo", force=True)
+    assert get_download("partial")["status"] == "cancelling"
 
 
 def test_recent_cancelling_download_still_blocks(studio_home: Path) -> None:

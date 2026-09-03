@@ -18,8 +18,10 @@ from minimax_studio.worker.runtime import runtime
 SnapshotFn = Callable[..., str]
 
 # A cancelling record whose thread died before it recorded cancelled would
-# otherwise block that pack until the worker restarts. Jobs prune terminals;
-# downloads just ignore a 15 min stall with no bytes.
+# otherwise block that pack until the worker restarts, and the GUI would keep
+# Download disabled. Jobs prune terminals; we retire a 15 min cancelling stall
+# with no bytes so the next poll re-enables the button. queued/running never
+# get this — a live snapshot must not share dest with a second child.
 _STALE_DOWNLOAD_S = 900.0
 
 
@@ -78,6 +80,29 @@ def list_adapter_catalog() -> list[dict[str, Any]]:
     return rows
 
 
+def _stale_cancelling(record: dict[str, Any]) -> bool:
+    if record.get("status") != "cancelling":
+        return False
+    started = float(record.get("started_at") or 0)
+    return time.time() - started > _STALE_DOWNLOAD_S and not record.get("bytes")
+
+
+def _retire_stale_cancelling_locked() -> None:
+    """Caller holds runtime.lock. Dead cancel → cancelled so the GUI unsticks."""
+    for record in runtime.downloads.values():
+        if not _stale_cancelling(record):
+            continue
+        job_id = str(record.get("id") or "")
+        stop = runtime.download_stops.get(job_id)
+        if stop:
+            stop.set()
+        record["status"] = "cancelled"
+        record["message"] = "Cancel stalled — you can try again"
+        # _stopped also treats cancelled as stopped, so a still-alive snapshot
+        # winds down after the Event is popped.
+        runtime.download_stops.pop(job_id, None)
+
+
 def start_download(
     pack_id: str, snapshot: SnapshotFn | None = None, force: bool = False
 ) -> dict[str, Any]:
@@ -98,16 +123,11 @@ def start_download(
                 "or choose Download anyway."
             )
     with runtime.lock:
+        _retire_stale_cancelling_locked()
         for existing in runtime.downloads.values():
             if existing.get("pack_id") != pack.id:
                 continue
-            if existing.get("status") not in {"queued", "running", "cancelling"}:
-                continue
-            started = float(existing.get("started_at") or 0)
-            stalled = time.time() - started > _STALE_DOWNLOAD_S and not existing.get(
-                "bytes"
-            )
-            if not stalled:
+            if existing.get("status") in {"queued", "running", "cancelling"}:
                 raise RuntimeError(
                     f"“{pack.title}” is already downloading."
                 )
@@ -138,6 +158,7 @@ def start_download(
 
 def get_download(job_id: str) -> dict[str, Any]:
     with runtime.lock:
+        _retire_stale_cancelling_locked()
         record = runtime.downloads.get(job_id)
         if record is None:
             raise KeyError(job_id)
@@ -146,6 +167,7 @@ def get_download(job_id: str) -> dict[str, Any]:
 
 def list_downloads() -> list[dict[str, Any]]:
     with runtime.lock:
+        _retire_stale_cancelling_locked()
         return [dict(item) for item in runtime.downloads.values()]
 
 
@@ -166,7 +188,10 @@ def cancel_download(job_id: str) -> dict[str, Any]:
 
 def _stopped(job_id: str) -> bool:
     stop = runtime.download_stops.get(job_id)
-    return bool(stop and stop.is_set())
+    if stop and stop.is_set():
+        return True
+    record = runtime.downloads.get(job_id)
+    return bool(record and record.get("status") in {"cancelling", "cancelled"})
 
 
 def _update(job_id: str, **fields: Any) -> None:
