@@ -173,6 +173,9 @@ def _update(job_id: str, **fields: Any) -> None:
     with runtime.lock:
         if job_id in runtime.downloads:
             runtime.downloads[job_id].update(fields)
+            # Same family as download_procs: a terminal job must not leak the Event.
+            if fields.get("status") in {"done", "error", "cancelled"}:
+                runtime.download_stops.pop(job_id, None)
 
 
 def _run_download(
@@ -233,6 +236,8 @@ def _run_download(
         _update(job_id, status="error", message="Download failed", error=str(exc))
     finally:
         stop.set()
+        with runtime.lock:
+            runtime.download_stops.pop(job_id, None)
         from minimax_studio.worker.model_paths import reset_bytes_cache
 
         reset_bytes_cache()

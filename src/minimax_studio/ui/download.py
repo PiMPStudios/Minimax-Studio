@@ -11,7 +11,7 @@ from minimax_studio.worker_client import WorkerClient
 
 
 def confirm_and_download(
-    parent: QWidget,
+    parent: QWidget | None,
     client: WorkerClient,
     pack: dict[str, Any],
     *,
@@ -39,7 +39,7 @@ def confirm_and_download(
 
 
 def start_download_or_ask(
-    parent: QWidget, client: WorkerClient, pack_id: str
+    parent: QWidget | None, client: WorkerClient, pack_id: str
 ) -> dict[str, Any] | None:
     """Return the download job, or None if the user cancelled / it failed.
 

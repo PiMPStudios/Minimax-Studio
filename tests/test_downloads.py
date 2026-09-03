@@ -118,6 +118,9 @@ def test_download_uses_injected_snapshot(studio_home: Path) -> None:
         time.sleep(0.05)
     current = get_download(record["id"])
     assert current["status"] == "done"
+    from minimax_studio.worker.runtime import runtime
+
+    assert record["id"] not in runtime.download_stops
     assert (studio_home / "models" / "music3-cuda" / "modular_model_index.json").is_file()
 
 
@@ -389,7 +392,7 @@ def test_confirm_and_download_asks_the_license_then_starts(monkeypatch) -> None:
     dialogs = Dialogs(
         monkeypatch, {"question": QMessageBox.StandardButton.Yes}, download_mod
     )
-    job = confirm_and_download(None, Client(), pack, noun="pack")  # type: ignore[arg-type]
+    job = confirm_and_download(None, Client(), pack, noun="pack")
     assert job is not None and job["id"] == "dl"
     assert calls == ["h3-fl2va"]
     assert dialogs.kinds() == ["question"]
@@ -409,7 +412,7 @@ def test_confirm_and_download_no_skips_the_start(monkeypatch) -> None:
             raise AssertionError("declining the license must not start a download")
 
     Dialogs(monkeypatch, {"question": QMessageBox.StandardButton.No}, download_mod)
-    job = confirm_and_download(  # type: ignore[arg-type]
+    job = confirm_and_download(
         None,
         Client(),
         {"id": "h3-motion", "territory_notice": "US/EU/UK/KR"},
@@ -430,7 +433,7 @@ def test_confirm_and_download_skips_the_box_when_there_is_no_notice(
             return {"id": "dl", "pack_id": pack_id, "status": "queued"}
 
     dialogs = Dialogs(monkeypatch, {}, download_mod)
-    job = confirm_and_download(  # type: ignore[arg-type]
+    job = confirm_and_download(
         None, Client(), {"id": "music3-cuda", "territory_notice": None}
     )
     assert job is not None and job["id"] == "dl"
@@ -458,7 +461,7 @@ def test_start_download_or_ask_retries_when_copy_is_reworded(monkeypatch) -> Non
     dialogs = Dialogs(
         monkeypatch, {"question": QMessageBox.StandardButton.Yes}, download_mod
     )
-    job = start_download_or_ask(None, Client(), "h3-fl2va")  # type: ignore[arg-type]
+    job = start_download_or_ask(None, Client(), "h3-fl2va")
     assert job is not None and job["id"] == "dl"
     assert calls == [("h3-fl2va", False), ("h3-fl2va", True)]
     assert "Download anyway?" in dialogs.last()[2]
@@ -480,7 +483,7 @@ def test_start_download_or_ask_no_does_not_force(monkeypatch) -> None:
             raise InsufficientDisk("The models volume is full.")
 
     Dialogs(monkeypatch, {"question": QMessageBox.StandardButton.No}, download_mod)
-    job = start_download_or_ask(None, Client(), "h3-fl2va")  # type: ignore[arg-type]
+    job = start_download_or_ask(None, Client(), "h3-fl2va")
     assert job is None
     assert calls == [("h3-fl2va", False)]
 
@@ -495,7 +498,7 @@ def test_start_download_or_ask_other_errors_are_warnings(monkeypatch) -> None:
             raise RuntimeError("network down")
 
     dialogs = Dialogs(monkeypatch, {}, download_mod)
-    job = start_download_or_ask(None, Client(), "h3-fl2va")  # type: ignore[arg-type]
+    job = start_download_or_ask(None, Client(), "h3-fl2va")
     assert job is None
     assert dialogs.kinds() == ["warning"]
     assert "network down" in dialogs.last()[2]

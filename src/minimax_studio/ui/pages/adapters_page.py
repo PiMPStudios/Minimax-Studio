@@ -54,6 +54,16 @@ SOURCE_LABEL = {
 }
 
 
+def _catalog_error_text(exc: BaseException) -> str:
+    """Class name plus a short first line — not a traceback in the status strip."""
+    raw = str(exc).strip()
+    first = raw.splitlines()[0].strip() if raw else ""
+    if len(first) > 120:
+        first = first[:117].rstrip() + "…"
+    name = exc.__class__.__name__
+    return f"{name}: {first}" if first else name
+
+
 def _when(timestamp: Any) -> str:
     try:
         return time.strftime("%Y-%m-%d %H:%M", time.localtime(float(timestamp)))
@@ -270,7 +280,9 @@ class AdaptersPage(QWidget):
                     if isinstance(item, dict) and item.get("pack_id")
                 }
         except Exception as exc:
-            self._status.setText(f"Could not refresh the adapter catalog: {exc}")
+            self._status.setText(
+                f"Could not refresh the adapter catalog: {_catalog_error_text(exc)}"
+            )
             return
         self._sync_catalog(catalog, downloads)
 
@@ -473,7 +485,7 @@ class AdaptersPage(QWidget):
                         }
                 except Exception as exc:
                     payload["catalog"] = None
-                    payload["catalog_error"] = str(exc)
+                    payload["catalog_error"] = _catalog_error_text(exc)
             return payload
 
         def done(payload: object) -> None:
@@ -690,7 +702,10 @@ class AdaptersPage(QWidget):
             return
         self._prompt.clear()
         seconds = float(queued.get("duration_s") or 0)
-        length = f"{seconds:g} s clip" if (queued.get("kind") or row.get("kind")) == "h3" else f"{int(seconds)} s"
+        if (queued.get("kind") or row.get("kind")) == "h3":
+            length = f"{seconds:g} s clip"
+        else:
+            length = f"{int(seconds)} s"
         self._status.setText(
             f"Audition queued for “{row.get('name')}” — "
             f"{length} at "

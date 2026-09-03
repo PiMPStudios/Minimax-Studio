@@ -260,13 +260,17 @@ def test_catalog_refresh_failure_is_said_and_keeps_the_list(app) -> None:
     assert page._catalog.topLevelItemCount() == 1
 
     def boom() -> list:
-        raise RuntimeError("catalog down")
+        raise RuntimeError("catalog down\n  File \"client.py\", line 9, in send")
 
     worker.list_adapter_catalog = boom  # type: ignore[method-assign]
     page.refresh()
     assert page._catalog.topLevelItemCount() == 1
     assert page._tree.topLevelItemCount() == 3
-    assert "Could not refresh the adapter catalog: catalog down" in page._status.text()
+    assert (
+        "Could not refresh the adapter catalog: RuntimeError: catalog down"
+        in page._status.text()
+    )
+    assert "client.py" not in page._status.text()
 
 
 def test_poll_catalog_failure_does_not_stop_the_adapter_list(app) -> None:
@@ -285,7 +289,10 @@ def test_poll_catalog_failure_does_not_stop_the_adapter_list(app) -> None:
     assert page._tree.topLevelItemCount() == 1
     assert page._tree.topLevelItem(0).text(0) == "summer-lora"
     assert page._catalog.topLevelItemCount() == 1
-    assert "Could not refresh the adapter catalog: catalog down" in page._status.text()
+    assert (
+        "Could not refresh the adapter catalog: RuntimeError: catalog down"
+        in page._status.text()
+    )
 
 
 def test_poll_adapter_failure_does_not_stop_the_catalog(app) -> None:

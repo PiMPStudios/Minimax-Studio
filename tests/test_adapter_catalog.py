@@ -162,19 +162,21 @@ def test_delete_catalog_lora_does_not_swallow_a_registry_write_failure(
 def test_start_download_refuses_a_second_in_flight(
     studio_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    import threading
     import time
 
     from minimax_studio.worker.downloads import cancel_download, get_download
+    from minimax_studio.worker.runtime import runtime
 
     pack = ADAPTERS["h3-motion"]
     marker = pack.marker_files[0]
     payload = b"x" * pack.min_bytes
     _pin_dummy_digest(monkeypatch, pack, payload)
-    started = time.time()
+    # Hold the snapshot until the second start_download has been refused.
+    release = threading.Event()
 
     def snapshot(**kwargs):
-        while time.time() - started < 2:
-            time.sleep(0.05)
+        release.wait(timeout=5)
         dest = Path(kwargs["local_dir"])
         path = dest / marker
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -186,12 +188,14 @@ def test_start_download_refuses_a_second_in_flight(
         with pytest.raises(RuntimeError, match="already downloading"):
             start_download("h3-motion", snapshot=snapshot, force=True)
     finally:
+        release.set()
         cancel_download(first["id"])
         deadline = time.time() + 5
         while time.time() < deadline:
             if get_download(first["id"])["status"] in {"done", "error", "cancelled"}:
                 break
             time.sleep(0.05)
+        assert first["id"] not in runtime.download_stops
 
 
 def test_catalog_download_refuses_a_too_small_marker(studio_home: Path) -> None:

@@ -12,6 +12,21 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.64] — 2026-09-02
+
+Catalog refresh failures stay a short status line; finished downloads drop
+their stop Event.
+
+### Changed
+
+- **Catalog error strip.** Class name plus the first line of the exception,
+  not a traceback-ish `str(exc)` in the word-wrapped label.
+- **`download_stops` is popped** when a download is `done` / `error` /
+  `cancelled` (same family as `download_procs`).
+- `confirm_and_download` / `start_download_or_ask` accept a null parent.
+  The in-flight download test waits on an Event instead of two seconds of
+  sleep.
+
 ## [0.2.63] — 2026-09-02
 
 A stalled cancelling download no longer blocks that pack until restart.

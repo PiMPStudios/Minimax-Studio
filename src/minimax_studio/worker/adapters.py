@@ -40,6 +40,7 @@ _REGISTRY_LOCK = threading.Lock()
 class NoRegistryRow(RuntimeError):
     """forget() when that file has no adapters.json row."""
 
+
 #: The PiMP loop's one-click audition: short, soft, and unmistakably a test.
 AUDITION_STRENGTH = 0.8
 AUDITION_SECONDS = 30.0
