@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.60] — 2026-09-02
+
+A half-failed catalog Remove refreshes the tree and names what may already be gone.
+
+### Changed
+
+- **Remove incomplete.** If `delete_pack` raises after unlinking the LoRA,
+  the catalog refreshes first so Ready cannot outlive the file. The dialog
+  says the registry row may still be listed.
+
 ## [0.2.59] — 2026-09-02
 
 License notices state the actual Music 3 test, and Help names the upstreams.

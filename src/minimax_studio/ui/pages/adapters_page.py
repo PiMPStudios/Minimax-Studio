@@ -422,7 +422,13 @@ class AdaptersPage(QWidget):
         try:
             result = self._client.delete_pack(pack_id)
         except Exception as exc:
-            QMessageBox.warning(self, "Remove failed", str(exc))
+            self.refresh()
+            QMessageBox.warning(
+                self,
+                "Remove incomplete",
+                f"{exc}\n\nThe LoRA file may already be deleted; the registry row "
+                "may still be listed. Nothing else in models/loras/ was touched.",
+            )
             return
         title = pack.get("title") or pack_id
         if result.get("removed"):

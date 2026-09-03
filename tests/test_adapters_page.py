@@ -640,3 +640,25 @@ def test_remove_catalog_says_when_nothing_was_on_disk(app, no_modals) -> None:
     page._remove_catalog()
     assert worker.deleted_packs == ["h3-realism-people"]
     assert "was not on disk" in page._status.text()
+
+
+def test_remove_catalog_refreshes_when_delete_raises(app, no_modals) -> None:
+    worker = FakeAdapterWorker(
+        catalog=[{**CATALOG_PACK, "ready": True, "verified": True}]
+    )
+
+    def boom(pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
+        worker.deleted_packs.append(pack_id)
+        worker.catalog = [{**CATALOG_PACK, "ready": False}]
+        raise RuntimeError("disk is full")
+
+    worker.delete_pack = boom  # type: ignore[method-assign]
+    page = AdaptersPage(worker)
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    page._remove_catalog()
+    assert worker.deleted_packs == ["h3-realism-people"]
+    assert page._catalog.topLevelItem(0).text(3) == "Not downloaded"
+    assert no_modals[-1][0] == "warning"
+    assert "disk is full" in no_modals[-1][1]
+    assert "already be deleted" in no_modals[-1][1]
+    assert "models/loras/" in no_modals[-1][1]
