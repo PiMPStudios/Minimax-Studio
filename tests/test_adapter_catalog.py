@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from minimax_studio.worker.catalog import ADAPTERS, H3_TERRITORY, PACKS, pack_or_raise
 from minimax_studio.worker.downloads import (
     delete_pack,
@@ -92,6 +94,37 @@ def test_delete_catalog_lora_does_not_wipe_the_loras_folder(
     assert not (loras / marker).exists()
     assert trained.is_file()
     assert loras.is_dir()
+
+
+def test_start_download_refuses_a_second_in_flight(studio_home: Path) -> None:
+    import time
+
+    from minimax_studio.worker.downloads import cancel_download, get_download
+
+    pack = ADAPTERS["h3-motion"]
+    marker = pack.marker_files[0]
+    started = time.time()
+
+    def snapshot(**kwargs):
+        while time.time() - started < 2:
+            time.sleep(0.05)
+        dest = Path(kwargs["local_dir"])
+        path = dest / marker
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * pack.min_bytes)
+        return str(dest)
+
+    first = start_download("h3-motion", snapshot=snapshot, force=True)
+    try:
+        with pytest.raises(RuntimeError, match="already downloading"):
+            start_download("h3-motion", snapshot=snapshot, force=True)
+    finally:
+        cancel_download(first["id"])
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if get_download(first["id"])["status"] in {"done", "error", "cancelled"}:
+                break
+            time.sleep(0.05)
 
 
 def test_catalog_download_refuses_a_too_small_marker(studio_home: Path) -> None:

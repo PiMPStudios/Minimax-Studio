@@ -155,13 +155,18 @@ class AdaptersPage(QWidget):
         cat_row = QHBoxLayout()
         self._cat_download_btn = QPushButton("Download")
         self._cat_download_btn.clicked.connect(self._download_catalog)
+        self._cat_cancel_btn = QPushButton("Cancel")
+        self._cat_cancel_btn.hide()
+        self._cat_cancel_btn.clicked.connect(self._cancel_catalog)
         self._cat_remove_btn = QPushButton("Remove")
         self._cat_remove_btn.clicked.connect(self._remove_catalog)
         cat_row.addWidget(self._cat_download_btn)
+        cat_row.addWidget(self._cat_cancel_btn)
         cat_row.addWidget(self._cat_remove_btn)
         cat_row.addStretch(1)
         root.addLayout(cat_row)
         self._catalog_rows: list[dict[str, Any]] = []
+        self._catalog_jobs: dict[str, Any] = {}
 
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["Adapter", "Source", "Kind", "Trained on", "When"])
@@ -232,6 +237,7 @@ class AdaptersPage(QWidget):
         self._set_buttons_enabled(False)
         self._cat_download_btn.setEnabled(False)
         self._cat_remove_btn.setEnabled(False)
+        self._cat_cancel_btn.hide()
         self.refresh()
 
     # --- data ---------------------------------------------------------------
@@ -264,9 +270,18 @@ class AdaptersPage(QWidget):
             return
         self._apply_catalog(catalog, downloads)
 
+    def _catalog_job(self, pack: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not pack:
+            return None
+        job = self._catalog_jobs.get(str(pack.get("id")))
+        if job and job.get("status") in {"queued", "running", "cancelling"}:
+            return job
+        return None
+
     def _apply_catalog(
         self, catalog: list[dict[str, Any]], downloads: dict[str, Any]
     ) -> None:
+        self._catalog_jobs = downloads
         self._catalog_rows = catalog
         wanted = None
         current = self._catalog.currentItem()
@@ -321,12 +336,29 @@ class AdaptersPage(QWidget):
 
     def _catalog_selected(self) -> None:
         pack = self._catalog_current()
-        self._cat_download_btn.setEnabled(bool(pack) and not pack.get("ready"))
-        self._cat_remove_btn.setEnabled(bool(pack) and bool(pack.get("ready")))
+        stored = self._catalog_jobs.get(str(pack.get("id"))) if pack else None
+        job = self._catalog_job(pack)
+        busy = job is not None
+        ready = bool(pack and pack.get("ready"))
+        failed = bool(stored and stored.get("status") == "error")
+        self._cat_download_btn.setEnabled(bool(pack) and not ready and not busy)
+        self._cat_remove_btn.setEnabled(ready and not busy)
+        if busy:
+            self._cat_download_btn.setText("Downloading…")
+        elif ready:
+            self._cat_download_btn.setText("Re-download")
+        elif failed:
+            self._cat_download_btn.setText("Retry")
+        else:
+            self._cat_download_btn.setText("Download")
+        self._cat_cancel_btn.setVisible(busy)
+        cancelling = bool(job and job.get("status") == "cancelling")
+        self._cat_cancel_btn.setEnabled(busy and not cancelling)
+        self._cat_cancel_btn.setText("Cancelling…" if cancelling else "Cancel")
 
     def _download_catalog(self) -> None:
         pack = self._catalog_current()
-        if not pack:
+        if not pack or self._catalog_job(pack):
             return
         notice = pack.get("territory_notice")
         if notice:
@@ -337,8 +369,9 @@ class AdaptersPage(QWidget):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
+        pack_id = str(pack["id"])
         try:
-            self._client.start_download(str(pack["id"]))
+            job = self._client.start_download(pack_id)
         except Exception as exc:
             message = str(exc)
             if "Not enough free disk" not in message:
@@ -350,11 +383,27 @@ class AdaptersPage(QWidget):
             if answer != QMessageBox.StandardButton.Yes:
                 return
             try:
-                self._client.start_download(str(pack["id"]), force=True)
+                job = self._client.start_download(pack_id, force=True)
             except Exception as exc2:
                 QMessageBox.warning(self, "Download failed", str(exc2))
                 return
+        self._catalog_jobs[pack_id] = job
         self._status.setText(f"Downloading “{pack.get('title')}”…")
+        self._catalog_selected()
+        self._refresh_catalog()
+
+    def _cancel_catalog(self) -> None:
+        pack = self._catalog_current()
+        job = self._catalog_job(pack)
+        job_id = str((job or {}).get("id") or "")
+        if not job_id:
+            return
+        try:
+            self._client.cancel_download(job_id)
+        except Exception as exc:
+            QMessageBox.warning(self, "Cancel failed", str(exc))
+            return
+        self._status.setText("Cancel requested — Hugging Face may finish the current file.")
         self._refresh_catalog()
 
     def _remove_catalog(self) -> None:

@@ -12,6 +12,17 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.47] — 2026-09-01
+
+Catalog download busy state. A second click no longer starts a second snapshot.
+
+### Changed
+
+- **Adapters Catalog matches Models.** Download disables while a job is
+  queued/running/cancelling, relabels to Downloading…, and Cancel uses the
+  existing download cancel path. The worker also refuses a second in-flight
+  pull of the same pack_id so two threads cannot register a partial LoRA.
+
 ## [0.2.46] — 2026-09-01
 
 Catalog integrity. Curated LoRAs pin a Hugging Face commit and a size band.

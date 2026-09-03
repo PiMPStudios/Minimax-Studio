@@ -80,6 +80,16 @@ def start_download(
                 f"“{pack.title}” needs about {pack.approx_gb:.0f} GB. Free up space "
                 "or choose Download anyway."
             )
+    with runtime.lock:
+        for existing in runtime.downloads.values():
+            if existing.get("pack_id") == pack.id and existing.get("status") in {
+                "queued",
+                "running",
+                "cancelling",
+            }:
+                raise RuntimeError(
+                    f"“{pack.title}” is already downloading."
+                )
     job_id = uuid.uuid4().hex[:12]
     record: dict[str, Any] = {
         "id": job_id,

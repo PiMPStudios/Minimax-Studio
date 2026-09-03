@@ -104,7 +104,9 @@ class FakeAdapterWorker:
         self.imported: list[str] = []
         self.import_kinds: list[str | None] = []
         self.catalog: list[dict[str, Any]] = []
+        self.downloads: list[dict[str, Any]] = []
         self.started: list[str] = []
+        self.cancelled: list[str] = []
         self.deleted_packs: list[str] = []
         for key, value in overrides.items():
             setattr(self, key, value)
@@ -116,11 +118,17 @@ class FakeAdapterWorker:
         return self.catalog
 
     def list_downloads(self) -> list[dict[str, Any]]:
-        return []
+        return list(self.downloads)
 
     def start_download(self, pack_id: str, force: bool = False) -> dict[str, Any]:
         self.started.append(pack_id)
-        return {"id": "dl1", "pack_id": pack_id, "status": "queued"}
+        job = {"id": "dl1", "pack_id": pack_id, "status": "queued", "message": "Starting"}
+        self.downloads.append(job)
+        return job
+
+    def cancel_download(self, job_id: str) -> dict[str, Any]:
+        self.cancelled.append(job_id)
+        return {"id": job_id, "status": "cancelling"}
 
     def delete_pack(self, pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
         self.deleted_packs.append(pack_id)
@@ -370,3 +378,10 @@ def test_catalog_lists_rows_and_download_asks_territory(app, no_modals) -> None:
     page._download_catalog()
     assert worker.started == ["h3-realism-people"]
     assert any(item[0] == "question" and "US/EU" in item[1] for item in no_modals)
+    assert not page._cat_download_btn.isEnabled()
+    assert page._cat_download_btn.text() == "Downloading…"
+    assert not page._cat_cancel_btn.isHidden()
+    page._download_catalog()
+    assert worker.started == ["h3-realism-people"]
+    page._cancel_catalog()
+    assert worker.cancelled == ["dl1"]
