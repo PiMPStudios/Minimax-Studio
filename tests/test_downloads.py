@@ -331,8 +331,82 @@ def test_ui_does_not_substring_match_disk_copy() -> None:
     assert hits == []
     models = (root / "pages" / "models_page.py").read_text(encoding="utf-8")
     adapters = (root / "pages" / "adapters_page.py").read_text(encoding="utf-8")
-    assert "start_download_or_ask" in models
-    assert "start_download_or_ask" in adapters
+    assert "confirm_and_download" in models
+    assert "confirm_and_download" in adapters
+    assert "territory_notice" not in models
+    assert "territory_notice" not in adapters
+    assert "Download this pack anyway" not in models
+    assert "Download this adapter anyway" not in adapters
+
+
+def test_confirm_and_download_asks_the_license_then_starts(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from minimax_studio.ui import download as download_mod
+    from minimax_studio.ui.download import confirm_and_download
+    from tests.dialogs import Dialogs
+
+    calls: list[str] = []
+
+    class Client:
+        def start_download(self, pack_id: str, force: bool = False) -> dict:
+            calls.append(pack_id)
+            return {"id": "dl", "pack_id": pack_id, "status": "queued"}
+
+    pack = {
+        "id": "h3-fl2va",
+        "license_name": "MiniMax H3 Community License",
+        "territory_notice": "US/EU/UK/KR need a separate grant.",
+    }
+    dialogs = Dialogs(
+        monkeypatch, {"question": QMessageBox.StandardButton.Yes}, download_mod
+    )
+    job = confirm_and_download(None, Client(), pack, noun="pack")  # type: ignore[arg-type]
+    assert job is not None and job["id"] == "dl"
+    assert calls == ["h3-fl2va"]
+    assert dialogs.kinds() == ["question"]
+    assert "US/EU/UK/KR" in dialogs.last()[2]
+    assert "Download this pack anyway?" in dialogs.last()[2]
+
+
+def test_confirm_and_download_no_skips_the_start(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from minimax_studio.ui import download as download_mod
+    from minimax_studio.ui.download import confirm_and_download
+    from tests.dialogs import Dialogs
+
+    class Client:
+        def start_download(self, pack_id: str, force: bool = False) -> dict:
+            raise AssertionError("declining the license must not start a download")
+
+    Dialogs(monkeypatch, {"question": QMessageBox.StandardButton.No}, download_mod)
+    job = confirm_and_download(  # type: ignore[arg-type]
+        None,
+        Client(),
+        {"id": "h3-motion", "territory_notice": "US/EU/UK/KR"},
+        noun="adapter",
+    )
+    assert job is None
+
+
+def test_confirm_and_download_skips_the_box_when_there_is_no_notice(
+    monkeypatch,
+) -> None:
+    from minimax_studio.ui import download as download_mod
+    from minimax_studio.ui.download import confirm_and_download
+    from tests.dialogs import Dialogs
+
+    class Client:
+        def start_download(self, pack_id: str, force: bool = False) -> dict:
+            return {"id": "dl", "pack_id": pack_id, "status": "queued"}
+
+    dialogs = Dialogs(monkeypatch, {}, download_mod)
+    job = confirm_and_download(  # type: ignore[arg-type]
+        None, Client(), {"id": "music3-cuda", "territory_notice": None}
+    )
+    assert job is not None and job["id"] == "dl"
+    assert dialogs.kinds() == []
 
 
 def test_start_download_or_ask_retries_when_copy_is_reworded(monkeypatch) -> None:

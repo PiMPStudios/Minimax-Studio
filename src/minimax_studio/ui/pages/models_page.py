@@ -129,18 +129,9 @@ class ModelsPage(QWidget):
             QMessageBox.warning(self, "Show in folder failed", str(exc))
 
     def _start(self, pack: dict[str, Any]) -> None:
-        notice = pack.get("territory_notice")
-        if notice:
-            answer = QMessageBox.question(
-                self,
-                pack.get("license_name") or "License",
-                notice + "\n\nDownload this pack anyway?",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-        from minimax_studio.ui.download import start_download_or_ask
+        from minimax_studio.ui.download import confirm_and_download
 
-        if start_download_or_ask(self, self._client, pack["id"]) is None:
+        if confirm_and_download(self, self._client, pack, noun="pack") is None:
             return
         self.refresh()
 

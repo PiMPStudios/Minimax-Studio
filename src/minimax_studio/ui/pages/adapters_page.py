@@ -361,21 +361,12 @@ class AdaptersPage(QWidget):
         pack = self._catalog_current()
         if not pack or self._catalog_job(pack):
             return
-        notice = pack.get("territory_notice")
-        if notice:
-            answer = QMessageBox.question(
-                self,
-                pack.get("license_name") or "License",
-                str(notice) + "\n\nDownload this adapter anyway?",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-        pack_id = str(pack["id"])
-        from minimax_studio.ui.download import start_download_or_ask
+        from minimax_studio.ui.download import confirm_and_download
 
-        job = start_download_or_ask(self, self._client, pack_id)
+        job = confirm_and_download(self, self._client, pack, noun="adapter")
         if job is None:
             return
+        pack_id = str(pack["id"])
         self._catalog_jobs[pack_id] = job
         self._status.setText(f"Downloading “{pack.get('title')}”…")
         self._catalog_selected()

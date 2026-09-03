@@ -201,7 +201,11 @@ def no_modals(monkeypatch):
             return QMessageBox.StandardButton.Yes
 
     dialogs: list = []
-    monkeypatch.setattr(adapters_module, "QMessageBox", Shim(dialogs))
+    shim = Shim(dialogs)
+    monkeypatch.setattr(adapters_module, "QMessageBox", shim)
+    from minimax_studio.ui import download as download_mod
+
+    monkeypatch.setattr(download_mod, "QMessageBox", shim)
     return dialogs
 
 

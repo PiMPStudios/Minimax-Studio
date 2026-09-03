@@ -12,6 +12,15 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.52] — 2026-09-02
+
+Models and Adapters share one download confirm helper.
+
+### Changed
+
+- **`confirm_and_download`.** License notice then the disk-guard hatch live
+  in `ui/download.py`. The two pages no longer copy the flow.
+
 ## [0.2.51] — 2026-09-02
 
 A catalog LoRA is “from catalog”, not “imported”.
