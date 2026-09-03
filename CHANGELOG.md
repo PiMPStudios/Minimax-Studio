@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.58] — 2026-09-02
+
+Catalog Ready means the pin was verified, not just that a file exists.
+
+### Changed
+
+- **Provenance stores `revision` and `sha256`.** A pre-pin download stays
+  usable as Ready (unverified) with Re-download offered. A background
+  hash of the on-disk file closes it if the bytes already match the pin.
+
 ## [0.2.57] — 2026-09-02
 
 Catalog LoRAs pin the file digest, not just the commit and a size band.

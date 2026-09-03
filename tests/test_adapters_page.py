@@ -554,7 +554,7 @@ def test_catalog_poll_skips_identical_rebuild(app) -> None:
     item = page._catalog.topLevelItem(0)
     page._sync_catalog([dict(row)], {})
     assert page._catalog.topLevelItem(0) is item
-    page._sync_catalog([{**row, "ready": True}], {})
+    page._sync_catalog([{**row, "ready": True, "verified": True}], {})
     assert page._catalog.topLevelItem(0) is not item
     assert page._catalog.topLevelItem(0).text(3) == "Ready"
 
@@ -565,7 +565,9 @@ def test_catalog_unmeasured_size_is_an_em_dash(app) -> None:
 
 
 def test_catalog_ready_row_disables_download_and_enables_remove(app) -> None:
-    page = AdaptersPage(FakeAdapterWorker(catalog=[{**CATALOG_PACK, "ready": True}]))
+    page = AdaptersPage(
+        FakeAdapterWorker(catalog=[{**CATALOG_PACK, "ready": True, "verified": True}])
+    )
     page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
     assert not page._cat_download_btn.isEnabled()
     assert page._cat_download_btn.text() == "Re-download"
@@ -591,6 +593,17 @@ def test_catalog_busy_disables_download(app) -> None:
     assert page._cat_download_btn.text() == "Downloading…"
     assert not page._cat_cancel_btn.isHidden()
     assert not page._cat_remove_btn.isEnabled()
+
+
+def test_catalog_unverified_ready_offers_redownload(app) -> None:
+    page = AdaptersPage(
+        FakeAdapterWorker(catalog=[{**CATALOG_PACK, "ready": True, "verified": False}])
+    )
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    assert page._catalog.topLevelItem(0).text(3) == "Ready (unverified)"
+    assert page._cat_download_btn.isEnabled()
+    assert page._cat_download_btn.text() == "Re-download"
+    assert page._cat_remove_btn.isEnabled()
 
 
 def test_remove_catalog_asks_then_deletes(app, no_modals) -> None:

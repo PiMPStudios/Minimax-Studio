@@ -60,7 +60,16 @@ def list_packs() -> list[dict[str, Any]]:
 def list_adapter_catalog() -> list[dict[str, Any]]:
     """Curated LoRAs for the Adapters page. Not listed on Models."""
     root = runtime.config.models_root()
-    return [pack_status(pack, root) for pack in ADAPTERS.values()]
+    rows = []
+    for pack in ADAPTERS.values():
+        row = pack_status(pack, root)
+        row["verified"] = False
+        if row["ready"] and pack.sha256:
+            row["verified"] = _recorded_digest_matches(pack, root)
+            if not row["verified"]:
+                _kick_catalog_verify(pack, root)
+        rows.append(row)
+    return rows
 
 
 def start_download(
@@ -387,6 +396,87 @@ def _assert_marker_digest(pack: Pack, dest: Path) -> None:
             )
 
 
+def _catalog_marker_path(pack: Pack, root: Path) -> Path | None:
+    if not pack.marker_files:
+        return None
+    path = root / pack.local_dir / pack.marker_files[0]
+    return path if path.is_file() else None
+
+
+def _registry_row_for_pack(pack: Pack) -> dict[str, Any] | None:
+    from minimax_studio.worker import adapters
+
+    marker = Path(pack.marker_files[0]).name if pack.marker_files else ""
+    if not marker:
+        return None
+    return next(
+        (row for row in adapters.load_registry() if row.get("file") == marker),
+        None,
+    )
+
+
+def _recorded_digest_matches(pack: Pack, root: Path) -> bool:
+    """True only when adapters.json remembers the pin. Missing is unverified."""
+    if _catalog_marker_path(pack, root) is None:
+        return False
+    row = _registry_row_for_pack(pack)
+    recorded = str((row or {}).get("sha256") or "")
+    return bool(pack.sha256) and recorded == pack.sha256
+
+
+_VERIFY_LOCK = threading.Lock()
+_VERIFYING: set[str] = set()
+_VERIFY_THREADS: list[threading.Thread] = []
+
+
+def join_catalog_verifies(timeout: float = 5.0) -> None:
+    """Tests wait so a background hash cannot write after tmpdir teardown."""
+    with _VERIFY_LOCK:
+        threads = list(_VERIFY_THREADS)
+        _VERIFY_THREADS.clear()
+    for thread in threads:
+        thread.join(timeout)
+
+
+def _kick_catalog_verify(pack: Pack, root: Path) -> None:
+    """Hash an already-present file once. GET must not block the GUI on 125 MB."""
+    row = _registry_row_for_pack(pack)
+    if row and row.get("sha256"):
+        return
+    path = _catalog_marker_path(pack, root)
+    if path is None:
+        return
+    with _VERIFY_LOCK:
+        if pack.id in _VERIFYING:
+            return
+        _VERIFYING.add(pack.id)
+
+    def work() -> None:
+        try:
+            digest = _file_sha256(path)
+            from minimax_studio.worker import adapters
+
+            payload: dict[str, Any] = {
+                "name": path.stem,
+                "path": str(path),
+                "kind": pack.family,
+                "sha256": digest,
+            }
+            if digest == pack.sha256:
+                payload["revision"] = pack.revision
+            adapters.record_imported(payload, source="catalog")
+        except OSError:
+            pass
+        finally:
+            with _VERIFY_LOCK:
+                _VERIFYING.discard(pack.id)
+
+    thread = threading.Thread(target=work, name=f"verify-{pack.id}", daemon=True)
+    with _VERIFY_LOCK:
+        _VERIFY_THREADS.append(thread)
+    thread.start()
+
+
 def _register_catalog_lora(pack: Pack, dest: Path) -> None:
     """Catalog downloads land in models/loras/; provenance is ``catalog``, not imported."""
     from minimax_studio.worker import adapters
@@ -400,6 +490,8 @@ def _register_catalog_lora(pack: Pack, dest: Path) -> None:
                 "name": path.stem,
                 "path": str(path),
                 "kind": pack.family,
+                "revision": pack.revision,
+                "sha256": pack.sha256,
             },
             source="catalog",
         )

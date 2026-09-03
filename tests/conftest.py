@@ -39,4 +39,7 @@ def studio_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     reset_probe_cache()
     runtime.config.ensure_dirs()
-    return output
+    yield output
+    from minimax_studio.worker.downloads import join_catalog_verifies
+
+    join_catalog_verifies()

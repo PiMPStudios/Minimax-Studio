@@ -302,7 +302,10 @@ class AdaptersPage(QWidget):
             else:
                 size_s = f"{size:.1f} GB"
             job = downloads.get(str(pack.get("id")))
-            status = "Ready" if pack.get("ready") else "Not downloaded"
+            if pack.get("ready"):
+                status = "Ready" if pack.get("verified") else "Ready (unverified)"
+            else:
+                status = "Not downloaded"
             if job and job.get("status") in {"queued", "running", "cancelling"}:
                 status = str(job.get("message") or job.get("status") or "Downloading")
             elif job and job.get("status") == "error":
@@ -317,8 +320,10 @@ class AdaptersPage(QWidget):
             )
             item.setData(0, Qt.ItemDataRole.UserRole, str(pack.get("id")))
             item.setToolTip(0, str(pack.get("summary") or ""))
-            if pack.get("ready"):
+            if pack.get("ready") and pack.get("verified"):
                 item.setForeground(3, _OK)
+            elif pack.get("ready"):
+                item.setForeground(3, _WARN)
             self._catalog.addTopLevelItem(item)
         self._catalog.blockSignals(False)
         restore = next(
@@ -349,8 +354,11 @@ class AdaptersPage(QWidget):
         job = self._catalog_job(pack)
         busy = job is not None
         ready = bool(pack and pack.get("ready"))
+        verified = bool(pack and pack.get("verified"))
         failed = bool(stored and stored.get("status") == "error")
-        self._cat_download_btn.setEnabled(bool(pack) and not ready and not busy)
+        self._cat_download_btn.setEnabled(
+            bool(pack) and not busy and (not ready or not verified)
+        )
         self._cat_remove_btn.setEnabled(ready and not busy)
         if busy:
             self._cat_download_btn.setText("Downloading…")
@@ -508,6 +516,7 @@ class AdaptersPage(QWidget):
             (
                 row.get("id"),
                 row.get("ready"),
+                row.get("verified"),
                 row.get("bytes_on_disk"),
                 (downloads.get(str(row.get("id"))) or {}).get("status"),
                 (downloads.get(str(row.get("id"))) or {}).get("message"),

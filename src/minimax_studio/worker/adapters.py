@@ -276,15 +276,18 @@ def record_imported(
     kind = str(lora_row.get("kind") or "") or kind_from_path(
         str(lora_row.get("source_path") or lora_row.get("path") or "")
     )
-    return record(
-        {
-            "file": file_name,
-            "name": lora_row.get("name") or Path(file_name).stem,
-            "kind": kind,
-            "source": source,
-            "path": lora_row.get("path"),
-        }
-    )
+    payload: dict[str, Any] = {
+        "file": file_name,
+        "name": lora_row.get("name") or Path(file_name).stem,
+        "kind": kind,
+        "source": source,
+        "path": lora_row.get("path"),
+    }
+    # Catalog pins only mean something if the row remembers them.
+    for key in ("revision", "sha256"):
+        if lora_row.get(key):
+            payload[key] = lora_row[key]
+    return record(payload)
 
 
 def record_trained(

@@ -92,9 +92,11 @@ def test_catalog_status_and_download_registers_catalog(
     listed = {row["id"]: row for row in adapters.list_adapters()}
     assert listed[marker]["source"] == "catalog"
     assert listed[marker]["kind"] == "h3"
-    assert list_adapter_catalog()[0]["ready"] is True or any(
-        row["id"] == "h3-realism-people" and row["ready"] for row in list_adapter_catalog()
-    )
+    assert listed[marker]["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert listed[marker]["revision"] == pack.revision
+    catalog = {row["id"]: row for row in list_adapter_catalog()}
+    assert catalog["h3-realism-people"]["ready"] is True
+    assert catalog["h3-realism-people"]["verified"] is True
 
 
 def test_delete_catalog_lora_does_not_wipe_the_loras_folder(
@@ -254,3 +256,41 @@ def test_catalog_download_refuses_a_wrong_digest(studio_home: Path) -> None:
     assert "models/loras/" in error
     assert not (loras / marker).exists()
     assert kept.is_file()
+
+
+def test_catalog_row_without_a_recorded_digest_is_unverified(studio_home: Path) -> None:
+    pack = ADAPTERS["h3-motion"]
+    marker = pack.marker_files[0]
+    path = studio_home / "models" / "loras" / marker
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"pre-pin-bytes" * 80)
+    from minimax_studio.worker import adapters
+
+    adapters.record_imported({"path": str(path), "kind": "h3"}, source="catalog")
+    rows = {row["id"]: row for row in list_adapter_catalog()}
+    assert rows["h3-motion"]["ready"] is True
+    assert rows["h3-motion"]["verified"] is False
+
+
+def test_catalog_background_hash_verifies_bytes_that_match_the_pin(
+    studio_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from minimax_studio.worker import adapters
+    from minimax_studio.worker.downloads import join_catalog_verifies
+
+    pack = ADAPTERS["h3-motion"]
+    marker = pack.marker_files[0]
+    payload = b"x" * pack.min_bytes
+    _pin_dummy_digest(monkeypatch, pack, payload)
+    path = studio_home / "models" / "loras" / marker
+    path.parent.mkdir(parents=True)
+    path.write_bytes(payload)
+    rows = {row["id"]: row for row in list_adapter_catalog()}
+    assert rows["h3-motion"]["ready"] is True
+    assert rows["h3-motion"]["verified"] is False
+    join_catalog_verifies()
+    rows = {row["id"]: row for row in list_adapter_catalog()}
+    assert rows["h3-motion"]["verified"] is True
+    listed = adapters.get_adapter(marker)
+    assert listed["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert listed["revision"] == pack.revision
