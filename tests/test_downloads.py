@@ -221,10 +221,13 @@ def test_start_download_blocks_without_free_space(
     Usage = namedtuple("usage", "total used free")  # shutil.disk_usage shape
     tiny = Usage(1024**3, 0, int(0.2 * 1024**3))
     monkeypatch.setattr(shutil, "disk_usage", lambda path: tiny)
+    from minimax_studio.errors import InsufficientDisk
+
     try:
         start_download("h3-fl2va")
         raise AssertionError("expected a free-disk error")
-    except RuntimeError as exc:
+    except InsufficientDisk as exc:
+        assert isinstance(exc, RuntimeError)
         assert "Not enough free disk" in str(exc)
 
 
@@ -258,3 +261,139 @@ def test_start_download_force_bypasses_free_space(
         time.sleep(0.05)
     final = get_download(record["id"])
     assert final["status"] == "done", final.get("error")
+
+
+class _HttpError:
+    """Stand-in for httpx.Response in WorkerClient._raise tests."""
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        self.is_success = False
+        self.status_code = status_code
+        self._detail = detail
+
+    def json(self) -> dict:
+        return {"detail": self._detail}
+
+
+def test_download_route_and_client_raise_insufficient_disk(
+    studio_home: Path, monkeypatch
+) -> None:
+    """The hatch is a type + HTTP 507, not a substring of user-facing copy."""
+    import shutil
+    from collections import namedtuple
+
+    from fastapi.testclient import TestClient
+
+    from minimax_studio.errors import InsufficientDisk
+    from minimax_studio.worker.server import app
+    from minimax_studio.worker_client import WorkerClient
+
+    Usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda path: Usage(1024**3, 0, int(0.2 * 1024**3))
+    )
+    http = TestClient(app)
+    response = http.post("/downloads", json={"pack_id": "h3-fl2va"})
+    assert response.status_code == 507
+    assert "Not enough free disk" in response.json()["detail"]
+
+    try:
+        WorkerClient._raise(_HttpError(507, response.json()["detail"]))  # type: ignore[arg-type]
+        raise AssertionError("expected InsufficientDisk")
+    except InsufficientDisk as exc:
+        assert "Not enough free disk" in str(exc)
+
+
+def test_conflict_status_is_not_insufficient_disk() -> None:
+    """409 is train/audition/dataset conflicts. Mapping it in _raise
+    would turn 'run already busy' into Download anyway?."""
+    from minimax_studio.errors import InsufficientDisk
+    from minimax_studio.worker_client import WorkerClient
+
+    try:
+        WorkerClient._raise(_HttpError(409, "a run is already in progress"))  # type: ignore[arg-type]
+        raise AssertionError("expected RuntimeError")
+    except InsufficientDisk:
+        raise AssertionError("409 must stay RuntimeError")
+    except RuntimeError as exc:
+        assert "already in progress" in str(exc)
+
+
+def test_ui_does_not_substring_match_disk_copy() -> None:
+    from pathlib import Path
+
+    root = Path("src/minimax_studio/ui")
+    hits = [
+        str(path)
+        for path in root.rglob("*.py")
+        if "Not enough free disk" in path.read_text(encoding="utf-8")
+    ]
+    assert hits == []
+    models = (root / "pages" / "models_page.py").read_text(encoding="utf-8")
+    adapters = (root / "pages" / "adapters_page.py").read_text(encoding="utf-8")
+    assert "start_download_or_ask" in models
+    assert "start_download_or_ask" in adapters
+
+
+def test_start_download_or_ask_retries_when_copy_is_reworded(monkeypatch) -> None:
+    """The hatch is the type. The old substring is not in this message."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from minimax_studio.errors import InsufficientDisk
+    from minimax_studio.ui import download as download_mod
+    from minimax_studio.ui.download import start_download_or_ask
+    from tests.dialogs import Dialogs
+
+    calls: list[tuple[str, bool]] = []
+
+    class Client:
+        def start_download(self, pack_id: str, force: bool = False) -> dict:
+            calls.append((pack_id, force))
+            if not force:
+                raise InsufficientDisk("The models volume is full.")
+            return {"id": "dl", "pack_id": pack_id, "status": "queued"}
+
+    dialogs = Dialogs(
+        monkeypatch, {"question": QMessageBox.StandardButton.Yes}, download_mod
+    )
+    job = start_download_or_ask(None, Client(), "h3-fl2va")  # type: ignore[arg-type]
+    assert job is not None and job["id"] == "dl"
+    assert calls == [("h3-fl2va", False), ("h3-fl2va", True)]
+    assert "Download anyway?" in dialogs.last()[2]
+
+
+def test_start_download_or_ask_no_does_not_force(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from minimax_studio.errors import InsufficientDisk
+    from minimax_studio.ui import download as download_mod
+    from minimax_studio.ui.download import start_download_or_ask
+    from tests.dialogs import Dialogs
+
+    calls: list[tuple[str, bool]] = []
+
+    class Client:
+        def start_download(self, pack_id: str, force: bool = False) -> dict:
+            calls.append((pack_id, force))
+            raise InsufficientDisk("The models volume is full.")
+
+    Dialogs(monkeypatch, {"question": QMessageBox.StandardButton.No}, download_mod)
+    job = start_download_or_ask(None, Client(), "h3-fl2va")  # type: ignore[arg-type]
+    assert job is None
+    assert calls == [("h3-fl2va", False)]
+
+
+def test_start_download_or_ask_other_errors_are_warnings(monkeypatch) -> None:
+    from minimax_studio.ui import download as download_mod
+    from minimax_studio.ui.download import start_download_or_ask
+    from tests.dialogs import Dialogs
+
+    class Client:
+        def start_download(self, pack_id: str, force: bool = False) -> dict:
+            raise RuntimeError("network down")
+
+    dialogs = Dialogs(monkeypatch, {}, download_mod)
+    job = start_download_or_ask(None, Client(), "h3-fl2va")  # type: ignore[arg-type]
+    assert job is None
+    assert dialogs.kinds() == ["warning"]
+    assert "network down" in dialogs.last()[2]

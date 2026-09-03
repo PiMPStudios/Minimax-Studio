@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from minimax_studio.errors import InsufficientDisk
 from minimax_studio.worker.catalog import ADAPTERS, PACKS, Pack, pack_or_raise
 from minimax_studio.worker.fsutil import dir_bytes, first_existing
 from minimax_studio.worker.model_paths import pack_status as _pack_status
@@ -75,7 +76,7 @@ def start_download(
         except OSError:
             free_gb = float("inf")
         if free_gb < pack.approx_gb:
-            raise RuntimeError(
+            raise InsufficientDisk(
                 f"Not enough free disk on the models volume: {free_gb:.0f} GB free, "
                 f"“{pack.title}” needs about {pack.approx_gb:.0f} GB. Free up space "
                 "or choose Download anyway."

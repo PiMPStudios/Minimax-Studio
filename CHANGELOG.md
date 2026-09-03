@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.49] — 2026-09-02
+
+Free-disk “Download anyway?” is a typed error, not a substring of the copy.
+
+### Changed
+
+- **`InsufficientDisk` (HTTP 507).** Worker, `/downloads`, and the GUI
+  catch it by type. 409 stays train/audition conflicts. Models and
+  Adapters share one helper so rewording the message cannot drop the hatch.
+
 ## [0.2.48] — 2026-09-01
 
 Catalog poll no longer rebuilds the tree every 2 s.

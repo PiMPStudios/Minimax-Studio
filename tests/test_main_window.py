@@ -30,7 +30,7 @@ class FakeWorker:
     def list_packs(self) -> list:
         return []
 
-    def start_download(self, pack_id: str) -> dict:
+    def start_download(self, pack_id: str, force: bool = False) -> dict:
         return {"id": "x", "pack_id": pack_id, "status": "queued"}
 
     def cancel_download(self, job_id: str) -> dict:

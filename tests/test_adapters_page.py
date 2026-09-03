@@ -387,6 +387,46 @@ def test_catalog_lists_rows_and_download_asks_territory(app, no_modals) -> None:
     assert worker.cancelled == ["dl1"]
 
 
+def test_catalog_low_disk_asks_download_anyway(app, monkeypatch) -> None:
+    """Adapters must catch InsufficientDisk by type. Reworded copy still hatches."""
+    from minimax_studio.errors import InsufficientDisk
+    from minimax_studio.ui import download as download_mod
+    from tests.dialogs import Dialogs
+
+    class TightDisk(FakeAdapterWorker):
+        def start_download(self, pack_id: str, force: bool = False) -> dict[str, Any]:
+            if not force:
+                raise InsufficientDisk("The models volume is full.")
+            return super().start_download(pack_id, force=True)
+
+    worker = TightDisk(
+        catalog=[
+            {
+                "id": "h3-motion",
+                "title": "H3 Motion",
+                "family": "h3",
+                "approx_gb": 0.06,
+                "ready": False,
+                "summary": "motion",
+                "territory_notice": None,
+                "license_name": "Apache-2.0",
+            }
+        ]
+    )
+    dialogs = Dialogs(
+        monkeypatch,
+        {"question": QMessageBox.StandardButton.Yes},
+        download_mod,
+        adapters_module,
+    )
+    page = AdaptersPage(worker)
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    page._download_catalog()
+    assert worker.started == ["h3-motion"]
+    assert "Download anyway?" in dialogs.bodies()
+    assert "The models volume is full." in dialogs.bodies()
+
+
 def test_catalog_poll_skips_identical_rebuild(app) -> None:
     row = {
         "id": "h3-realism-people",

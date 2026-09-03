@@ -138,25 +138,10 @@ class ModelsPage(QWidget):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
-        try:
-            self._client.start_download(pack["id"])
-        except Exception as exc:
-            message = str(exc)
-            if "Not enough free disk" not in message:
-                QMessageBox.warning(self, "Download failed", message)
-                return
-            answer = QMessageBox.question(
-                self,
-                "Low disk space",
-                message + "\n\nDownload anyway?",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-            try:
-                self._client.start_download(pack["id"], force=True)
-            except Exception as exc2:
-                QMessageBox.warning(self, "Download failed", str(exc2))
-                return
+        from minimax_studio.ui.download import start_download_or_ask
+
+        if start_download_or_ask(self, self._client, pack["id"]) is None:
+            return
         self.refresh()
 
     def _cancel_dl(self, pack: dict[str, Any], download_id: str | None) -> None:

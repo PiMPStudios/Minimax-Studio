@@ -12,6 +12,7 @@ from starlette.requests import Request
 
 from minimax_studio import __version__
 from minimax_studio.config import AppConfig, save_config
+from minimax_studio.errors import InsufficientDisk
 from minimax_studio.worker import downloads
 from minimax_studio.worker.backends.h3_api import run_context_ir
 from minimax_studio.worker.history import (
@@ -202,6 +203,8 @@ def create_download(body: DownloadIn) -> dict[str, object]:
         return downloads.start_download(body.pack_id, force=body.force)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InsufficientDisk as exc:
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

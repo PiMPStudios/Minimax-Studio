@@ -370,23 +370,11 @@ class AdaptersPage(QWidget):
             if answer != QMessageBox.StandardButton.Yes:
                 return
         pack_id = str(pack["id"])
-        try:
-            job = self._client.start_download(pack_id)
-        except Exception as exc:
-            message = str(exc)
-            if "Not enough free disk" not in message:
-                QMessageBox.warning(self, "Download failed", message)
-                return
-            answer = QMessageBox.question(
-                self, "Low disk space", message + "\n\nDownload anyway?"
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-            try:
-                job = self._client.start_download(pack_id, force=True)
-            except Exception as exc2:
-                QMessageBox.warning(self, "Download failed", str(exc2))
-                return
+        from minimax_studio.ui.download import start_download_or_ask
+
+        job = start_download_or_ask(self, self._client, pack_id)
+        if job is None:
+            return
         self._catalog_jobs[pack_id] = job
         self._status.setText(f"Downloading “{pack.get('title')}”…")
         self._catalog_selected()

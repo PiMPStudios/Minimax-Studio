@@ -5,6 +5,11 @@ from urllib.parse import quote
 
 import httpx
 
+from minimax_studio.errors import InsufficientDisk
+
+# 409 is already train/audition conflicts. 507 is HTTP Insufficient Storage.
+_STATUS_ERRORS: dict[int, type[Exception]] = {507: InsufficientDisk}
+
 
 def _seg(value: str) -> str:
     """One path segment, escaped. Ids are slugs today; keep it boring anyway."""
@@ -359,4 +364,7 @@ class WorkerClient:
             detail = response.json().get("detail")
         except Exception:
             detail = response.text
-        raise RuntimeError(detail or f"HTTP {response.status_code}")
+        message = detail if isinstance(detail, str) else (detail or f"HTTP {response.status_code}")
+        if not isinstance(message, str):
+            message = str(message)
+        raise _STATUS_ERRORS.get(response.status_code, RuntimeError)(message)
