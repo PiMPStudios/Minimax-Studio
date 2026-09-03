@@ -481,6 +481,8 @@ def test_catalog_lists_rows_and_download_asks_territory(app, no_modals) -> None:
     assert worker.started == ["h3-realism-people"]
     page._cancel_catalog()
     assert worker.cancelled == ["dl1"]
+    assert page._cat_cancel_btn.text() == "Cancelling…"
+    assert not page._cat_cancel_btn.isEnabled()
 
 
 def test_catalog_declining_territory_does_not_start_a_download(app, monkeypatch) -> None:

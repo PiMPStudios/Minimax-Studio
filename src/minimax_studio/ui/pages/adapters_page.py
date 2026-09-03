@@ -388,7 +388,6 @@ class AdaptersPage(QWidget):
         self._catalog_jobs[pack_id] = job
         self._status.setText(f"Downloading “{pack.get('title')}”…")
         self._catalog_selected()
-        self._refresh_catalog()
 
     def _cancel_catalog(self) -> None:
         pack = self._catalog_current()
@@ -397,12 +396,18 @@ class AdaptersPage(QWidget):
         if not job_id:
             return
         try:
-            self._client.cancel_download(job_id)
+            result = self._client.cancel_download(job_id)
         except Exception as exc:
             QMessageBox.warning(self, "Cancel failed", str(exc))
             return
+        pack_id = str((pack or {}).get("id") or "")
+        if pack_id:
+            merged = dict(job or {})
+            if isinstance(result, dict):
+                merged.update(result)
+            self._catalog_jobs[pack_id] = merged
         self._status.setText("Cancel requested — Hugging Face may finish the current file.")
-        self._refresh_catalog()
+        self._catalog_selected()
 
     def _remove_catalog(self) -> None:
         pack = self._catalog_current()

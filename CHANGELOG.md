@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.61] — 2026-09-02
+
+Catalog Download and Cancel no longer block the GUI thread on a refresh.
+
+### Changed
+
+- **Local job dict is enough after click.** The 2 s poll picks up bytes.
+  Cancel updates the in-memory job to cancelling so the button says so
+  immediately.
+
 ## [0.2.60] — 2026-09-02
 
 A half-failed catalog Remove refreshes the tree and names what may already be gone.
