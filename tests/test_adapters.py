@@ -74,6 +74,33 @@ def test_registry_roundtrip_and_tolerant_load(studio_home: Path, tmp_path: Path)
     assert adapters.load_registry() == [], "a broken cache costs provenance, not the app"
 
 
+def test_concurrent_records_do_not_drop_a_row(studio_home: Path) -> None:
+    import threading
+
+    errors: list[Exception] = []
+
+    def write(name: str) -> None:
+        try:
+            adapters.record(
+                {"file": f"{name}.safetensors", "name": name, "source": "imported"}
+            )
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=write, args=(f"lora-{index}",)) for index in range(20)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    files = {row["file"] for row in adapters.load_registry()}
+    assert files == {f"lora-{index}.safetensors" for index in range(20)}
+    tmp = adapters.registry_path().with_name("adapters.json.tmp")
+    assert not tmp.exists()
+
+
 def test_trained_row_carries_the_provenance_a_filename_hides(
     studio_home: Path, tmp_path: Path
 ) -> None:

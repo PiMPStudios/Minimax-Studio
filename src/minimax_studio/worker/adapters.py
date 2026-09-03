@@ -22,13 +22,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from minimax_studio.worker.fsutil import atomic_write_text
 from minimax_studio.worker.loras import list_loras
 from minimax_studio.worker.runtime import runtime
+
+# Download thread, train-install, and Forget all write this file.
+_REGISTRY_LOCK = threading.Lock()
 
 #: The PiMP loop's one-click audition: short, soft, and unmistakably a test.
 AUDITION_STRENGTH = 0.8
@@ -83,11 +88,10 @@ def load_registry() -> list[dict[str, Any]]:
 
 
 def save_registry(rows: list[dict[str, Any]]) -> None:
-    path = registry_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    """Atomic replace so a crash cannot leave adapters.json half-written."""
+    atomic_write_text(
+        registry_path(),
         json.dumps({"version": 1, "adapters": rows}, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
     )
 
 
@@ -97,29 +101,30 @@ def record(row: dict[str, Any]) -> dict[str, Any]:
     file_name = str(row.get("file") or "")
     if not file_name:
         raise RuntimeError("An adapter row needs a file name.")
-    existing = next(
-        (item for item in load_registry() if item.get("file") == file_name), None
-    )
-    merged = {**(existing or {}), **row}
-    merged["file"] = file_name
-    merged.setdefault("id", file_name)
-    merged.setdefault("kind", "music")
-    merged.setdefault("created_at", time.time())
-    merged["updated_at"] = time.time()
-    rows = [item for item in load_registry() if item.get("file") != file_name]
-    rows.append(merged)
-    save_registry(rows)
-    return merged
+    with _REGISTRY_LOCK:
+        rows = load_registry()
+        existing = next((item for item in rows if item.get("file") == file_name), None)
+        merged = {**(existing or {}), **row}
+        merged["file"] = file_name
+        merged.setdefault("id", file_name)
+        merged.setdefault("kind", "music")
+        merged.setdefault("created_at", time.time())
+        merged["updated_at"] = time.time()
+        kept = [item for item in rows if item.get("file") != file_name]
+        kept.append(merged)
+        save_registry(kept)
+        return merged
 
 
 def forget(adapter_id: str) -> None:
     """Drop the provenance row. The .safetensors file is not touched."""
     key = str(adapter_id).lower()
-    rows = load_registry()
-    kept = [item for item in rows if str(item.get("file")).lower() != key]
-    if len(kept) == len(rows):
-        raise RuntimeError(f"No registry row for adapter '{adapter_id}'.")
-    save_registry(kept)
+    with _REGISTRY_LOCK:
+        rows = load_registry()
+        kept = [item for item in rows if str(item.get("file")).lower() != key]
+        if len(kept) == len(rows):
+            raise RuntimeError(f"No registry row for adapter '{adapter_id}'.")
+        save_registry(kept)
 
 
 def dataset_fingerprint(folder: str | Path) -> dict[str, Any]:

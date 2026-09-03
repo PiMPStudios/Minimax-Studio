@@ -12,6 +12,16 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.54] — 2026-09-02
+
+`adapters.json` is locked and replaced atomically.
+
+### Changed
+
+- **Registry writes take `_REGISTRY_LOCK` and `atomic_write_text`.** Catalog
+  download, train-install, and Forget used to race a truncate-and-fill of
+  the only provenance file. Readers still load without the lock.
+
 ## [0.2.53] — 2026-09-02
 
 Catalog refresh failures are named, and they no longer stall the adapter list.
