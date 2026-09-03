@@ -150,6 +150,8 @@ class AdaptersPage(QWidget):
         self._catalog = QTreeWidget()
         self._catalog.setHeaderLabels(["Adapter", "Family", "Size", "Status"])
         self._catalog.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        # Two or three catalog rows. Taller than this is a scroller on a
+        # scrolling page — keep the list short on purpose.
         self._catalog.setMaximumHeight(140)
         self._catalog.currentItemChanged.connect(lambda *_: self._catalog_selected())
         root.addWidget(self._catalog)
@@ -293,7 +295,12 @@ class AdaptersPage(QWidget):
         self._catalog.clear()
         for pack in catalog:
             size = float(pack.get("approx_gb") or 0)
-            size_s = f"{size * 1024:.0f} MB" if size < 1 else f"{size:.1f} GB"
+            if not size:
+                size_s = "—"
+            elif size < 1:
+                size_s = f"{size * 1024:.0f} MB"
+            else:
+                size_s = f"{size:.1f} GB"
             job = downloads.get(str(pack.get("id")))
             status = "Ready" if pack.get("ready") else "Not downloaded"
             if job and job.get("status") in {"queued", "running", "cancelling"}:
@@ -362,12 +369,14 @@ class AdaptersPage(QWidget):
         pack = self._catalog_current()
         if not pack or self._catalog_job(pack):
             return
+        pack_id = str(pack.get("id") or "")
+        if not pack_id:
+            return
         from minimax_studio.ui.download import confirm_and_download
 
         job = confirm_and_download(self, self._client, pack, noun="adapter")
         if job is None:
             return
-        pack_id = str(pack["id"])
         self._catalog_jobs[pack_id] = job
         self._status.setText(f"Downloading “{pack.get('title')}”…")
         self._catalog_selected()
@@ -399,12 +408,19 @@ class AdaptersPage(QWidget):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+        pack_id = str(pack.get("id") or "")
+        if not pack_id:
+            return
         try:
-            self._client.delete_pack(str(pack["id"]))
+            result = self._client.delete_pack(pack_id)
         except Exception as exc:
             QMessageBox.warning(self, "Remove failed", str(exc))
             return
-        self._status.setText(f"Removed “{pack.get('title')}”.")
+        title = pack.get("title") or pack_id
+        if result.get("removed"):
+            self._status.setText(f"Removed “{title}”.")
+        else:
+            self._status.setText(f"“{title}” was not on disk.")
         self.refresh()
 
     def poll(self) -> None:

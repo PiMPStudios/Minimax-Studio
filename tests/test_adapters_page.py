@@ -559,6 +559,11 @@ def test_catalog_poll_skips_identical_rebuild(app) -> None:
     assert page._catalog.topLevelItem(0).text(3) == "Ready"
 
 
+def test_catalog_unmeasured_size_is_an_em_dash(app) -> None:
+    page = AdaptersPage(FakeAdapterWorker(catalog=[{**CATALOG_PACK, "approx_gb": 0}]))
+    assert page._catalog.topLevelItem(0).text(2) == "—"
+
+
 def test_catalog_ready_row_disables_download_and_enables_remove(app) -> None:
     page = AdaptersPage(FakeAdapterWorker(catalog=[{**CATALOG_PACK, "ready": True}]))
     page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
@@ -607,3 +612,18 @@ def test_remove_catalog_no_does_not_delete(app, monkeypatch) -> None:
     page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
     page._remove_catalog()
     assert worker.deleted_packs == []
+
+
+def test_remove_catalog_says_when_nothing_was_on_disk(app, no_modals) -> None:
+    worker = FakeAdapterWorker(catalog=[{**CATALOG_PACK, "ready": True}])
+
+    def missing(pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
+        worker.deleted_packs.append(pack_id)
+        return {"ok": True, "removed": False}
+
+    worker.delete_pack = missing  # type: ignore[method-assign]
+    page = AdaptersPage(worker)
+    page._catalog.setCurrentItem(page._catalog.topLevelItem(0))
+    page._remove_catalog()
+    assert worker.deleted_packs == ["h3-realism-people"]
+    assert "was not on disk" in page._status.text()

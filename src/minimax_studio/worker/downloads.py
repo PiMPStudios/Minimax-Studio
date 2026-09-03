@@ -369,7 +369,6 @@ def _register_catalog_lora(pack: Pack, dest: Path) -> None:
             continue
         adapters.record_imported(
             {
-                "id": path.name,
                 "name": path.stem,
                 "path": str(path),
                 "kind": pack.family,
@@ -422,23 +421,26 @@ def delete_pack(pack_id: str, delete_shared: bool = False) -> dict[str, Any]:
         return result
     if pack.kind == "lora":
         # Trained/imported LoRAs share models/loras/. Never rmtree it.
+        from minimax_studio.worker.adapters import NoRegistryRow, forget
+
         before = dir_bytes(dest)
+        unlinked = False
         for marker in pack.marker_files or ():
             path = dest / marker
-            if path.is_file():
-                try:
-                    path.unlink()
-                except OSError:
-                    result["kept_files"].append(marker)
-                    continue
-                try:
-                    from minimax_studio.worker.adapters import forget
-
-                    forget(Path(marker).name)
-                except RuntimeError:
-                    pass
-        result["removed"] = True
+            if not path.is_file():
+                continue
+            try:
+                path.unlink()
+            except OSError:
+                result["kept_files"].append(marker)
+                continue
+            unlinked = True
+            try:
+                forget(Path(marker).name)
+            except NoRegistryRow:
+                pass
         result["removed_bytes"] = max(0, before - dir_bytes(dest))
+        result["removed"] = unlinked or result["removed_bytes"] > 0
         result["folder_kept"] = dest.exists()
         from minimax_studio.worker.model_paths import reset_bytes_cache
 

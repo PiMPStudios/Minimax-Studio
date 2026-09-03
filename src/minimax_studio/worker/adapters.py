@@ -35,6 +35,10 @@ from minimax_studio.worker.runtime import runtime
 # Download thread, train-install, and Forget all write this file.
 _REGISTRY_LOCK = threading.Lock()
 
+
+class NoRegistryRow(RuntimeError):
+    """forget() when that file has no adapters.json row."""
+
 #: The PiMP loop's one-click audition: short, soft, and unmistakably a test.
 AUDITION_STRENGTH = 0.8
 AUDITION_SECONDS = 30.0
@@ -123,7 +127,7 @@ def forget(adapter_id: str) -> None:
         rows = load_registry()
         kept = [item for item in rows if str(item.get("file")).lower() != key]
         if len(kept) == len(rows):
-            raise RuntimeError(f"No registry row for adapter '{adapter_id}'.")
+            raise NoRegistryRow(f"No registry row for adapter '{adapter_id}'.")
         save_registry(kept)
 
 

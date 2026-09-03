@@ -101,6 +101,15 @@ def test_delete_catalog_lora_does_not_wipe_the_loras_folder(
     assert loras.is_dir()
 
 
+def test_delete_catalog_lora_missing_marker_is_not_removed(studio_home: Path) -> None:
+    loras = studio_home / "models" / "loras"
+    loras.mkdir(parents=True)
+    result = delete_pack("h3-motion")
+    assert result["removed"] is False
+    assert result["removed_bytes"] == 0
+    assert loras.is_dir()
+
+
 def test_delete_catalog_lora_forgets_the_registry_row(studio_home: Path) -> None:
     from minimax_studio.worker import adapters
 
@@ -114,6 +123,26 @@ def test_delete_catalog_lora_forgets_the_registry_row(studio_home: Path) -> None
     delete_pack("h3-motion")
     assert marker not in {row["file"] for row in adapters.load_registry()}
     assert not path.exists()
+
+
+def test_delete_catalog_lora_does_not_swallow_a_registry_write_failure(
+    studio_home: Path, monkeypatch
+) -> None:
+    from minimax_studio.worker import adapters
+
+    marker = ADAPTERS["h3-motion"].marker_files[0]
+    loras = studio_home / "models" / "loras"
+    loras.mkdir(parents=True)
+    path = loras / marker
+    path.write_bytes(b"lora")
+    adapters.record_imported({"path": str(path), "kind": "h3"}, source="catalog")
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("disk is full")
+
+    monkeypatch.setattr(adapters, "save_registry", boom)
+    with pytest.raises(RuntimeError, match="disk is full"):
+        delete_pack("h3-motion")
 
 
 def test_start_download_refuses_a_second_in_flight(studio_home: Path) -> None:

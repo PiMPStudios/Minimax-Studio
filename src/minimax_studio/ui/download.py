@@ -32,7 +32,10 @@ def confirm_and_download(
         )
         if answer != QMessageBox.StandardButton.Yes:
             return None
-    return start_download_or_ask(parent, client, str(pack["id"]))
+    pack_id = str(pack.get("id") or "")
+    if not pack_id:
+        return None
+    return start_download_or_ask(parent, client, pack_id)
 
 
 def start_download_or_ask(

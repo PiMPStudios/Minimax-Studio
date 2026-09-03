@@ -12,6 +12,17 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.56] — 2026-09-02
+
+Catalog nits: honest Remove, unmeasured size, tighter forget catch.
+
+### Changed
+
+- **LoRA delete reports `removed` only when a file went.** Missing
+  markers no longer claim success. `forget` misses are `NoRegistryRow`;
+  a real registry write failure is not swallowed. Unmeasured catalog
+  sizes show "—" instead of "0 MB".
+
 ## [0.2.55] — 2026-09-02
 
 Catalog tests cover forget, declined consent, and button state.
