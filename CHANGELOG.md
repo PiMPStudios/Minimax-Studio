@@ -12,6 +12,40 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.68] — 2026-09-20
+
+First slice of the agent surface: a read-only JSON CLI over the worker.
+
+### Added
+
+- **`minimax-studio-agent`** (`minimax_studio/agent_cli.py`) with two read-only
+  commands. `status` returns the worker version plus the hardware probe and a
+  blunt `can_generate_now`; `packs` returns the pack catalog and the curated
+  LoRA catalog with what is already installed. stdout is pure JSON — no prose
+  for an agent to strip — and every failure is one actionable sentence on
+  stderr, same house style as the rest of the errors.
+- A CLI before the MCP server, deliberately: the MCP wrapper will translate
+  these same calls, so the schema is written once and Claude/Codex/Cursor and
+  the pi-skills crowd read identical JSON; and this repo's CI is stub-only with
+  no MCP client on the runner, so an MCP-only surface would have shipped as a
+  demo instead of a tested feature.
+- `MINIMAX_STUDIO_WORKER_URL` / `MINIMAX_STUDIO_WORKER_TOKEN` (the token name is
+  the worker's own `AUTH_ENV`, so one export serves client and gate), or
+  `--url` / `--token`. Missing endpoint is exit 2 and says so.
+- Tests spawn a **real worker subprocess gated by a real token** rather than
+  `TestClient`: an in-process client proves a route answers, not that a second
+  process may reach it, which is the entire thread. One test asserts the token
+  appears in neither stdout nor the 401 copy; another asserts importing this
+  entry point pulls in no PySide6, torch, diffusers, mlx or simpletuner.
+
+### Known gap
+
+Discovery. Studio picks a fresh port per launch and keeps the token in memory
+(`app.py`), so an outside process must be handed both today. The handoff file —
+and the `Allow agent access` switch in front of it — is the next slice, and
+`test_missing_endpoint_is_exit_two_naming_the_env_var` is that gap written down
+as an assertion.
+
 ## [0.2.67] — 2026-09-20
 
 The launcher brings Python 3.12 with it. The pin did not move.

@@ -37,6 +37,9 @@ train = ["simpletuner==4.8.0"]
 
 [project.scripts]
 minimax-studio = "minimax_studio.app:main"
+# The agent read surface (MCP M0). Separate entry point on purpose: an MCP
+# client or a pi skill invokes this, and it must never pull in Qt.
+minimax-studio-agent = "minimax_studio.agent_cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

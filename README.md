@@ -66,6 +66,25 @@ local processes cannot call it. A worker you start yourself with
 `python -m minimax_studio --worker-only` has no token and stays open for
 development.
 
+## Agents (MCP thread, early)
+
+`minimax-studio-agent` is a read-only JSON surface over a running worker:
+
+```bash
+MINIMAX_STUDIO_WORKER_URL=http://127.0.0.1:8756 minimax-studio-agent status
+MINIMAX_STUDIO_WORKER_URL=http://127.0.0.1:8756 minimax-studio-agent packs
+```
+
+`status` reports the worker, the hardware probe, and whether anything is
+installed to generate with; `packs` lists downloadable packs and the curated
+LoRA catalog. stdout is JSON only, failures are one actionable sentence on
+stderr, and exit 2 means nobody told it where the worker is.
+
+**Discovery is not built yet.** Studio picks a fresh port each launch and keeps
+its token in memory, so an outside process has to be handed both. The handoff —
+with an *Allow agent access* switch in front of it — and the MCP server itself
+are the next slices; until then this is a power-user surface, not a checkbox.
+
 Comfy-Org INT8 packs generate through a **running ComfyUI** (Studio does not embed it). Use **Start ComfyUI** on Welcome, Settings, or Go, or launch Comfy yourself. Extra args in Settings are passed to `main.py`, for example `--listen 0.0.0.0 --default-device 1`.
 
 First launch asks for an output folder. Models and history live there.
