@@ -87,8 +87,16 @@ def _stale_cancelling(record: dict[str, Any]) -> bool:
     return time.time() - started > _STALE_DOWNLOAD_S and not record.get("bytes")
 
 
-def _retire_stale_cancelling_locked() -> None:
-    """Caller holds runtime.lock. Dead cancel → cancelled so the GUI unsticks."""
+def _retire_stale_cancelling_locked() -> list[Any]:
+    """Caller holds runtime.lock. Dead cancel → cancelled so the GUI unsticks.
+
+    Returns the children still attached to a retired job. Retirement concludes
+    the parent *thread* is gone, which is exactly the case where the
+    ``hf`` child survives us and keeps writing into ``dest`` — so the caller
+    owns the kill (issue 68). Killing here would mean holding ``runtime.lock``
+    across ``_kill_snapshot``, which waits up to ~7 s.
+    """
+    orphans: list[Any] = []
     for record in runtime.downloads.values():
         if not _stale_cancelling(record):
             continue
@@ -101,6 +109,25 @@ def _retire_stale_cancelling_locked() -> None:
         # _stopped also treats cancelled as stopped, so a still-alive snapshot
         # winds down after the Event is popped.
         runtime.download_stops.pop(job_id, None)
+        proc = runtime.download_procs.pop(job_id, None)
+        if proc is not None:
+            orphans.append(proc)
+    return orphans
+
+
+def _kill_orphans(procs: list[Any]) -> None:
+    """Reap retired children off-lock; each ``_kill_snapshot`` may wait ~7 s."""
+    for proc in procs:
+        _kill_snapshot(proc)
+
+
+def _reap_orphans_later(procs: list[Any]) -> None:
+    """Poll paths must not block on a kill; the GUI polls these every tick."""
+    if not procs:
+        return
+    threading.Thread(
+        target=_kill_orphans, args=(procs,), daemon=True, name="download-reap"
+    ).start()
 
 
 def start_download(
@@ -123,14 +150,19 @@ def start_download(
                 "or choose Download anyway."
             )
     with runtime.lock:
-        _retire_stale_cancelling_locked()
+        orphans = _retire_stale_cancelling_locked()
+        conflict: str | None = None
         for existing in runtime.downloads.values():
             if existing.get("pack_id") != pack.id:
                 continue
             if existing.get("status") in {"queued", "running", "cancelling"}:
-                raise RuntimeError(
-                    f"“{pack.title}” is already downloading."
-                )
+                conflict = pack.title
+    # Before the new child, not after, and not on the raise path either: this
+    # retry is the second writer issue 68 is about, and two snapshots sharing
+    # one dest corrupt the download. Off-lock: _kill_snapshot waits.
+    _kill_orphans(orphans)
+    if conflict:
+        raise RuntimeError(f"“{conflict}” is already downloading.")
     job_id = uuid.uuid4().hex[:12]
     record: dict[str, Any] = {
         "id": job_id,
@@ -158,17 +190,23 @@ def start_download(
 
 def get_download(job_id: str) -> dict[str, Any]:
     with runtime.lock:
-        _retire_stale_cancelling_locked()
+        orphans = _retire_stale_cancelling_locked()
         record = runtime.downloads.get(job_id)
-        if record is None:
-            raise KeyError(job_id)
-        return dict(record)
+        snapshot = None if record is None else dict(record)
+    # Reap before the KeyError: retirement already untracked that child, so
+    # skipping the kill here would leave it writing with nobody watching.
+    _reap_orphans_later(orphans)
+    if snapshot is None:
+        raise KeyError(job_id)
+    return snapshot
 
 
 def list_downloads() -> list[dict[str, Any]]:
     with runtime.lock:
-        _retire_stale_cancelling_locked()
-        return [dict(item) for item in runtime.downloads.values()]
+        orphans = _retire_stale_cancelling_locked()
+        rows = [dict(item) for item in runtime.downloads.values()]
+    _reap_orphans_later(orphans)
+    return rows
 
 
 def cancel_download(job_id: str) -> dict[str, Any]:

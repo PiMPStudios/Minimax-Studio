@@ -326,6 +326,132 @@ def test_list_downloads_retires_a_stale_cancelling_zombie(studio_home: Path) -> 
     assert "dead" not in runtime.download_stops
 
 
+class _FakeChild:
+    """Stand-in for the ``Popen`` stored in ``runtime.download_procs``."""
+
+    def __init__(self) -> None:
+        self.pid = 4242
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return 0 if self.killed else None
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+
+def _stub_kill(monkeypatch, order: list[str]) -> list:
+    """Capture kills instead of running taskkill/killpg on CI runners."""
+    from minimax_studio.worker import downloads
+
+    killed: list = []
+
+    def fake_kill(proc) -> None:
+        proc.killed = True
+        killed.append(proc)
+        order.append("kill")
+
+    monkeypatch.setattr(downloads, "_kill_snapshot", fake_kill)
+    return killed
+
+
+def _stale_zombie(runtime, job_id: str = "dead", pack_id: str = "h3-turbo"):
+    import threading
+
+    runtime.downloads[job_id] = {
+        "id": job_id,
+        "pack_id": pack_id,
+        "status": "cancelling",
+        "bytes": 0,
+        "started_at": time.time() - 901,
+        "message": "Cancel requested — Hugging Face may finish the current file",
+    }
+    runtime.download_stops[job_id] = threading.Event()
+    proc = _FakeChild()
+    runtime.download_procs[job_id] = proc
+    return proc
+
+
+def test_retiring_a_stale_cancel_kills_the_orphan_child(
+    studio_home: Path, monkeypatch
+) -> None:
+    from minimax_studio.worker.runtime import runtime
+
+    order: list[str] = []
+    killed = _stub_kill(monkeypatch, order)
+    proc = _stale_zombie(runtime)
+
+    rows = list_downloads()
+
+    assert next(row for row in rows if row["id"] == "dead")["status"] == "cancelled"
+    deadline = time.time() + 5
+    while time.time() < deadline and not killed:
+        time.sleep(0.05)
+    # Retirement untracked the child, so the reaper must own it now (issue 68).
+    assert killed == [proc]
+    assert "dead" not in runtime.download_procs
+
+
+def test_retry_kills_the_stalled_child_before_the_new_one_starts(
+    studio_home: Path, monkeypatch
+) -> None:
+    from minimax_studio.worker.runtime import runtime
+
+    order: list[str] = []
+    killed = _stub_kill(monkeypatch, order)
+    proc = _stale_zombie(runtime)
+
+    def fake_snapshot(repo_id, local_dir, token, allow_patterns, ignore_patterns):
+        order.append("snapshot")
+        for marker in PACKS["h3-turbo"].marker_files:
+            path = Path(local_dir) / marker
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"x")
+        return local_dir
+
+    record = start_download("h3-turbo", snapshot=fake_snapshot, force=True)
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if get_download(record["id"])["status"] in {"done", "error", "cancelled"}:
+            break
+        time.sleep(0.05)
+
+    assert get_download(record["id"])["status"] == "done", get_download(
+        record["id"]
+    ).get("error")
+    assert killed == [proc]
+    # Two snapshots sharing one dest is the corruption: the old child dies
+    # first, every time.
+    assert order.index("kill") < order.index("snapshot")
+
+
+def test_already_downloading_refusal_still_reaps_a_retired_child(
+    studio_home: Path, monkeypatch
+) -> None:
+    import pytest
+
+    from minimax_studio.worker.runtime import runtime
+
+    order: list[str] = []
+    killed = _stub_kill(monkeypatch, order)
+    proc = _stale_zombie(runtime)
+    runtime.downloads["busy"] = {
+        "id": "busy",
+        "pack_id": "h3-turbo",
+        "status": "running",
+        "bytes": 0,
+        "started_at": time.time(),
+    }
+
+    with pytest.raises(RuntimeError, match="already downloading"):
+        start_download("h3-turbo", force=True)
+
+    # The raise path must not drop the child it just untracked.
+    assert killed == [proc]
+    assert "dead" not in runtime.download_procs
+    assert order == ["kill"]
+
+
 def test_stale_queued_or_running_download_still_blocks(studio_home: Path) -> None:
     import pytest
 

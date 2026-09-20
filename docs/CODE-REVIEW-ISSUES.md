@@ -445,4 +445,10 @@ Not in this list (already tracked elsewhere): H3 SimpleTuner keys / encoder path
 - Suggestion: Copy into a temp name, then rename. On failure, remove the partial dest.
 - Status: fixed
 
-Still open: none from this review list. Next metal session should confirm the H3 SimpleTuner keys on a real 24 GB run (`H3_UNVERIFIED_KEYS` warning stays until then).
+### Issue 68 -- Severity: bug
+- File: src/minimax_studio/worker/downloads.py
+- Description: `_retire_stale_cancelling_locked` (0.2.65) flips the stalled record to `cancelled` and pops the stop Event, but leaves `runtime.download_procs[job_id]` running. Retirement targets exactly the case where the parent *thread* is dead, so nobody kills the stalled hf child until worker shutdown (`kill_active_downloads`). A retry after retirement then spawns a second child into the same `dest` — two writers on one `.cache/huggingface/…/*.incomplete`. Only sha256-pinned catalog LoRAs would catch the corruption; big model packs have size bounds only. Same exposure existed under the 0.2.63 inline bypass, so not a 0.2.65 regression.
+- Suggestion: In the retire loop, `_kill_snapshot(runtime.download_procs[job_id])` and pop the entry — retirement already concluded the child is dead-ish. Keep `stop.set()` first so a still-alive parent winding down via `_stopped` doesn't race the kill.
+- Status: fixed (0.2.66) — the retire loop pops `download_procs` and returns the children; `start_download` kills them before spawning the retry (and on the "already downloading" raise path), the poll paths reap them off-lock so `_kill_snapshot`'s ~7 s wait never runs under `runtime.lock`.
+
+Still open: none from this review list. (The H3 SimpleTuner keys were confirmed on metal back in 0.2.37 — `H3_UNVERIFIED_KEYS` has been an empty tuple since, so the earlier "next metal session" note here was stale.)

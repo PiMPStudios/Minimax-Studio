@@ -12,6 +12,25 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.66] — 2026-09-19
+
+Retiring a stalled cancel now kills the download child it left behind.
+
+### Fixed
+
+- **No second writer on one `dest`.** `_retire_stale_cancelling_locked`
+  popped the stop Event but left `runtime.download_procs[job_id]` alive, so
+  the stalled `hf` child kept writing until worker shutdown and a retry
+  spawned a second child into the same `.cache/huggingface/…/*.incomplete`.
+  Retirement now hands the child to the caller: the retry kills it *before*
+  the new snapshot starts, and the `GET /downloads*` poll paths reap it in a
+  short-lived thread.
+- **The "already downloading" refusal reaps too.** The stall scan untracked
+  the child before that raise, which would have left it writing with nobody
+  watching.
+- `_kill_snapshot` (up to ~7 s of waiting) is no longer reachable while
+  `runtime.lock` is held.
+
 ## [0.2.65] — 2026-09-02
 
 A dead cancel no longer blocks that pack, and Download comes back without a
