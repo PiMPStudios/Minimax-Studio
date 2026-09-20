@@ -14,13 +14,14 @@ dataset / train / adapter code, and add findings there rather than in chat.
 ## Commands
 
 ```bash
-scripts/run.sh                      # build .venv on the pinned Python + launch (Windows: scripts\run.bat)
+scripts/run.sh                      # uv builds .venv on the pinned Python + launch (Windows: scripts\run.bat)
+scripts/run.sh --print-runtime      # what interpreter/uv/venv this machine will use; builds nothing
 .venv/bin/ruff check src tests      # lint (CI runs exactly this)
 .venv/bin/python -m pytest -v --tb=short -rf      # full suite (Qt runs offscreen, no GPU)
 .venv/bin/python -m pytest tests/test_routes.py -q               # one file
 .venv/bin/python -m pytest tests/test_datasets.py::test_x        # one test
 .venv/bin/python -m minimax_studio --worker-only # worker alone, no GUI, open (no token) — dev only
-pip install -e ".[train]"           # SimpleTuner extra; 3.12 only, restart Studio after
+.venv/bin/pip install -e ".[train]" # SimpleTuner extra; 3.12 only, restart Studio after
 ```
 
 There is no formatter step and no type-check step in CI — only `ruff check` and
@@ -28,11 +29,16 @@ There is no formatter step and no type-check step in CI — only `ruff check` an
 
 ## Non-negotiable
 
-- **Python 3.12, exactly.** `.python-version` is the source of truth; it is
+- **Python 3.12, exactly — and since 0.2.67 the launcher supplies it.**
+  `.python-version` is the source of truth; it is
   mirrored in `pyproject requires-python`, the CI matrix, both launchers,
   `app.SUPPORTED_PYTHON`, and `tests/test_python_pin.py`. `simpletuner==4.8.0`
   ships no wheels outside `>=3.12,<3.14`. Never "just try" a newer interpreter,
-  and never add a second version to the CI matrix.
+  and never add a second version to the CI matrix. The launchers now resolve it
+  through **uv** (`MINIMAX_STUDIO_UV_BIN` to point at one, `MINIMAX_STUDIO_PYTHON`
+  to hand us one and skip uv entirely) — that changes *who fetches* 3.12, not
+  which version is allowed; `uv venv --seed` is deliberate, because the venv
+  needs its own `pip` for the `[train]` extra above.
 - **The GUI never imports PyTorch / diffusers / mlx / simpletuner.** Those live
   in `worker/` and are imported lazily *inside job threads* (see
   `worker/backends/*.py`). Anything heavy belongs behind such a lazy import, or

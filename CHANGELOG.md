@@ -12,6 +12,42 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.67] — 2026-09-20
+
+The launcher brings Python 3.12 with it. The pin did not move.
+
+### Changed
+
+- **`scripts/run.sh` and `scripts\run.bat` build the environment with uv.**
+  They read `.python-version`, reuse a system Python 3.12 when one exists, and
+  otherwise let uv download a standalone build. A clone of this repo no longer
+  needs Python 3.12 installed to start Studio. `requires-python`, the CI matrix,
+  `app.SUPPORTED_PYTHON` and the `[train]` extra all still say 3.12 exactly —
+  `simpletuner==4.8.0` ships nothing outside `>=3.12,<3.14`, so the version
+  stayed fixed and only the *fetching* moved.
+- **uv is never installed silently.** Missing uv prints the official one-line
+  installer for that platform; `--install-uv` (or a typed yes, in a terminal on
+  POSIX) is what actually runs it. A double-clicked `run.bat` has no console to
+  answer, so it only prints.
+- **`MINIMAX_STUDIO_UV_BIN`** names the uv binary — the same override pattern
+  as `MINIMAX_STUDIO_FFMPEG_BIN` / `…_SIMPLETUNER_BIN`, so tests and offline
+  shops can point at their own.
+- **`MINIMAX_STUDIO_PYTHON` still works** and bypasses uv completely (distro
+  packagers, air-gapped machines). A `.venv` built on any other Python is still
+  moved aside — never deleted.
+- `uv venv` runs with **`--seed`**, because AGENTS.md tells people to run
+  `pip install -e ".[train]"` inside the venv and a bare uv venv has no pip.
+
+### Added
+
+- **`scripts/run.sh --print-runtime`** prints the pin, the uv found, the
+  override, and the `.venv` interpreter without building anything — the one
+  paste that settles "what is Studio going to use on my machine?"
+- `tests/test_bootstrap.py` (13 checks): the pin flows from `.python-version`
+  rather than a hardcoded literal, uv stays overridable, the Python escape
+  hatch survives, a foreign `.venv` is retired not deleted, and the runtime
+  report answers with and without uv on PATH.
+
 ## [0.2.66] — 2026-09-19
 
 Retiring a stalled cancel now kills the download child it left behind.

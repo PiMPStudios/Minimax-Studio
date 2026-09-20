@@ -4,8 +4,9 @@ A point-and-click desktop studio for **MiniMax H3** (video + stereo audio) and *
 
 **PySide6 (Qt)** shell, Python worker process for downloads and inference. Weights are **not** shipped in the app. A first-launch downloader pulls what you need.
 
-Status: **0.2.66** generate studio + Build pages (datasets, LoRA training —
+Status: **0.2.67** generate studio + Build pages (datasets, LoRA training —
 experimental; Music and H3 24 GB smokes have run on a real NVIDIA GPU).
+Clone it and run `scripts/run.sh` — it fetches the Python it needs.
 Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md)
 ([v2](docs/PLAN-V2.md), [v3](docs/PLAN-V3.md)).
 
@@ -22,15 +23,31 @@ Changelog: [`CHANGELOG.md`](CHANGELOG.md). Plan: [`docs/PLAN.md`](docs/PLAN.md)
 scripts/run.sh          # Windows: scripts\run.bat
 ```
 
-That finds Python 3.12, builds `.venv` with it, installs the app, and starts.
-If `.venv` was built with any other Python it is moved aside
-(`.venv.pre-3.14/`) and rebuilt — never quietly reused.
+That asks **uv** for Python 3.12 — reusing your system's 3.12 if you have one,
+downloading a standalone build if you don't — builds `.venv` on it, installs
+the app, and starts. You do not need to install Python 3.12 first. If uv is
+missing the launcher says so and prints the one-line installer; it never
+downloads a tool without asking. If `.venv` was built with any other Python it
+is moved aside (`.venv.pre-3.14/`) and rebuilt — never quietly reused.
+
+Want to know what a machine will actually use, without building anything?
+
+```bash
+scripts/run.sh --print-runtime
+```
 
 **Python 3.12 only, everywhere.** `.python-version` is the source of truth;
 `requires-python`, the CI matrix, both launchers, and a startup check in
 `app.py` all read the same pin. The reason is the v2 trainer:
 `simpletuner==4.8.0` ships no wheels outside `>=3.12,<3.14`, and a newer
 interpreter gives you a `.venv` that installs happily and then cannot train.
+Since 0.2.67 the launcher supplies that interpreter instead of demanding it, so
+the pin stopped being something you have to satisfy by hand.
+
+Two escape hatches, both explicit: `MINIMAX_STUDIO_PYTHON=/path/to/python3.12`
+bypasses uv and builds the venv the old way (offline shops, packagers);
+`MINIMAX_STUDIO_UV_BIN=/path/to/uv` names the uv binary, same pattern as
+`MINIMAX_STUDIO_FFMPEG_BIN` and `…_SIMPLETUNER_BIN`.
 
 By hand, if you prefer:
 
