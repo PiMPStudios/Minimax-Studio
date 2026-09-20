@@ -140,8 +140,16 @@ for plan-slice steps, `wip:` for red tests. Squash-ish, imperative, short subjec
   and `train_page` reattaches. Don't "clean up" that lifecycle.
 - H3 territory notice (`H3_TERRITORY`) and Music 3 credit (`MUSIC_CREDIT`,
   `MUSIC_UPSTREAMS`) live in `licenses.py` — copy them, don't paraphrase.
-  Help quotes them. Do not settle whether Studio is a commercial product
-  in a comment; that is a counsel call.
+  Help quotes them. **Studio is not a commercial product** — owner's call,
+  2026-09-20: a hobby project, Apache-2.0, published for whoever wants it.
+  Don't add hedging copy or a counsel caveat about commerciality to answer a
+  question that has been settled. Two things that decision does *not* settle,
+  so keep shipping both: the H3 territory notice, because the territory clause
+  in that license is a condition on the grant and is not written around
+  commercial use; and the "MiniMax-Music3" credit in the window header and on
+  the Music page, which costs one line and is the only clause another
+  downstream user could trip. Neither is legal advice — the notices are
+  upstream's text, and whoever uses a build reads it before deciding.
 - `src/minimax_studio/secrets.py` is our keyring helper; `from secrets import token_hex`
   is stdlib. `app.py` imports it as `# stdlib secrets` for that reason.
 - `python -m minimax_studio --worker-only` has **no token**. Never ship it as a

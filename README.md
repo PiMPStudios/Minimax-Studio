@@ -128,3 +128,9 @@ there. 24 GB VRAM floor. See [`docs/PLAN-V2.md`](docs/PLAN-V2.md).
 - Music 3 weights: MiniMax-Music3 Community License (no geo carve-out; UI must show “MiniMax-Music3” on commercial products)
 
 This repo is Apache-2.0. Model weights stay MiniMax’s.
+
+**Studio is not a commercial product.** It is a hobby project, published so
+anyone can use it and change it. What you do with a build is your call, and it
+carries the two notices above so you can make it with the upstream terms in
+front of you — Studio shows the H3 territory notice before it downloads any H3
+weight, and names MiniMax-Music3 in the window header.

@@ -7,9 +7,13 @@ Music 3 §3.1 requires “MiniMax-Music3” shown *prominently* in the UI of any
 commercial product or service that *uses* the weights — shipping them is not
 the trigger. The window header and the Music page both carry the name today.
 §3.2 needs written authorization above US$20M aggregate yearly revenue; §4
-binds anyone offering generation to third parties. Whether Studio is a
-commercial product or service is a business/legal call — confirm with counsel,
-do not settle it in a comment.
+binds anyone offering generation to third parties.
+
+Studio is not a commercial product (owner's decision, 2026-09-20 — a hobby
+repo, Apache-2.0, published for whoever wants it), so §3.1 is not triggered by
+shipping it. Keep the credit anyway: it is one line, and a downstream user
+might be building something commercial. §4 is that downstream user's problem
+to read, which is why these strings ship verbatim and Help quotes them.
 
 Upstream notices (§ tail of the Music 3 license): Qwen3-8B Apache-2.0,
 Stable Audio MIT, DAC MIT.
