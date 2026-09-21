@@ -164,14 +164,20 @@ def test_the_settings_switch_is_what_sends_the_flag(studio_home: Path) -> None:
     config = AppConfig(output_dir=str(studio_home))
     page = SettingsPage(worker, config)  # type: ignore[arg-type]
 
+    # Drained after every save, not just at the end: each _save starts a
+    # QThread and assigns it to page._ping_thread, so draining once would
+    # leave the first thread running while its QThread object is replaced and
+    # garbage-collected — the failure test_main_window._drain_window exists to
+    # prevent, and the kind that surfaces minutes later in someone else's test.
     page.allow_agent.setChecked(True)
     assert page._save() is True
+    from tests.dialogs import wait_background
+
+    wait_background(page)
     assert worker.payload["allow_agent_access"] is True
 
     page.allow_agent.setChecked(False)
     assert page._save() is True
+    wait_background(page)
     assert worker.payload["allow_agent_access"] is False
 
-    from tests.dialogs import wait_background
-
-    wait_background(page)
