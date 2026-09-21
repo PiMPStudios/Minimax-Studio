@@ -38,6 +38,10 @@ class AppConfig(BaseModel):
     welcome_seen: bool = False
     cuda_device: int = 0
     use_os_keyring: bool = False
+    # Writes agent-handoff.json next to config.json so an outside process (the
+    # agent CLI, later an MCP server) can find this launch. Off by default,
+    # and off means the file does not exist — see agent_handoff.py.
+    allow_agent_access: bool = False
 
     def resolved_llm_key(self) -> str | None:
         if self.llm_api_key:

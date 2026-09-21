@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from secrets import token_hex  # stdlib secrets, not minimax_studio.secrets
 
+from minimax_studio import agent_handoff
 from minimax_studio.config import (
     default_config_path,
     load_config,
@@ -115,6 +116,8 @@ def _run_ui(host: str, port: int) -> int:
         return app.exec()
     finally:
         _stop_worker(worker)
+        # "Off leaves nothing behind" has to include quitting while it was on.
+        agent_handoff.clear()
 
 
 def _start_worker(host: str, port: int, token: str = "") -> subprocess.Popen[bytes]:
@@ -122,6 +125,10 @@ def _start_worker(host: str, port: int, token: str = "") -> subprocess.Popen[byt
     env["MINIMAX_STUDIO_CONFIG"] = str(default_config_path())
     if token:
         env["MINIMAX_STUDIO_WORKER_TOKEN"] = token
+    # The address this process is already talking to. The worker advertises
+    # exactly this in the agent handoff, so a handoff can never point at a
+    # listener the GUI itself could not reach.
+    env["MINIMAX_STUDIO_WORKER_URL"] = f"http://{host}:{port}"
     return subprocess.Popen(
         [
             sys.executable,

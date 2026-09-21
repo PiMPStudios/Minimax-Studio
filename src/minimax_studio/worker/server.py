@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.requests import Request
 
-from minimax_studio import __version__
+from minimax_studio import __version__, agent_handoff
 from minimax_studio.config import AppConfig, save_config
 from minimax_studio.errors import InsufficientDisk
 from minimax_studio.worker import downloads
@@ -46,6 +46,18 @@ def _shutdown_downloads() -> None:
 
     kill_active_downloads()
 
+
+@app.on_event("startup")
+def _sync_agent_handoff() -> None:
+    """Honour the switch on whatever port this launch actually landed on."""
+    agent_handoff.sync(bool(runtime.config.allow_agent_access))
+
+
+@app.on_event("shutdown")
+def _drop_agent_handoff() -> None:
+    # Only-while-on means off leaves nothing behind, and so does exiting.
+    agent_handoff.clear()
+
 AUTH_ENV = "MINIMAX_STUDIO_WORKER_TOKEN"
 TOKEN_HEADER = "X-Minimax-Studio-Token"
 
@@ -78,6 +90,7 @@ class SettingsIn(BaseModel):
     comfy_url: str | None = None
     comfy_root: str | None = None
     comfy_extra_args: str | None = None
+    allow_agent_access: bool | None = None
     cuda_device: int | None = None
     use_os_keyring: bool | None = None
 
@@ -171,6 +184,7 @@ def post_settings(body: SettingsIn) -> dict[str, object]:
         config.ensure_dirs()
     except RuntimeError:
         pass
+    agent_handoff.sync(bool(config.allow_agent_access))
     return config.model_dump()
 
 

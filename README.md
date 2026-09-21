@@ -78,12 +78,20 @@ MINIMAX_STUDIO_WORKER_URL=http://127.0.0.1:8756 minimax-studio-agent packs
 `status` reports the worker, the hardware probe, and whether anything is
 installed to generate with; `packs` lists downloadable packs and the curated
 LoRA catalog. stdout is JSON only, failures are one actionable sentence on
-stderr, and exit 2 means nobody told it where the worker is.
+stderr, and exit 2 means there was nowhere to reach.
 
-**Discovery is not built yet.** Studio picks a fresh port each launch and keeps
-its token in memory, so an outside process has to be handed both. The handoff —
-with an *Allow agent access* switch in front of it — and the MCP server itself
-are the next slices; until then this is a power-user surface, not a checkbox.
+**Turn it on in Settings → Allow agent access** (off by default). While it is
+on, Studio writes `agent-handoff.json` next to `config.json` — mode 0600, this
+launch's URL, token, pid and version — and the CLI reads that instead of being
+handed anything, so `minimax-studio-agent status` works with no flags and no
+exported variables. Turn the switch off, or quit Studio, and the file is
+deleted: off leaves nothing behind to go stale. Explicit `--url` / `--token` or
+`MINIMAX_STUDIO_WORKER_URL` / `MINIMAX_STUDIO_WORKER_TOKEN` win over the file.
+The worker binds loopback only, so this is a door for programs on your machine,
+not for your network.
+
+The MCP server that speaks this surface to Claude/Codex/Cursor is the next
+slice; the tool surface (what an agent may do, not just read) is decided there.
 
 Comfy-Org INT8 packs generate through a **running ComfyUI** (Studio does not embed it). Use **Start ComfyUI** on Welcome, Settings, or Go, or launch Comfy yourself. Extra args in Settings are passed to `main.py`, for example `--listen 0.0.0.0 --default-device 1`.
 

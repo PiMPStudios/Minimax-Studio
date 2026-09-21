@@ -154,3 +154,10 @@ for plan-slice steps, `wip:` for red tests. Squash-ish, imperative, short subjec
   is stdlib. `app.py` imports it as `# stdlib secrets` for that reason.
 - `python -m minimax_studio --worker-only` has **no token**. Never ship it as a
   user-facing mode; it exists so you can curl the API while developing.
+- **The agent handoff exists only while the switch is on.** Settings →
+  `allow_agent_access` gates `agent-handoff.json` (port + this launch's token,
+  0600, next to `config.json`) through `agent_handoff.sync()` — startup,
+  settings save, shutdown, and `app.py`'s finally all go through it. Keep it
+  that way: no path may write the file unconditionally, a tokenless
+  `--worker-only` worker must never advertise itself, and "off" means the file
+  is gone rather than emptied.

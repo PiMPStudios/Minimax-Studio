@@ -86,6 +86,16 @@ class SettingsPage(QWidget):
                 "Install the keyring package and an OS keychain backend to enable this."
             )
         form.addRow("", self.use_keyring)
+        # Off is the default, and off leaves no file behind — see agent_handoff.
+        self.allow_agent = QCheckBox("Allow agent access")
+        self.allow_agent.setChecked(bool(config.allow_agent_access))
+        self.allow_agent.setToolTip(
+            "Lets another program on this machine — the agent CLI today, an "
+            "MCP server next — find this Studio launch. Writes the port and "
+            "this launch's token next to config.json (0600) while it is on, "
+            "and deletes the file when it goes off."
+        )
+        form.addRow("", self.allow_agent)
         layout.addLayout(form)
         buttons = QHBoxLayout()
         save = QPushButton("Save")
@@ -111,7 +121,13 @@ class SettingsPage(QWidget):
             "inline — ✓ reachable, ✗ not. Studio CUDA device is for in-process "
             "diffusers only. ComfyUI uses the GPU it was launched with "
             "(--default-device). Start ComfyUI launches that install as a "
-            "separate process; extra args are appended to main.py."
+            "separate process; extra args are appended to main.py. "
+            "“Allow agent access” writes agent-handoff.json next to "
+            "config.json — this launch's port and token, mode 0600 — so "
+            "another program on this machine can reach the worker you would "
+            "otherwise keep to yourself. Turn it off and the file is deleted. "
+            "Nothing outside this machine can use it: the worker listens on "
+            "loopback."
         )
         note.setObjectName("pageSubtitle")
         note.setWordWrap(True)
@@ -160,6 +176,7 @@ class SettingsPage(QWidget):
             "llm_model": self.llm_model.text().strip() or "qwen3.8-27b-q4kxl",
             "llm_api_key": self.llm_key.text().strip(),
             "use_os_keyring": self.use_keyring.isChecked(),
+            "allow_agent_access": self.allow_agent.isChecked(),
         }
         try:
             saved = self._client.put_settings(payload)
@@ -179,6 +196,7 @@ class SettingsPage(QWidget):
             self._config.llm_model = updated.llm_model
             self._config.llm_api_key = updated.llm_api_key
             self._config.use_os_keyring = updated.use_os_keyring
+            self._config.allow_agent_access = updated.allow_agent_access
         except Exception as exc:
             QMessageBox.warning(self, "Save failed", str(exc))
             return False

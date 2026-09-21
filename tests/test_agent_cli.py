@@ -15,6 +15,7 @@ it, and that difference is the whole thread.
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -24,8 +25,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from minimax_studio import __version__
+from minimax_studio import __version__, agent_handoff
 from minimax_studio.agent_cli import NO_ENDPOINT, TOKEN_ENV, URL_ENV, main
+from minimax_studio.config import load_config, save_config
 
 TOKEN = "agent-cli-spike-token"
 
@@ -89,6 +91,106 @@ def _run(argv: list[str], capsys: pytest.CaptureFixture[str]):
     code = main(argv)
     captured = capsys.readouterr()
     return code, captured.out, captured.err
+
+
+@pytest.fixture
+def advertised_worker(studio_home: Path):
+    """A launch with “Allow agent access” switched on.
+
+    The URL and token go into the *child's* environment only — exactly what
+    app.py does — so nothing in this process has them. Anything that connects
+    has to find them the way an outside agent would: the handoff file.
+    """
+    config = load_config()
+    config.allow_agent_access = True
+    save_config(config)
+    port = _free_port()
+    url = f"http://127.0.0.1:{port}"
+    log = studio_home / "worker.log"
+    with log.open("wb") as handle:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "minimax_studio", "--worker-only", "--port", str(port)],
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            env={
+                **os.environ,
+                agent_handoff.TOKEN_ENV: TOKEN,
+                agent_handoff.URL_ENV: url,
+            },
+        )
+        deadline = time.time() + 60.0
+        handoff = agent_handoff.handoff_path()
+        found = False
+        while time.time() < deadline:
+            try:
+                live = httpx.get(
+                    f"{url}/health",
+                    headers={"X-Minimax-Studio-Token": TOKEN},
+                    timeout=1.0,
+                ).status_code
+            except httpx.HTTPError:
+                live = 0
+            if live == 200 and handoff.is_file():
+                found = True
+                break
+            time.sleep(0.2)
+        if not found:
+            proc.terminate()
+            pytest.fail(f"worker or handoff never appeared; {log.read_text()[-2000:]}")
+        try:
+            yield url
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:  # pragma: no cover - CI safety only
+                proc.kill()
+                proc.wait(timeout=5)
+
+
+def test_the_cli_finds_the_worker_from_the_handoff_alone(
+    advertised_worker: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """M2's whole claim: no flags, no exported port, no exported secret."""
+    monkeypatch.delenv(URL_ENV, raising=False)
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    # Not a formality: if any fixture ever leaks either value into this
+    # process, this test stops proving discovery and starts proving plumbing.
+    assert URL_ENV not in os.environ and TOKEN_ENV not in os.environ
+    code, out, err = _run(["status"], capsys)
+    assert code == 0, err
+    payload = json.loads(out)
+    assert payload["connected_via"] == "handoff"
+    assert payload["worker"]["version"] == __version__
+    assert TOKEN not in out
+
+
+def test_a_handoff_from_a_quit_studio_says_so(
+    studio_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """The likeliest real failure: the switch is on, the launch is gone."""
+    monkeypatch.delenv(URL_ENV, raising=False)
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    path = agent_handoff.sync(True, url="http://127.0.0.1:1", token="stale-token")
+    assert path is not None
+    code, out, err = _run(["--timeout", "2", "status"], capsys)
+    assert code == 1
+    assert out == ""
+    assert "handoff" in err.lower()
+    assert str(path) in err
+
+
+def test_the_switch_being_off_is_what_makes_the_last_two_work(
+    studio_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Guards the premise of the two tests above: with the switch off, an
+    outside process has nothing to find — which is the security claim."""
+    monkeypatch.delenv(URL_ENV, raising=False)
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    assert not agent_handoff.handoff_path().exists()
+    assert agent_handoff.read() is None
 
 
 def test_status_answers_over_http_with_the_launch_token(

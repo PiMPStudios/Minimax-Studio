@@ -12,6 +12,38 @@ Versioning follows [SemVer](https://semver.org/): **MAJOR.MINOR.PATCH**.
 The version string is defined once in `src/minimax_studio/__init__.py` (`__version__`).
 `pyproject.toml` reads it from there. The worker `/health` endpoint, window title, and Help page show the same value.
 
+## [0.2.69] — 2026-09-20
+
+Settings → Allow agent access: an outside process can now find this launch.
+
+### Added
+
+- **`agent_handoff.py`** writes `agent-handoff.json` next to `config.json` —
+  this launch's URL, token, pid and worker version — created **0600 at
+  creation time** (a chmod after the write is a window) and replaced
+  atomically. `minimax-studio-agent` reads it, so `status` works with no flags
+  and no exported variables; `--url` / `--token` / the two env vars still win.
+- **Off means no file.** The switch is `allow_agent_access`, default off, and
+  every path goes through one function (`sync`): startup honours a saved
+  switch, saving Settings applies it immediately, worker shutdown removes the
+  file, and `app.py`'s `finally` removes it again for the paths where the GUI
+  dies before uvicorn's shutdown hook. A stale handoff cannot outlive the
+  intent that created it, which is why it is only-while-on rather than
+  always-there-but-empty.
+- A **tokenless worker gets no handoff even with the switch on**: `--worker-only`
+  is already open to every local process, and advertising it would make a dev
+  run look like a normal install to whatever agent is reading the file.
+- **The Settings checkbox** (with the copy saying what it writes and where),
+  threaded through `SettingsIn` → `post_settings` → `sync`, so `False` is sent
+  as `False` instead of being omitted and leaving a previous launch switched on.
+- 11 tests: off leaves nothing, on writes 0600 with no `.tmp` litter, a
+  tokenless worker stays silent, junk and wrong-service files are refused,
+  the settings route toggles it both ways and survives a config reload,
+  startup/shutdown are covered, and — the actual M2 claim — the CLI finds a
+  live, token-gated worker with **no** URL and **no** token in its own
+  environment. A handoff whose Studio has quit reports the file path instead of
+  hanging.
+
 ## [0.2.68] — 2026-09-20
 
 First slice of the agent surface: a read-only JSON CLI over the worker.

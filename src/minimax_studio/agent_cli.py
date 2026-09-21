@@ -24,20 +24,20 @@ import os
 import sys
 from typing import Any
 
-from minimax_studio import __version__
+from minimax_studio import __version__, agent_handoff
 from minimax_studio.worker_client import WorkerClient
 
-URL_ENV = "MINIMAX_STUDIO_WORKER_URL"
+URL_ENV = agent_handoff.URL_ENV
 # Same name the worker's middleware reads (worker/server.py AUTH_ENV), so one
 # exported variable is both the client's address-book entry and the server's
 # gate value.
-TOKEN_ENV = "MINIMAX_STUDIO_WORKER_TOKEN"
+TOKEN_ENV = agent_handoff.TOKEN_ENV
 
 NO_ENDPOINT = (
     f"No MiniMax Studio worker to talk to. Set {URL_ENV} (for example "
-    "http://127.0.0.1:8756) or pass --url. Studio picks a fresh port every "
-    "launch and does not publish it yet — until the handoff file lands, an "
-    "outside process has to be told where to look."
+    "http://127.0.0.1:8756) or pass --url. Neither was found, and there was "
+    "no usable agent handoff next to config.json — Studio only writes that "
+    "file while Settings → Allow agent access is on."
 )
 AUTH_FAILURE = (
     "The worker answered with 401: it was launched with a token and this "
@@ -49,21 +49,31 @@ AUTH_FAILURE = (
 
 def resolve_endpoint(
     url: str | None = None, token: str | None = None
-) -> tuple[str | None, str | None, str | None]:
-    """(url, token, problem). Flags win over the environment."""
-    resolved_url = (url or os.environ.get(URL_ENV) or "").strip()
-    resolved_token = (token or os.environ.get(TOKEN_ENV) or "").strip()
-    if not resolved_url:
-        return None, None, NO_ENDPOINT
-    return resolved_url, (resolved_token or None), None
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """(url, token, how we found them, problem). Flags beat environment,
+    which beats the handoff Studio writes when agent access is switched on.
+    """
+    resolved_url = (url or "").strip()
+    resolved_token = (token or "").strip()
+    if resolved_url:
+        return resolved_url, (resolved_token or None), "flag", None
+    resolved_url = (os.environ.get(URL_ENV) or "").strip()
+    resolved_token = (os.environ.get(TOKEN_ENV) or "").strip()
+    if resolved_url:
+        return resolved_url, (resolved_token or None), "env", None
+    handoff = agent_handoff.read()
+    if handoff:
+        return str(handoff["url"]), handoff.get("token") or None, "handoff", None
+    return None, None, None, NO_ENDPOINT
 
 
-def status(client: WorkerClient) -> dict[str, Any]:
+def status(client: WorkerClient, via: str = "unknown") -> dict[str, Any]:
     """What this machine can run right now: worker, hardware, installed packs."""
     health = client.health()
     hardware = client.probe()
     return {
         "studio_version": __version__,
+        "connected_via": via,
         "worker": health,
         "hardware": hardware,
         "can_generate_now": bool(hardware.get("packs_ready")),
@@ -121,27 +131,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-_COMMANDS = {"status": status, "packs": packs}
+_COMMANDS = {"status", "packs"}
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    url, token, problem = resolve_endpoint(args.url, args.token)
+    url, token, via, problem = resolve_endpoint(args.url, args.token)
     if problem:
         print(problem, file=sys.stderr)
         return 2
     client = WorkerClient(str(url), timeout=args.timeout, token=token)
     try:
-        payload = _COMMANDS[str(args.command)](client)
+        payload = status(client, via) if args.command == "status" else packs(client)
     except Exception as exc:  # worker boundary: one sentence, one exit code
         detail = str(exc)
         if "401" in detail:
             detail = AUTH_FAILURE
         print(
             f"minimax-studio-agent {args.command}: {detail}\n"
-            f"(worker: {url} — is Studio running? scripts/run.sh)",
+            f"(worker: {url} found by {via} — is Studio running? scripts/run.sh)",
             file=sys.stderr,
         )
+        if via == "handoff":
+            # The likeliest reason a handoff URL does not answer is that the
+            # launch which wrote it has since exited.
+            print(
+                f"(that address came from {agent_handoff.handoff_path()}; "
+                "it is stale if Studio has quit since)",
+                file=sys.stderr,
+            )
         return 1
     finally:
         client.close()
